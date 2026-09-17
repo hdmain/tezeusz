@@ -4,6 +4,7 @@
 #include "util.hpp"
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <set>
 
 const char* Tmdb::BASE = "https://api.themoviedb.org/3";
@@ -30,12 +31,10 @@ static void load() {
                 g_lang = j["language"].get<std::string>();
         } catch (...) {}
     };
-    tryFile(util::exeDir() + "\\config.json");
+    tryFile(util::exeDir() + "/config.json");
     tryFile(util::appDataPath("config.json"));
-    char* envbuf = nullptr; size_t envlen = 0;
-    if (_dupenv_s(&envbuf, &envlen, "TMDB_API_KEY") == 0 && envbuf) {
-        if (strlen(envbuf) > 0) g_key = envbuf;
-        free(envbuf);
+    if (const char* env = std::getenv("TMDB_API_KEY")) {
+        if (env[0]) g_key = env;
     }
 }
 const char* apiKey() { load(); return g_key.c_str(); }

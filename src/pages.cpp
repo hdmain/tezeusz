@@ -9,6 +9,8 @@
 #include "imgui.h"
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <ctime>
 #include <cstring>
 #include <cstdio>
 
@@ -313,8 +315,16 @@ void renderDiscover() {
 
     if (rows.empty()) {
         std::string today = [] {
-            SYSTEMTIME st; GetLocalTime(&st);
-            char b[16]; snprintf(b, sizeof(b), "%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
+            using namespace std::chrono;
+            auto t = system_clock::to_time_t(system_clock::now());
+            std::tm tm{};
+#ifdef _WIN32
+            localtime_s(&tm, &t);
+#else
+            localtime_r(&t, &tm);
+#endif
+            char b[16];
+            std::snprintf(b, sizeof(b), "%04d-%02d-%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
             return std::string(b);
         }();
         rows.push_back({"Na czasie", {}, {}, []{ return Tmdb::trending("all", "week"); }});

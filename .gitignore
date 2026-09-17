@@ -1,0 +1,53 @@
+# Build
+/build/
+/build-*/
+/cmake-build-*/
+/out/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Binaries / deps caches
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+!vendor/glfw/lib-mingw-w64/libglfw3.a
+*.o
+*.obj
+*.pdb
+
+# Large / optional vendor blobs (not required to compile)
+/vendor/libvlc/
+/vendor/tools/
+/vendor/webview2/
+/vendor/webview/
+/ref/
+
+# Local / secrets
+.env
+.env.*
+config.json
+*.user
+.vs/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Screenshots / scratch (keep mainpage + details)
+/live*.png
+/hover*.png
+/t_movies*.png
+/theerror.png
+/r1.png
+/r2.png
+/d6.png
+/d7.png
+/d8.png
+/d9.png
+/d10.png
+/build_log.txt
+/check_img*.py
+/rate.py

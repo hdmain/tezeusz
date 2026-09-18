@@ -64,7 +64,8 @@ void saveRequestsLocked() {
             {"seasons", r.seasons}, {"status", (int)r.status}, {"message", r.message},
             {"releaseTitle", r.releaseTitle}, {"magnetOrUrl", r.magnetOrUrl},
             {"torrentHash", r.torrentHash}, {"libraryPath", r.libraryPath},
-            {"progress", r.progress}, {"createdAt", r.createdAt}, {"updatedAt", r.updatedAt}
+            {"progress", r.progress}, {"createdAt", r.createdAt}, {"updatedAt", r.updatedAt},
+            {"preferredQuality", r.preferredQuality}
         });
     }
     util::writeFile(storePath(), arr.dump(2));
@@ -108,6 +109,11 @@ void loadRequests() {
             r.progress = j.value("progress", 0.0);
             r.createdAt = j.value("createdAt", nowMs());
             r.updatedAt = j.value("updatedAt", r.createdAt);
+            r.preferredQuality = j.value("preferredQuality", "");
+            // Drop cancelled entries older than 30 minutes (also on startup)
+            if (r.status == ReqStatus::Declined &&
+                r.updatedAt > 0 && r.updatedAt < nowMs() - 30LL * 60LL * 1000LL)
+                continue;
             if (r.status == ReqStatus::Pending || r.status == ReqStatus::Searching ||
                 r.status == ReqStatus::Downloading || r.status == ReqStatus::Importing)
                 g_queue.push_back(r.id);
@@ -127,15 +133,30 @@ struct Release {
 int qualityScore(const std::string& title, const std::string& pref) {
     std::string t = toLower(title);
     int base = 100;
-    if (t.find("2160p") != std::string::npos || t.find("4k") != std::string::npos) base = 400;
+    if (t.find("2160p") != std::string::npos || t.find("4k") != std::string::npos ||
+        t.find("uhd") != std::string::npos) base = 400;
     else if (t.find("1080p") != std::string::npos) base = 300;
     else if (t.find("720p") != std::string::npos) base = 200;
     else if (t.find("480p") != std::string::npos) base = 50;
 
     std::string p = toLower(pref);
-    if (p == "2160p" && base >= 400) base += 200;
-    else if (p == "1080p" && base == 300) base += 200;
-    else if (p == "720p" && base == 200) base += 200;
+    if (p.empty() || p == "any" || p == "dowolna") {
+        // soft preference toward higher quality
+        if (base >= 300) base += 40;
+    } else if (p == "2160p" || p == "4k") {
+        if (base >= 400) base += 250;
+        else base -= 80;
+    } else if (p == "1080p") {
+        if (base == 300) base += 250;
+        else if (base >= 400) base -= 40; // 4K ok but not preferred
+        else if (base == 200) base -= 60;
+        else base -= 100;
+    } else if (p == "720p") {
+        if (base == 200) base += 250;
+        else if (base == 300) base -= 30;
+        else if (base >= 400) base -= 80;
+        else base -= 40;
+    }
 
     if (t.find("bluray") != std::string::npos || t.find("blu-ray") != std::string::npos) base += 40;
     if (t.find("web-dl") != std::string::npos || t.find("webdl") != std::string::npos) base += 30;
@@ -260,7 +281,8 @@ std::vector<Release> searchReleases(const MediaRequest& req) {
             if (r.seeders < 5) continue;
         }
         if (r.seeders > 0 && r.seeders < cfg.minSeeders) continue;
-        r.score = qualityScore(r.title, cfg.preferredQuality) + std::min(r.seeders, 200);
+        std::string qpref = req.preferredQuality.empty() ? cfg.preferredQuality : req.preferredQuality;
+        r.score = qualityScore(r.title, qpref) + std::min(r.seeders, 200);
         if (r.size > 0 && r.size < 40ll * 1024 * 1024) r.score -= 80;
         // Prefer year in release name when we have one
         if (!req.year.empty() && toLower(r.title).find(req.year) != std::string::npos)
@@ -395,6 +417,8 @@ void processOne(const std::string& id) {
         std::lock_guard<std::recursive_mutex> lk(g_mu);
         auto* r = findReqLocked(id);
         if (!r) return;
+        if (r->status == ReqStatus::Declined || r->status == ReqStatus::Available)
+            return;
         snap = *r;
     }
 
@@ -405,6 +429,13 @@ void processOne(const std::string& id) {
             saveRequestsLocked();
         }
         syncAppStatuses();
+    };
+
+    auto stoppedOrGone = [&]() -> bool {
+        if (g_stop.load()) return true;
+        std::lock_guard<std::recursive_mutex> lk(g_mu);
+        auto* r = findReqLocked(id);
+        return !r || r->status == ReqStatus::Declined;
     };
 
     if (libraryHas(snap)) {
@@ -418,85 +449,140 @@ void processOne(const std::string& id) {
         return;
     }
 
-    {
-        std::lock_guard<std::recursive_mutex> lk(g_mu);
-        if (auto* r = findReqLocked(id))
-            setStatus(*r, ReqStatus::Searching, "Szukanie wydań…");
-        saveRequestsLocked();
-    }
-    syncAppStatuses();
+    std::string magnet = snap.magnetOrUrl;
+    std::string jobDir = (fs::path(StackConfig::get().downloadPath) / id).string();
+    const bool resuming = !magnet.empty();
 
-    // Resolve IMDb + original title like Radarr before hitting indexers
-    enrichFromTmdb(snap);
-    {
-        std::lock_guard<std::recursive_mutex> lk(g_mu);
-        if (auto* r = findReqLocked(id)) {
-            if (!snap.originalTitle.empty()) r->originalTitle = snap.originalTitle;
-            if (!snap.imdbId.empty()) r->imdbId = snap.imdbId;
-            if (!snap.year.empty()) r->year = snap.year;
+    if (!resuming) {
+        {
+            std::lock_guard<std::recursive_mutex> lk(g_mu);
+            if (auto* r = findReqLocked(id))
+                setStatus(*r, ReqStatus::Searching, "Szukanie wydań…");
             saveRequestsLocked();
         }
-    }
+        syncAppStatuses();
 
-    auto releases = searchReleases(snap);
-    if (releases.empty()) {
-        std::string hint = !snap.originalTitle.empty() ? snap.originalTitle : snap.title;
-        if (!snap.imdbId.empty()) hint += " (" + snap.imdbId + ")";
-        fail("Nie znaleziono wydań torrent dla: " + hint);
-        return;
-    }
-
-    const Release& best = releases.front();
-    std::string jobDir;
-    {
-        std::lock_guard<std::recursive_mutex> lk(g_mu);
-        if (auto* r = findReqLocked(id)) {
-            r->releaseTitle = best.title;
-            r->magnetOrUrl = best.magnet;
-            setStatus(*r, ReqStatus::Downloading,
-                      "Pobieranie: " + best.title.substr(0, 60) +
-                      " (" + std::to_string(best.seeders) + " seedów)");
-            saveRequestsLocked();
-        }
-        jobDir = (fs::path(StackConfig::get().downloadPath) / id).string();
-    }
-    syncAppStatuses();
-
-    std::string err;
-    auto shouldCancel = [&]() -> bool {
-        if (g_stop.load()) return true;
-        std::lock_guard<std::recursive_mutex> lk(g_mu);
-        auto* r = findReqLocked(id);
-        return !r || r->status == ReqStatus::Declined;
-    };
-
-    bool ok = torrent::downloadMagnet(
-        best.magnet, jobDir, shouldCancel,
-        [&](const torrent::Progress& p) {
-            core::setPeers(p.peers + p.seeds);
+        enrichFromTmdb(snap);
+        {
             std::lock_guard<std::recursive_mutex> lk(g_mu);
             if (auto* r = findReqLocked(id)) {
-                r->progress = std::min(0.95, std::max(0.02, p.fraction));
-                char msg[192];
-                std::snprintf(msg, sizeof(msg), "%s… %.0f/%.0f MB · %d peerów · %.0f KB/s",
-                              p.state.c_str(), p.downloadedMb, p.totalMb, p.peers + p.seeds,
-                              p.downloadRateKBs);
-                r->message = msg;
-                r->updatedAt = nowMs();
-                static int tick = 0;
-                if ((++tick % 4) == 0) saveRequestsLocked();
+                if (!snap.originalTitle.empty()) r->originalTitle = snap.originalTitle;
+                if (!snap.imdbId.empty()) r->imdbId = snap.imdbId;
+                if (!snap.year.empty()) r->year = snap.year;
+                saveRequestsLocked();
             }
-            syncAppStatuses();
-        },
-        &err);
+        }
 
-    core::setPeers(0);
+        auto releases = searchReleases(snap);
+        if (releases.empty()) {
+            std::string hint = !snap.originalTitle.empty() ? snap.originalTitle : snap.title;
+            if (!snap.imdbId.empty()) hint += " (" + snap.imdbId + ")";
+            fail("Nie znaleziono wydań torrent dla: " + hint);
+            return;
+        }
 
-    if (shouldCancel()) return;
+        const Release& best = releases.front();
+        magnet = best.magnet;
+        {
+            std::lock_guard<std::recursive_mutex> lk(g_mu);
+            if (auto* r = findReqLocked(id)) {
+                r->releaseTitle = best.title;
+                r->magnetOrUrl = best.magnet;
+                setStatus(*r, ReqStatus::Downloading,
+                          "Pobieranie: " + best.title.substr(0, 60) +
+                          " (" + std::to_string(best.seeders) + " seedów)");
+                saveRequestsLocked();
+            }
+        }
+    } else {
+        std::lock_guard<std::recursive_mutex> lk(g_mu);
+        if (auto* r = findReqLocked(id)) {
+            std::string label = !r->releaseTitle.empty() ? r->releaseTitle : r->title;
+            setStatus(*r, ReqStatus::Downloading,
+                      "Wznawianie: " + label.substr(0, 60));
+            saveRequestsLocked();
+        }
+    }
+    syncAppStatuses();
+
+    // Already finished on disk (e.g. closed during import) — skip re-download
+    {
+        std::string existing = findBiggestVideo(jobDir);
+        if (!existing.empty() && snap.progress >= 0.95) {
+            // fall through to import below
+        } else {
+            std::string err;
+            auto pollStop = [&]() -> torrent::StopAction {
+                if (g_stop.load()) return torrent::StopAction::PauseKeep;
+                std::lock_guard<std::recursive_mutex> lk(g_mu);
+                auto* r = findReqLocked(id);
+                if (!r || r->status == ReqStatus::Declined)
+                    return torrent::StopAction::CancelDelete;
+                return torrent::StopAction::Continue;
+            };
+
+            bool ok = torrent::downloadMagnet(
+                magnet, jobDir, pollStop,
+                [&](const torrent::Progress& p) {
+                    core::setPeers(p.peers);
+                    std::lock_guard<std::recursive_mutex> lk(g_mu);
+                    if (auto* r = findReqLocked(id)) {
+                        r->progress = std::min(0.95, std::max(0.02, p.fraction));
+
+                        char eta[32] = "—";
+                        double remainMb = std::max(0.0, p.totalMb - p.downloadedMb);
+                        if (p.downloadRateKBs > 8.0 && remainMb > 0.05) {
+                            double sec = (remainMb * 1024.0) / p.downloadRateKBs;
+                            if (sec < 60)
+                                std::snprintf(eta, sizeof(eta), "%.0fs", sec);
+                            else if (sec < 3600)
+                                std::snprintf(eta, sizeof(eta), "%dm %02ds",
+                                              (int)(sec / 60), (int)sec % 60);
+                            else if (sec < 86400)
+                                std::snprintf(eta, sizeof(eta), "%dh %02dm",
+                                              (int)(sec / 3600), ((int)(sec / 60)) % 60);
+                            else
+                                std::snprintf(eta, sizeof(eta), "%dd %dh",
+                                              (int)(sec / 86400), ((int)(sec / 3600)) % 24);
+                        }
+
+                        char msg[256];
+                        if (p.seeds > 0)
+                            std::snprintf(msg, sizeof(msg),
+                                          "%s… %.0f/%.0f MB · %d peerów (%d seed) · %.0f KB/s · ETA %s",
+                                          p.state.c_str(), p.downloadedMb, p.totalMb,
+                                          p.peers, p.seeds, p.downloadRateKBs, eta);
+                        else
+                            std::snprintf(msg, sizeof(msg),
+                                          "%s… %.0f/%.0f MB · %d peerów · %.0f KB/s · ETA %s",
+                                          p.state.c_str(), p.downloadedMb, p.totalMb,
+                                          p.peers, p.downloadRateKBs, eta);
+                        r->message = msg;
+                        r->updatedAt = nowMs();
+                        static int saveTick = 0;
+                        if ((++saveTick % 4) == 0) saveRequestsLocked();
+                    }
+                    syncAppStatuses();
+                },
+                &err);
+
+            core::setPeers(0);
+
+            if (stoppedOrGone()) return; // Declined kept, or PauseKeep → Downloading for next launch
+
+            std::string video = findBiggestVideo(jobDir);
+            if (!ok || video.empty()) {
+                fail(err.empty() ? "Pobieranie nie powiodło się (brak pliku wideo)" : err);
+                return;
+            }
+        }
+    }
+
+    if (stoppedOrGone()) return;
 
     std::string video = findBiggestVideo(jobDir);
-    if (!ok || video.empty()) {
-        fail(err.empty() ? "Pobieranie nie powiodło się (brak pliku wideo)" : err);
+    if (video.empty()) {
+        fail("Pobieranie nie powiodło się (brak pliku wideo)");
         return;
     }
 
@@ -619,9 +705,36 @@ void shutdown() {
 
 void tick() {
     static double last = 0;
+    static double lastPurge = 0;
     double now = nowMs() / 1000.0;
     if (now - last < 0.25) return;
     last = now;
+
+    // Remove cancelled requests from the list after 30 minutes
+    if (now - lastPurge >= 5.0) {
+        lastPurge = now;
+        const int64_t cutoff = nowMs() - 30LL * 60LL * 1000LL;
+        bool changed = false;
+        {
+            std::lock_guard<std::recursive_mutex> lk(g_mu);
+            auto it = g_reqs.begin();
+            while (it != g_reqs.end()) {
+                if (it->status == ReqStatus::Declined && it->updatedAt > 0 && it->updatedAt < cutoff) {
+                    it = g_reqs.erase(it);
+                    changed = true;
+                } else {
+                    ++it;
+                }
+            }
+            if (changed) saveRequestsLocked();
+        }
+        if (changed) {
+            // Drop stale UI keys so cancelled titles can be requested again cleanly
+            app().requestStatus.clear();
+            syncAppStatuses();
+        }
+    }
+
     syncAppStatuses();
 }
 
@@ -635,8 +748,11 @@ void syncAppStatuses() {
 std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
                          const std::string& year, const std::string& imdbId,
                          const std::vector<int>& seasons,
-                         const std::string& originalTitle) {
+                         const std::string& originalTitle,
+                         const std::string& preferredQuality) {
     std::string id;
+    std::string q = preferredQuality;
+    if (q.empty()) q = StackConfig::get().preferredQuality;
     {
         std::lock_guard<std::recursive_mutex> lk(g_mu);
         for (auto& r : g_reqs) {
@@ -645,12 +761,15 @@ std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
                     r.status = ReqStatus::Pending;
                     r.message = "Ponawianie…";
                     r.progress = 0;
+                    r.magnetOrUrl.clear();
+                    r.releaseTitle.clear();
                     r.updatedAt = nowMs();
                     if (!title.empty()) r.title = title;
                     if (!originalTitle.empty()) r.originalTitle = originalTitle;
                     if (!year.empty()) r.year = year;
                     if (!imdbId.empty()) r.imdbId = imdbId;
                     if (!seasons.empty()) r.seasons = seasons;
+                    r.preferredQuality = q;
                     g_queue.push_back(r.id);
                     id = r.id;
                     saveRequestsLocked();
@@ -670,8 +789,9 @@ std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
             r.year = year;
             r.imdbId = imdbId;
             r.seasons = seasons;
+            r.preferredQuality = q;
             r.status = ReqStatus::Pending;
-            r.message = "W kolejce";
+            r.message = "W kolejce (" + q + ")";
             r.createdAt = r.updatedAt = nowMs();
             id = r.id;
             g_reqs.push_back(r);
@@ -681,7 +801,7 @@ std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
             auto* r = findReqLocked(id);
             if (r && r->status == ReqStatus::Pending) {
                 bool already = false;
-                for (auto& q : g_queue) if (q == id) already = true;
+                for (auto& qid : g_queue) if (qid == id) already = true;
                 if (!already) g_queue.push_back(id);
             }
         }
@@ -691,8 +811,108 @@ std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
     return id;
 }
 
-std::string requestMedia(const Details& d, const std::vector<int>& seasons) {
-    return requestMedia(d.mediaType, d.id, d.title, d.year(), d.imdbId, seasons, d.originalTitle);
+std::string requestMedia(const Details& d, const std::vector<int>& seasons,
+                         const std::string& preferredQuality) {
+    return requestMedia(d.mediaType, d.id, d.title, d.year(), d.imdbId, seasons, d.originalTitle,
+                        preferredQuality);
+}
+
+static std::string qualityLabelOf(const std::string& title) {
+    std::string t = toLower(title);
+    if (t.find("2160p") != std::string::npos || t.find("4k") != std::string::npos ||
+        t.find("uhd") != std::string::npos) return "2160p";
+    if (t.find("1080p") != std::string::npos) return "1080p";
+    if (t.find("720p") != std::string::npos) return "720p";
+    if (t.find("480p") != std::string::npos) return "480p";
+    return "—";
+}
+
+std::vector<ReleaseHit> searchReleasesInteractive(
+    MediaType type, int tmdbId, const std::string& title, const std::string& year,
+    const std::string& imdbId, const std::vector<int>& seasons,
+    const std::string& originalTitle, const std::string& preferredQuality) {
+    MediaRequest snap;
+    snap.mediaType = type;
+    snap.tmdbId = tmdbId;
+    snap.title = title;
+    snap.year = year;
+    snap.imdbId = imdbId;
+    snap.seasons = seasons;
+    snap.originalTitle = originalTitle;
+    snap.preferredQuality = preferredQuality.empty()
+        ? StackConfig::get().preferredQuality : preferredQuality;
+    enrichFromTmdb(snap);
+    auto raw = searchReleases(snap);
+    std::vector<ReleaseHit> out;
+    out.reserve(raw.size());
+    for (auto& r : raw) {
+        ReleaseHit h;
+        h.title = r.title;
+        h.magnet = r.magnet;
+        h.seeders = r.seeders;
+        h.score = r.score;
+        h.sizeBytes = r.size;
+        h.quality = qualityLabelOf(r.title);
+        out.push_back(std::move(h));
+    }
+    return out;
+}
+
+std::string requestWithRelease(MediaType type, int tmdbId, const std::string& title,
+                               const std::string& year, const std::string& imdbId,
+                               const std::vector<int>& seasons, const std::string& originalTitle,
+                               const std::string& preferredQuality,
+                               const std::string& magnet, const std::string& releaseTitle) {
+    if (magnet.empty()) return {};
+    std::string q = preferredQuality.empty() ? StackConfig::get().preferredQuality : preferredQuality;
+    std::string id;
+    {
+        std::lock_guard<std::recursive_mutex> lk(g_mu);
+        MediaRequest* existing = nullptr;
+        for (auto& r : g_reqs) {
+            if (r.tmdbId == tmdbId && r.mediaType == type) { existing = &r; break; }
+        }
+        if (existing) {
+            existing->title = title.empty() ? existing->title : title;
+            if (!originalTitle.empty()) existing->originalTitle = originalTitle;
+            if (!year.empty()) existing->year = year;
+            if (!imdbId.empty()) existing->imdbId = imdbId;
+            if (!seasons.empty()) existing->seasons = seasons;
+            existing->preferredQuality = q;
+            existing->magnetOrUrl = magnet;
+            existing->releaseTitle = releaseTitle;
+            existing->progress = 0;
+            existing->libraryPath.clear();
+            setStatus(*existing, ReqStatus::Pending, "Wybrane wydanie — w kolejce");
+            id = existing->id;
+            g_queue.erase(std::remove(g_queue.begin(), g_queue.end(), id), g_queue.end());
+            g_queue.push_front(id);
+            saveRequestsLocked();
+        } else {
+            MediaRequest r;
+            r.id = newId();
+            r.mediaType = type;
+            r.tmdbId = tmdbId;
+            r.title = title;
+            r.originalTitle = originalTitle;
+            r.year = year;
+            r.imdbId = imdbId;
+            r.seasons = seasons;
+            r.preferredQuality = q;
+            r.magnetOrUrl = magnet;
+            r.releaseTitle = releaseTitle;
+            r.status = ReqStatus::Pending;
+            r.message = "Wybrane wydanie — w kolejce";
+            r.createdAt = r.updatedAt = nowMs();
+            id = r.id;
+            g_reqs.push_back(std::move(r));
+            g_queue.push_front(id);
+            saveRequestsLocked();
+        }
+        app().requestStatus[App::key(type, tmdbId)] = 1;
+    }
+    schedulePump();
+    return id;
 }
 
 std::vector<MediaRequest> listRequests() {
@@ -705,8 +925,30 @@ bool cancelRequest(const std::string& id) {
     auto* r = findReqLocked(id);
     if (!r) return false;
     setStatus(*r, ReqStatus::Declined, "Anulowane");
+    g_queue.erase(std::remove(g_queue.begin(), g_queue.end(), id), g_queue.end());
     saveRequestsLocked();
     return true;
+}
+
+void onLibraryRemoved(const std::string& pathOrFolder) {
+    if (pathOrFolder.empty()) return;
+    std::lock_guard<std::recursive_mutex> lk(g_mu);
+    bool changed = false;
+    for (auto& r : g_reqs) {
+        if (r.libraryPath.empty()) continue;
+        if (r.libraryPath == pathOrFolder ||
+            pathOrFolder.find(r.libraryPath) == 0 ||
+            r.libraryPath.find(pathOrFolder) == 0) {
+            r.libraryPath.clear();
+            r.progress = 0;
+            setStatus(r, ReqStatus::Declined, "Usunięte z biblioteki");
+            changed = true;
+        }
+    }
+    if (changed) {
+        saveRequestsLocked();
+        syncAppStatuses();
+    }
 }
 
 } // namespace stack

@@ -33,6 +33,8 @@ struct Video {
     }
 };
 
+enum class SearchFilter { All = 0, Movies, Tv, People };
+
 struct MediaItem {
     MediaType mediaType = MediaType::Movie;
     int id = 0;
@@ -44,6 +46,8 @@ struct MediaItem {
     // tv extras
     int numberOfSeasons = 0, numberOfEpisodes = 0;
     std::string status;
+    // person extras (Seerr search)
+    std::string knownForDepartment;
     // Cached w300 poster URL (built once) — avoids string alloc every frame per card
     mutable std::string posterUrl300;
 
@@ -118,6 +122,9 @@ public:
     static AsyncReq<PagedResult> trending(const std::string& media, const std::string& window = "week");
     static AsyncReq<PagedResult> discover(int page, const std::map<std::string, std::string>& params);
     static AsyncReq<PagedResult> searchMulti(const std::string& query, int page = 1);
+    // Seerr-style search: All → /search/multi, or movie/tv/person endpoints
+    static AsyncReq<PagedResult> search(const std::string& query, int page = 1,
+                                        SearchFilter filter = SearchFilter::All);
     static AsyncReq<PagedResult> movieList(const std::string& endpoint); // popular/upcoming/now_playing/top_rated
     static AsyncReq<PagedResult> tvList(const std::string& endpoint);    // popular/on_the_air/upcoming/top_rated
     static AsyncReq<PagedResult> genreFilms(int genreId, bool tv, int page = 1);
@@ -130,6 +137,6 @@ public:
 };
 
 // parse helpers exposed for tests / caching
-PagedResult parsePaged(const json& j, MediaType defaultType);
+PagedResult parsePaged(const json& j, MediaType defaultType, bool includePeople = false);
 Details parseMovie(const json& j);
 Details parseTv(const json& j);

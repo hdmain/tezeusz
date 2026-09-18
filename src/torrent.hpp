@@ -16,11 +16,18 @@ struct Progress {
     std::string state;
 };
 
+enum class StopAction {
+    Continue = 0,
+    CancelDelete = 1, // user cancelled — remove incomplete files
+    PauseKeep = 2     // app shutting down — keep files for resume
+};
+
 // Blocking until finished, failed, cancelled, or timeout.
 // Returns true when the torrent finished downloading (files in outDir).
+// Existing files in outDir are checked and resumed automatically.
 bool downloadMagnet(const std::string& magnet,
                     const std::string& outDir,
-                    const std::function<bool()>& shouldCancel,
+                    const std::function<StopAction()>& pollStop,
                     const std::function<void(const Progress&)>& onProgress,
                     std::string* err,
                     int timeoutSec = 7200);

@@ -130,6 +130,7 @@ add_executable(seerr
     src/util.cpp
     src/http.cpp
     src/imgcache.cpp
+    src/imgswarm.cpp
     src/tmdb.cpp
     src/widgets.cpp
     src/pages.cpp
@@ -140,6 +141,8 @@ add_executable(seerr
     src/torrent.cpp
     src/localdb.cpp
     src/platform.cpp
+    src/library.cpp
+    src/player.cpp
 )
 target_include_directories(seerr PRIVATE
     src
@@ -153,7 +156,7 @@ target_link_libraries(seerr PRIVATE imgui ${SEERR_TORRENT_TARGET} Boost::headers
 if (WIN32)
     target_link_libraries(seerr PRIVATE
         winhttp shell32 ole32 oleaut32 gdi32 user32 winmm version uuid opengl32 shlwapi advapi32 psapi
-        ws2_32 iphlpapi
+        ws2_32 iphlpapi dwmapi
     )
     if(SEERR_BUNDLED_DEPS)
         target_link_options(seerr PRIVATE -static -static-libgcc -static-libstdc++)

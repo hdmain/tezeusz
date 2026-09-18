@@ -1,6 +1,7 @@
 #include "imgcache.hpp"
 #include "http.hpp"
 #include "util.hpp"
+#include "imgswarm.hpp"
 #include "gl_compat.hpp"
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -77,6 +78,7 @@ static bool writeBinaryFile(const std::string& path, const std::vector<uint8_t>&
 
 void ImageCache::init() {
     cacheRoot();
+    imgswarm::init();
     nextStart_ = std::chrono::steady_clock::now();
     for (int i = 0; i < 2; i++) workers_.emplace_back([this] { workerLoop(); });
     missingPosterTex = loadLocal(std::string(APP_ASSET_DIR) + "/poster_missing.png");
@@ -87,9 +89,11 @@ void ImageCache::shutdown() {
         std::lock_guard<std::mutex> l(mtx_);
         stop_ = true;
     }
+    imgswarm::abortFetches(); // unblock workers stuck in P2P tryFetch
     cv_.notify_all();
     for (auto& t : workers_) if (t.joinable()) t.join();
     workers_.clear();
+    imgswarm::shutdown();
 }
 
 static GLuint uploadTexture(std::vector<uint8_t>& rgba, int w, int h) {
@@ -250,19 +254,32 @@ void ImageCache::workerLoop() {
                 fs::remove(path, ec);
                 fromDisk = false;
                 bytes.clear();
+            } else {
+                // Already cached — share with other Seerr peers (HTTP remains primary for new fetches)
+                imgswarm::offer(item.url, path);
             }
         }
 
         if (!fromDisk) {
             std::string err;
+            // Primary: normal CDN / HTTP
             bytes = http::getBinary(item.url, &err);
             bool badData = (!bytes.empty() && bytes.size() < 4000);
             if (bytes.empty() || badData) {
-                out.failed = true;
+                // Secondary: BitTorrent swarm between Seerr users
+                if (imgswarm::tryFetch(item.url, path, 3000) && readBinaryFile(path, &bytes) && bytes.size() >= 64) {
+                    if (!decodeImageBytes(bytes, &out.rgba, &out.w, &out.h))
+                        out.failed = true;
+                    else
+                        imgswarm::offer(item.url, path);
+                } else {
+                    out.failed = true;
+                }
             } else if (!decodeImageBytes(bytes, &out.rgba, &out.w, &out.h)) {
                 out.failed = true;
             } else {
                 writeBinaryFile(path, bytes);
+                imgswarm::offer(item.url, path);
             }
             {
                 std::lock_guard<std::mutex> l(mtx_);

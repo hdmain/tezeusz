@@ -62,6 +62,7 @@ struct MediaRequest {
     std::string year;
     std::string imdbId;
     std::vector<int> seasons;
+    std::string preferredQuality; // "any" | "720p" | "1080p" | "2160p" (empty = stack default)
     ReqStatus status = ReqStatus::Pending;
     std::string message;
     std::string releaseTitle;
@@ -73,18 +74,45 @@ struct MediaRequest {
     int64_t updatedAt = 0;
 };
 
+// One indexer hit (Radarr-style interactive search row).
+struct ReleaseHit {
+    std::string title;
+    std::string magnet;
+    std::string quality; // e.g. "1080p"
+    int seeders = 0;
+    int score = 0;
+    int64_t sizeBytes = 0;
+};
+
 void init();
 void shutdown();
 void tick();
 
-std::string requestMedia(const Details& d, const std::vector<int>& seasons = {});
+std::string requestMedia(const Details& d, const std::vector<int>& seasons = {},
+                         const std::string& preferredQuality = {});
 std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
                          const std::string& year, const std::string& imdbId = {},
                          const std::vector<int>& seasons = {},
-                         const std::string& originalTitle = {});
+                         const std::string& originalTitle = {},
+                         const std::string& preferredQuality = {});
+
+// Grab a specific release (skips auto search). Used by interactive search.
+std::string requestWithRelease(MediaType type, int tmdbId, const std::string& title,
+                               const std::string& year, const std::string& imdbId,
+                               const std::vector<int>& seasons, const std::string& originalTitle,
+                               const std::string& preferredQuality,
+                               const std::string& magnet, const std::string& releaseTitle);
+
+// Blocking indexer search (call from a worker thread, not the UI thread).
+std::vector<ReleaseHit> searchReleasesInteractive(
+    MediaType type, int tmdbId, const std::string& title, const std::string& year,
+    const std::string& imdbId, const std::vector<int>& seasons,
+    const std::string& originalTitle, const std::string& preferredQuality);
 
 std::vector<MediaRequest> listRequests();
 bool cancelRequest(const std::string& id);
+// Clear Available entries whose library files were deleted.
+void onLibraryRemoved(const std::string& pathOrFolder);
 void syncAppStatuses();
 
 } // namespace stack

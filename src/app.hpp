@@ -6,7 +6,7 @@
 
 enum class Page {
     Discover, Movies, Tv, Genre, Search, MovieDetails, TvDetails, TrendingPage,
-    Requests, Blocklist, Issues, Users, Settings, Stub
+    Requests, Library, Blocklist, Issues, Users, Settings, Stub
 };
 
 struct GenreSel { int id = 0; std::string name; bool tv = false; };
@@ -21,9 +21,10 @@ struct App {
 
     GenreSel genre;
 
-    // search
+    // search (Seerr-style: live query + type filter chips)
     std::string searchInput;
     std::string lastQuery;
+    SearchFilter searchFilter = SearchFilter::All;
     AsyncReq<PagedResult> searchReq;
 
     // watchlist (tmdb id set per type), requests status (0 unknown..3 available)
@@ -68,10 +69,16 @@ void renderTrendingPage();
 void renderDetails(MediaType type, int id);
 void renderStub(const char* what);
 void renderRequests();
+void renderLibrary();
 void renderBlocklist();
 void renderIssues();
 void renderUsers();
 void renderSettings();
+void renderRequestQualityDialog(); // modal: wybór jakości przy „Zażądaj”
+void openRequestQualityDialog(MediaType type, int id, const std::string& title,
+                              const std::string& year, const std::string& imdbId,
+                              const std::string& originalTitle,
+                              const std::vector<int>& seasons = {});
 
 // GLFW Win32 HWND for owned popups (trailer player). Set from main.
 void* appMainHwnd();

@@ -302,6 +302,17 @@ void spinner(ImDrawList* dl, ImVec2 ctr, float s, ImU32 col) {
 
 } // namespace icons
 
+void w::orbitSpinner(ImDrawList* dl, ImVec2 ctr, float radius, float dotR) {
+    float t = (float)ImGui::GetTime();
+    for (int i = 0; i < 8; i++) {
+        float a = t * 6.f + i * 0.785398f;
+        int al = 60 + i * 24;
+        if (al > 255) al = 255;
+        dl->AddCircleFilled(ImVec2(ctr.x + cosf(a) * radius, ctr.y + sinf(a) * radius), dotR,
+                            IM_COL32(99, 102, 241, al));
+    }
+}
+
 // --------------------------------------------------------------------- text
 
 ImVec2 w::textSize(const std::string& text, ImFont* font, float fontSize) {
@@ -456,7 +467,7 @@ bool w::iconButton(ImDrawList* dl, const char* id, ImVec2 min, ImVec2 max, void 
     bool clicked = ImGui::InvisibleButton("##ib", ImVec2(max.x - min.x, max.y - min.y));
     bool hovered = ImGui::IsItemHovered();
     ImGui::PopID();
-    float r = round ? (max.x - min.x) / 2 : 5;
+    float r = round ? (max.x - min.x) / 2 : 10;
     dl->AddRectFilled(min, max, hovered ? bgHover : bg, r);
     if (border) dl->AddRect(min, max, border, r, 0, 1.0f);
     ImVec2 ctr((min.x + max.x) / 2, (min.y + max.y) / 2);
@@ -471,12 +482,12 @@ int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool wat
     int result = 0;
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 min = pos, max(pos.x + cw, pos.y + ch);
-    const float rad = 12;
+    const float rad = 16;
 
     // Precomputed colors (theme::c is cached, but avoid even the map lookup storm)
     struct Cols {
         ImU32 bg, bgDark, pulse, ovTop, ovBot;
-        ImU32 badgeTv, badgeTvBd, badgeMovie, badgeMovieBd;
+        ImU32 badgeTv, badgeTvBd, badgeMovie, badgeMovieBd, badgePerson, badgePersonBd;
         ImU32 stPending, stProc, stAvail;
         ImU32 ring, ringHov, starBg, starBgH, req, reqH, reqA, starOn;
         bool ready = false;
@@ -487,6 +498,7 @@ int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool wat
         C.ovTop = theme::c("#2d3748/66"); C.ovBot = theme::c("#2d3748/E8");
         C.badgeTv = theme::c("#9333ea/C0"); C.badgeTvBd = theme::c("#a855f7");
         C.badgeMovie = theme::c("#2563eb/C0"); C.badgeMovieBd = theme::c("#3b82f6");
+        C.badgePerson = theme::c("#db2777/C0"); C.badgePersonBd = theme::c("#ec4899");
         C.stPending = theme::c("#3b82f6"); C.stProc = theme::c("#f59e0b"); C.stAvail = theme::c("#10b981");
         C.ring = theme::c("#374151"); C.ringHov = theme::c("#6b7280");
         C.starBg = theme::c("#111827/80"); C.starBgH = theme::c("#111827/CC");
@@ -543,8 +555,9 @@ int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool wat
         else dl->AddRectFilled(min, max, C.bgDark, rad);
     }
 
+    bool isPerson = item.mediaType == MediaType::Person;
     bool showOverlay = (detail || giveUp) && !loading;
-    bool showReq = showOverlay && (mediaStatus == 0 || mediaStatus == 2) && ha > 0.15f;
+    bool showReq = showOverlay && !isPerson && (mediaStatus == 0 || mediaStatus == 2) && ha > 0.15f;
     if (showOverlay) {
         auto scaleA = [](ImU32 c, float f) -> ImU32 {
             int a = (int)(((c >> 24) & 0xFF) * f);
@@ -555,25 +568,28 @@ int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool wat
     }
 
     {
-        const char* typeLabel = item.mediaType == MediaType::TV ? "SERIAL" : "FILM";
-        ImU32 bg = item.mediaType == MediaType::TV ? C.badgeTv : C.badgeMovie;
-        ImU32 bd = item.mediaType == MediaType::TV ? C.badgeTvBd : C.badgeMovieBd;
+        const char* typeLabel = isPerson ? "OSOBA"
+            : (item.mediaType == MediaType::TV ? "SERIAL" : "FILM");
+        ImU32 bg = isPerson ? C.badgePerson
+            : (item.mediaType == MediaType::TV ? C.badgeTv : C.badgeMovie);
+        ImU32 bd = isPerson ? C.badgePersonBd
+            : (item.mediaType == MediaType::TV ? C.badgeTvBd : C.badgeMovieBd);
         ImFont* f = G.r14; float fs = 10;
         ImVec2 ts = f->CalcTextSizeA(fs, FLT_MAX, 0, typeLabel);
         ImVec2 bp(min.x + 8, min.y + 8);
         ImVec2 bs(ts.x + 14, 20);
-        dl->AddRectFilled(bp, ImVec2(bp.x + bs.x, bp.y + bs.y), bg, 10);
-        dl->AddRect(bp, ImVec2(bp.x + bs.x, bp.y + bs.y), bd, 10, 0, 1.0f);
+        dl->AddRectFilled(bp, ImVec2(bp.x + bs.x, bp.y + bs.y), bg, 12);
+        dl->AddRect(bp, ImVec2(bp.x + bs.x, bp.y + bs.y), bd, 12, 0, 1.0f);
         dl->AddText(f, fs, ImVec2(bp.x + 7, bp.y + (bs.y - ts.y) / 2), IM_COL32(255, 255, 255, 255), typeLabel);
     }
 
-    if (mediaStatus > 0) {
+    if (!isPerson && mediaStatus > 0) {
         ImU32 sc = mediaStatus == 1 ? C.stProc : mediaStatus == 2 ? theme::c("#ef4444") : C.stAvail;
         dl->AddCircleFilled(ImVec2(max.x - 15, min.y + 15), 5.5f, sc);
         dl->AddCircle(ImVec2(max.x - 15, min.y + 15), 5.5f, IM_COL32(0, 0, 0, 60), 12, 1.0f);
     }
 
-    if (detail && !loading && ha > 0.2f) {
+    if (detail && !loading && !isPerson && ha > 0.2f) {
         ImVec2 sb(max.x - 36, min.y + 34);
         int sa = (int)(ha * 255);
         if (w::iconButton(dl, "##wl", sb, ImVec2(sb.x + 24, sb.y + 24),
@@ -589,7 +605,7 @@ int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool wat
 
     if (detail && !loading && ha > 0.12f) {
         int ta = (int)(ha * 255);
-        std::string year = item.year();
+        std::string year = isPerson ? item.knownForDepartment : item.year();
         auto titleLines = wrapText(item.title, G.b28, 17, textW, 3);
         std::vector<std::string> sumLines;
         if (!item.overview.empty())
@@ -648,12 +664,12 @@ int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool wat
         ImVec2 bp(min.x + pad, max.y - pad - reqBtnH + slide);
         ImVec2 be(max.x - pad, max.y - pad + slide);
         int ba = (int)(ha * 255);
-        dl->AddRectFilled(bp, be, theme::withA(C.req, ha), 6);
+        dl->AddRectFilled(bp, be, theme::withA(C.req, ha), 12);
         ImGui::SetCursorScreenPos(bp);
         bool rb = ImGui::InvisibleButton("##req", ImVec2(be.x - bp.x, be.y - bp.y));
         bool rh = ImGui::IsItemHovered();
         bool ra = ImGui::IsItemActive();
-        if (rh || ra) dl->AddRectFilled(bp, be, theme::withA(ra ? C.reqA : C.reqH, ha), 6);
+        if (rh || ra) dl->AddRectFilled(bp, be, theme::withA(ra ? C.reqA : C.reqH, ha), 12);
         const char* lbl = "Zażądaj";
         ImVec2 ts = G.m16->CalcTextSizeA(13, FLT_MAX, 0, lbl);
         float cx = (bp.x + be.x) / 2, total = ts.x + 18;

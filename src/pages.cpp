@@ -6,6 +6,9 @@
 #include "stack.hpp"
 #include "localdb.hpp"
 #include "platform.hpp"
+#include "library.hpp"
+#include "player.hpp"
+#include "svgicons.hpp"
 #include "imgui.h"
 #include <algorithm>
 #include <cctype>
@@ -13,6 +16,10 @@
 #include <ctime>
 #include <cstring>
 #include <cstdio>
+#include <filesystem>
+#include <future>
+#include <map>
+#include <vector>
 
 App& app() { static App a; return a; }
 
@@ -38,11 +45,15 @@ static std::map<std::string, float> g_scrolls;
 
 static void handleCardClick(const MediaItem& it, int r) {
     auto& a = app();
+    if (it.mediaType == MediaType::Person) {
+        if (r == 1)
+            platform::openUrl("https://www.themoviedb.org/person/" + std::to_string(it.id));
+        return;
+    }
     std::string k = App::key(it.mediaType, it.id);
     if (r == 1) a.openDetails(it.mediaType, it.id);
     else if (r == 2) {
-        stack::requestMedia(it.mediaType, it.id, it.title, it.year(), "", {}, it.originalTitle);
-        a.navigate(Page::Requests);
+        openRequestQualityDialog(it.mediaType, it.id, it.title, it.year(), "", it.originalTitle);
     }
     else if (r == 3) {
         if (a.watchlist.count(k)) a.watchlist.erase(k); else a.watchlist.insert(k);
@@ -88,7 +99,7 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
         } else {
             for (int i = 0; i < 14 && (float)(i * (CARD_W + GAP)) < w + CARD_W * 2; i++) {
                 ImVec2 p(cur.x + i * (CARD_W + GAP), rowY);
-                dl->AddRectFilled(p, ImVec2(p.x + CARD_W, p.y + rowH), theme::c("#1f2937"), 12);
+                dl->AddRectFilled(p, ImVec2(p.x + CARD_W, p.y + rowH), theme::c("#1f2937"), 16);
             }
         }
         return;
@@ -123,9 +134,9 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
         if (x > wpos.x + w + 10) break;
         if (x + CARD_W < cur.x - 4) continue;
         ImGui::SetCursorScreenPos(ImVec2(x, rowY));
-        int r = w::titleCard(it, ImVec2(x, rowY), CARD_W, rowH,
-                             a.isWatchlisted(it.mediaType, it.id), a.statusOf(it.mediaType, it.id));
-        if (r) handleCardClick(it, r);
+            int r = w::titleCard(it, ImVec2(x, rowY), CARD_W, rowH,
+                                 a.isWatchlisted(it.mediaType, it.id), a.statusOf(it.mediaType, it.id));
+            if (r) handleCardClick(it, r);
     }
     dl->PopClipRect();
     ImGui::SetCursorPosX(contentX);
@@ -149,7 +160,7 @@ static void renderGrid(PagedResult& pr, std::function<void(int)> setPage) {
             float y = origin.y + 8;
             for (int i = 0; i < cols * 3; i++) {
                 ImVec2 p(origin.x + (i % cols) * (CARD_W + GAP), y + (i / cols) * (CARD_H + GAP));
-                dl->AddRectFilled(p, ImVec2(p.x + CARD_W, p.y + CARD_H), theme::c("#1f2937"), 12);
+                dl->AddRectFilled(p, ImVec2(p.x + CARD_W, p.y + CARD_H), theme::c("#1f2937"), 16);
             }
         }
         return;
@@ -275,30 +286,158 @@ void renderSearch() {
     auto& a = app();
     static AsyncReq<PagedResult> req;
     static PagedResult res;
-    static std::string resQuery;
+    static SearchFilter lastFilter = SearchFilter::All;
+    static std::string debounceSrc;
     static double lastChange = -1;
     static unsigned seen = 0xFFFFFFFFu;
 
-    if (a.searchInput != a.lastQuery) lastChange = ImGui::GetTime();
-    if (a.searchInput != a.lastQuery && lastChange > 0 && ImGui::GetTime() - lastChange > 0.45) {
-        a.lastQuery = a.searchInput;
-        res = {};
-        req = a.searchInput.empty() ? AsyncReq<PagedResult>{} : Tmdb::searchMulti(a.searchInput, 1);
-    }
-    if (a.shouldReload(seen) && !a.lastQuery.empty()) { res = {}; req = Tmdb::searchMulti(a.lastQuery, 1); }
-    if (req.valid() && !res.loaded && req.ready()) res = req.take();
-
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 origin = ImGui::GetCursorScreenPos();
-    if (a.lastQuery.empty()) {
-        dl->AddText(G.sb26, 24, ImVec2(origin.x, origin.y + 120), theme::c("#4b5563"),
-                    "Wpisz tytuł w pole wyszukiwania u góry, aby znaleźć filmy i seriale.");
+    float availW = ImGui::GetContentRegionAvail().x;
+
+    // Search field first — update query before debounce
+    {
+        float barH = 46.0f;
+        ImVec2 bp = origin;
+        ImVec2 be(origin.x + availW, origin.y + barH);
+        bool hov = ImGui::IsMouseHoveringRect(bp, be);
+        dl->AddRectFilled(bp, be, hov ? theme::c("#1f2937") : theme::c("#111827"), 22);
+        dl->AddRect(bp, be, hov ? theme::c("#818cf8") : theme::c("#4b5563"), 22, 0, 1.4f);
+        icons::search(dl, ImVec2(bp.x + 22, (bp.y + be.y) * 0.5f), 16, theme::c("#c7d2fe"));
+
+        ImGui::SetCursorScreenPos(ImVec2(bp.x + 46, bp.y + 7));
+        ImGui::PushItemWidth(availW - (a.searchInput.empty() ? 60.f : 88.f));
+        char buf[256] = {};
+        strncpy(buf, a.searchInput.c_str(), sizeof(buf) - 1);
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
+        ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.72f, 0.76f, 0.85f, 1.0f));
+        ImGui::InputTextWithHint("##search_page", "Szukaj filmów, seriali, osób…", buf, sizeof(buf));
+        ImGui::PopStyleColor(5);
+        ImGui::PopItemWidth();
+        a.searchInput = buf;
+
+        if (!a.searchInput.empty()) {
+            ImVec2 cl(be.x - 30, (bp.y + be.y) * 0.5f - 9);
+            if (w::iconButton(dl, "##sclr", cl, ImVec2(cl.x + 18, cl.y + 18),
+                              [](ImDrawList* d2, ImVec2 c, float s, ImU32 col2) {
+                                  icons::close(d2, c, s, col2, 1.6f);
+                              },
+                              0, theme::c("#1f2937"), 0, theme::c("#9ca3af"), true)) {
+                a.searchInput.clear();
+                a.lastQuery.clear();
+                debounceSrc.clear();
+                lastChange = -1;
+                res = {};
+                req = {};
+            }
+        }
+        origin.y = be.y + 16;
+        ImGui::SetCursorScreenPos(origin);
+    }
+
+    // Debounce: only restart timer when the typed text actually changes
+    if (a.searchInput != debounceSrc) {
+        debounceSrc = a.searchInput;
+        lastChange = ImGui::GetTime();
+    }
+    bool filterDirty = (a.searchFilter != lastFilter);
+    if (lastChange >= 0 && ImGui::GetTime() - lastChange > 0.30 && a.lastQuery != a.searchInput) {
+        a.lastQuery = a.searchInput;
+        lastFilter = a.searchFilter;
+        res = {};
+        req = a.searchInput.empty()
+                  ? AsyncReq<PagedResult>{}
+                  : Tmdb::search(a.searchInput, 1, a.searchFilter);
+    } else if (filterDirty && !a.lastQuery.empty()) {
+        lastFilter = a.searchFilter;
+        res = {};
+        req = Tmdb::search(a.lastQuery, 1, a.searchFilter);
+    }
+    if (a.shouldReload(seen) && !a.lastQuery.empty()) {
+        res = {};
+        req = Tmdb::search(a.lastQuery, 1, a.searchFilter);
+    }
+    if (req.valid() && !res.loaded && req.ready()) res = req.take();
+
+    // Header + Seerr-style filter chips
+    dl->AddText(G.b36, 26, ImVec2(origin.x, origin.y), WHITE,
+                a.lastQuery.empty() ? "Szukaj" : "Wyniki wyszukiwania");
+    float chipY = origin.y + 42;
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, chipY));
+
+    static const char* chipLabels[] = { "Wszystkie", "Filmy", "Seriale", "Osoby" };
+    static const SearchFilter chipVals[] = {
+        SearchFilter::All, SearchFilter::Movies, SearchFilter::Tv, SearchFilter::People
+    };
+    float cx = origin.x;
+    for (int i = 0; i < 4; i++) {
+        bool sel = (a.searchFilter == chipVals[i]);
+        ImFont* f = G.m16;
+        float fs = 13.f;
+        ImVec2 ts = f->CalcTextSizeA(fs, FLT_MAX, 0, chipLabels[i]);
+        ImVec2 bp(cx, chipY);
+        ImVec2 be(cx + ts.x + 28, chipY + 30);
+        ImU32 bg = sel ? theme::c("#4f46e5") : theme::c("#1f2937");
+        ImU32 bgH = sel ? theme::c("#6366f1") : theme::c("#374151");
+        ImU32 bd = sel ? theme::c("#6366f1") : theme::c("#4b5563");
+        bool hov = ImGui::IsMouseHoveringRect(bp, be);
+        dl->AddRectFilled(bp, be, hov ? bgH : bg, 16);
+        dl->AddRect(bp, be, bd, 16, 0, 1.0f);
+        dl->AddText(f, fs, ImVec2(bp.x + 14, bp.y + (30 - ts.y) * 0.5f),
+                    IM_COL32(255, 255, 255, sel ? 255 : 210), chipLabels[i]);
+        ImGui::SetCursorScreenPos(bp);
+        if (ImGui::InvisibleButton(("##sf" + std::to_string(i)).c_str(), ImVec2(be.x - bp.x, 30)))
+            a.searchFilter = chipVals[i];
+        cx = be.x + 8;
+    }
+
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, chipY + 44));
+
+    if (a.lastQuery.empty() && a.searchInput.empty()) {
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        dl->AddText(G.sb22, 18, ImVec2(p.x, p.y + 40), theme::c("#6b7280"),
+                    "Wpisz tytuł filmu, serialu lub imię osoby…");
+        dl->AddText(G.r14, 13, ImVec2(p.x, p.y + 68), theme::c("#4b5563"),
+                    "Wyniki pojawiają się podczas pisania — jak w Seerr / Jellyseerr.");
         return;
     }
-    std::string head = "Wyniki dla \"" + a.lastQuery + "\"";
-    dl->AddText(G.b36, 26, ImVec2(origin.x, origin.y), WHITE, head.c_str());
-    ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + 46));
-    renderGrid(res, [&](int p) { res = {}; req = Tmdb::searchMulti(a.lastQuery, p); });
+    if (a.lastQuery.empty() || (req.valid() && !res.loaded)) {
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        dl->AddText(G.r16, 14, ImVec2(p.x, p.y + 20), ATTR, "Szukam…");
+        return;
+    }
+
+    {
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        std::string sub = "\"" + a.lastQuery + "\"";
+        if (res.loaded && res.error.empty())
+            sub += "  ·  " + std::to_string(res.total_results) + " wyników";
+        else if (res.loaded && !res.error.empty())
+            sub += "  ·  błąd";
+        dl->AddText(G.r14, 13, ImVec2(p.x, p.y), ATTR, sub.c_str());
+        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + 28));
+    }
+
+    if (res.loaded && !res.error.empty()) {
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        dl->AddText(G.sb18, 16, ImVec2(p.x, p.y + 16), theme::c("#ef4444"), res.error.c_str());
+        return;
+    }
+
+    if (res.loaded && res.results.empty()) {
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        dl->AddText(G.sb18, 16, ImVec2(p.x, p.y + 24), theme::c("#9ca3af"),
+                    "Brak wyników. Spróbuj innego zapytania lub filtra.");
+        return;
+    }
+
+    renderGrid(res, [&](int p) {
+        res = {};
+        req = Tmdb::search(a.lastQuery, p, a.searchFilter);
+    });
 }
 
 // ------------------------------------------------------------------ discover home
@@ -312,6 +451,44 @@ void renderDiscover() {
     auto& a = app();
     static unsigned seen = 0xFFFFFFFFu;
     bool doReload = a.shouldReload(seen);
+
+    // Prominent Seerr-style search prompt on the home page
+    {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        ImVec2 origin = ImGui::GetCursorScreenPos();
+        float availW = ImGui::GetContentRegionAvail().x;
+        float barH = 48.0f;
+        ImVec2 bp = origin;
+        ImVec2 be(origin.x + availW, origin.y + barH);
+        bool hov = ImGui::IsMouseHoveringRect(bp, be);
+        dl->AddRectFilled(bp, be, hov ? theme::c("#1f2937") : theme::c("#111827"), 24);
+        dl->AddRect(bp, be, hov ? theme::c("#818cf8") : theme::c("#4b5563"), 24, 0, 1.5f);
+        icons::search(dl, ImVec2(bp.x + 24, (bp.y + be.y) * 0.5f), 18, theme::c("#c7d2fe"));
+
+        ImGui::SetCursorScreenPos(ImVec2(bp.x + 48, bp.y + 8));
+        ImGui::PushItemWidth(availW - 72);
+        char buf[256] = {};
+        strncpy(buf, a.searchInput.c_str(), sizeof(buf) - 1);
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
+        ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.72f, 0.76f, 0.85f, 1.0f));
+        ImGui::PushFont(G.m18 ? G.m18 : ImGui::GetFont());
+        bool enter = ImGui::InputTextWithHint("##home_search", "Szukaj filmów, seriali, osób…",
+                                              buf, sizeof(buf), ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::PopFont();
+        ImGui::PopStyleColor(5);
+        ImGui::PopItemWidth();
+
+        std::string prev = a.searchInput;
+        a.searchInput = buf;
+        if (!a.searchInput.empty() && (a.searchInput != prev || enter))
+            a.navigate(Page::Search);
+
+        ImGui::SetCursorScreenPos(ImVec2(origin.x, be.y + 18));
+        ImGui::Dummy(ImVec2(availW, 0));
+    }
 
     if (rows.empty()) {
         std::string today = [] {
@@ -392,7 +569,7 @@ void renderDetails(MediaType type, int id) {
     Details& d = h.d;
 
     if (d.id == 0) {
-        dl->AddRectFilled(origin, ImVec2(origin.x + w, origin.y + 300), theme::c("#1f2937"), 10);
+        dl->AddRectFilled(origin, ImVec2(origin.x + w, origin.y + 300), theme::c("#1f2937"), 16);
         if (h.failedOnce)
             dl->AddText(G.r16, 15, ImVec2(origin.x + 10, origin.y + 320), theme::c("#ef4444"),
                         "Błąd wczytywania szczegółów (sprawdź klucz TMDB w config.json)  (F5 = ponów)");
@@ -422,16 +599,16 @@ void renderDetails(MediaType type, int id) {
     float px = origin.x, py = origin.y + headerH - 90;
     {
         const ImageEntry* pe = ImageCache::instance().request(d.posterUrl("w600_and_h900_bestv2"));
-        dl->AddRectFilled(ImVec2(px, py), ImVec2(px + posterW, py + posterH), theme::c("#1f2937"), 8);
+        dl->AddRectFilled(ImVec2(px, py), ImVec2(px + posterW, py + posterH), theme::c("#1f2937"), 14);
         if (pe && pe->tex) {
-            w::imageCoverRounded(dl, pe->tex, pe->w, pe->h, ImVec2(px, py), ImVec2(posterW, posterH), 8);
+            w::imageCoverRounded(dl, pe->tex, pe->w, pe->h, ImVec2(px, py), ImVec2(posterW, posterH), 14);
         } else if (pe && (pe->loading || !pe->failed)) {
             icons::spinner(dl, ImVec2(px + posterW / 2, py + posterH / 2), 40, IM_COL32(255, 255, 255, 200));
         } else {
             GLuint m = ImageCache::instance().missingPosterTex;
-            if (m) w::imageCoverRounded(dl, m, 300, 450, ImVec2(px, py), ImVec2(posterW, posterH), 8);
+            if (m) w::imageCoverRounded(dl, m, 300, 450, ImVec2(px, py), ImVec2(posterW, posterH), 14);
         }
-        dl->AddRect(ImVec2(px, py), ImVec2(px + posterW, py + posterH), theme::c("#374151"), 8, 0, 1.0f);
+        dl->AddRect(ImVec2(px, py), ImVec2(px + posterW, py + posterH), theme::c("#374151"), 14, 0, 1.0f);
     }
 
     float tx = px + posterW + 22;
@@ -480,10 +657,9 @@ void renderDetails(MediaType type, int id) {
             c0 = theme::c("#10b981"); c1 = theme::c("#34d399"); c2 = theme::c("#059669");
         }
         if (w::button(dl, "##dreq", ImVec2(tx, btnY), ImVec2(tx + 170, btnY + 38), lbl,
-                      c0, c1, c2, 0, WHITE, G.m18, 15, 8)) {
+                      c0, c1, c2, 0, WHITE, G.m18, 15, 14)) {
             if (curStatus == 0 || curStatus == 2) {
-                stack::requestMedia(d);
-                a.navigate(Page::Requests);
+                openRequestQualityDialog(type, id, d.title, d.year(), d.imdbId, d.originalTitle);
             } else if (curStatus == 1) {
                 a.navigate(Page::Requests);
             }
@@ -512,7 +688,7 @@ void renderDetails(MediaType type, int id) {
         if (w::button(dl, "##dwl", ImVec2(tx, row2), ImVec2(tx + 210, row2 + 28),
                       wl ? "★ Usuń z obserwowanych" : "☆ Dodaj do obserwowanych",
                       theme::c("#111827/01"), theme::c("#1f2937"), theme::c("#374151"), 0,
-                      wl ? theme::c("#fcd34d") : ATTR, G.r14, 13, 6)) {
+                      wl ? theme::c("#fcd34d") : ATTR, G.r14, 13, 12)) {
             if (wl) a.watchlist.erase(k); else a.watchlist.insert(k);
             localdb::saveWatchlist(a.watchlist);
         }
@@ -522,7 +698,7 @@ void renderDetails(MediaType type, int id) {
                       blocked ? theme::c("#7f1d1d") : theme::c("#111827/01"),
                       blocked ? theme::c("#991b1b") : theme::c("#1f2937"),
                       theme::c("#374151"), 0,
-                      blocked ? theme::c("#fecaca") : ATTR, G.r14, 13, 6)) {
+                      blocked ? theme::c("#fecaca") : ATTR, G.r14, 13, 12)) {
             if (blocked) localdb::removeBlock(type, id);
             else localdb::addBlock(d);
         }
@@ -530,7 +706,7 @@ void renderDetails(MediaType type, int id) {
         if (w::button(dl, "##dissue", ImVec2(ax, row2), ImVec2(ax + 150, row2 + 28),
                       "Zgłoś problem",
                       theme::c("#111827/01"), theme::c("#1f2937"), theme::c("#374151"), 0,
-                      ATTR, G.r14, 13, 6)) {
+                      ATTR, G.r14, 13, 12)) {
             ImGui::OpenPopup("##issue_modal");
         }
 
@@ -625,8 +801,8 @@ void renderDetails(MediaType type, int id) {
             if (sx + 62 > origin.x + w) break;
             char b[16]; snprintf(b, sizeof(b), "%d", s.seasonNumber);
             float bw = 62, bh = 58;
-            dl->AddRectFilled(ImVec2(sx, bodyY), ImVec2(sx + bw, bodyY + bh), theme::c("#1f2937"), 8);
-            dl->AddRect(ImVec2(sx, bodyY), ImVec2(sx + bw, bodyY + bh), theme::c("#374151"), 8, 0, 1.0f);
+            dl->AddRectFilled(ImVec2(sx, bodyY), ImVec2(sx + bw, bodyY + bh), theme::c("#1f2937"), 14);
+            dl->AddRect(ImVec2(sx, bodyY), ImVec2(sx + bw, bodyY + bh), theme::c("#374151"), 14, 0, 1.0f);
             ImVec2 ts = G.sb18->CalcTextSizeA(20, FLT_MAX, 0, b);
             dl->AddText(G.sb18, 20, ImVec2(sx + bw / 2 - ts.x / 2, bodyY + 8), TXT, b);
             std::string ec = std::to_string(s.episodeCount) + " odc.";
@@ -683,8 +859,8 @@ void renderBlocklist() {
 
     for (auto& b : items) {
         ImVec2 p0(origin.x, y), p1(origin.x + w - 8, y + 88);
-        dl->AddRectFilled(p0, p1, theme::c("#1f2937"), 10);
-        dl->AddRect(p0, p1, theme::c("#374151"), 10, 0, 1.0f);
+        dl->AddRectFilled(p0, p1, theme::c("#1f2937"), 16);
+        dl->AddRect(p0, p1, theme::c("#374151"), 16, 0, 1.0f);
 
         // mini poster
         MediaItem stub;
@@ -697,10 +873,10 @@ void renderBlocklist() {
             if (e && e->tex) {
                 dl->AddImageRounded((ImTextureID)(intptr_t)e->tex,
                                     ImVec2(p0.x + 12, p0.y + 10), ImVec2(p0.x + 60, p0.y + 78),
-                                    ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, 6);
+                                    ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, 12);
             } else {
                 dl->AddRectFilled(ImVec2(p0.x + 12, p0.y + 10), ImVec2(p0.x + 60, p0.y + 78),
-                                  theme::c("#111827"), 6);
+                                  theme::c("#111827"), 12);
             }
         }
 
@@ -718,7 +894,7 @@ void renderBlocklist() {
         if (w::button(dl, ("##blrm" + std::to_string(b.tmdbId)).c_str(),
                       ImVec2(p1.x - 150, p0.y + 28), ImVec2(p1.x - 14, p0.y + 58),
                       "Odblokuj", theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), 0,
-                      TXT, G.r14, 13, 6))
+                      TXT, G.r14, 13, 12))
             localdb::removeBlock(b.mediaType, b.tmdbId);
 
         y += 100;
@@ -754,8 +930,8 @@ void renderIssues() {
     auto& usr = localdb::user();
     for (auto& iss : items) {
         ImVec2 p0(origin.x, y), p1(origin.x + w - 8, y + 100);
-        dl->AddRectFilled(p0, p1, theme::c("#1f2937"), 10);
-        dl->AddRect(p0, p1, theme::c("#374151"), 10, 0, 1.0f);
+        dl->AddRectFilled(p0, p1, theme::c("#1f2937"), 16);
+        dl->AddRect(p0, p1, theme::c("#374151"), 16, 0, 1.0f);
 
         MediaItem stub;
         stub.mediaType = iss.mediaType;
@@ -767,10 +943,10 @@ void renderIssues() {
             if (e && e->tex) {
                 dl->AddImageRounded((ImTextureID)(intptr_t)e->tex,
                                     ImVec2(p0.x + 12, p0.y + 12), ImVec2(p0.x + 60, p0.y + 88),
-                                    ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, 6);
+                                    ImVec2(0, 0), ImVec2(1, 1), IM_COL32_WHITE, 12);
             } else {
                 dl->AddRectFilled(ImVec2(p0.x + 12, p0.y + 12), ImVec2(p0.x + 60, p0.y + 88),
-                                  theme::c("#111827"), 6);
+                                  theme::c("#111827"), 12);
             }
         }
 
@@ -806,19 +982,19 @@ void renderIssues() {
             if (w::button(dl, ("##issres" + iss.id).c_str(),
                           ImVec2(bx, p0.y + 34), ImVec2(bx + 110, p0.y + 62),
                           "Rozwiąż", theme::c("#065f46"), theme::c("#047857"), theme::c("#059669"), 0,
-                          TXT, G.r14, 13, 6))
+                          TXT, G.r14, 13, 12))
                 localdb::setIssueStatus(iss.id, localdb::IssueStatus::Resolved);
         } else {
             if (w::button(dl, ("##issre" + iss.id).c_str(),
                           ImVec2(bx, p0.y + 34), ImVec2(bx + 110, p0.y + 62),
                           "Otwórz", theme::c("#92400e"), theme::c("#b45309"), theme::c("#d97706"), 0,
-                          TXT, G.r14, 13, 6))
+                          TXT, G.r14, 13, 12))
                 localdb::setIssueStatus(iss.id, localdb::IssueStatus::Open);
         }
         if (w::button(dl, ("##issdel" + iss.id).c_str(),
                       ImVec2(bx + 120, p0.y + 34), ImVec2(bx + 230, p0.y + 62),
                       "Usuń", theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), 0,
-                      TXT, G.r14, 13, 6))
+                      TXT, G.r14, 13, 12))
             localdb::removeIssue(iss.id);
 
         y += 112;
@@ -841,8 +1017,8 @@ void renderUsers() {
     // profile card
     float y = origin.y + 64;
     ImVec2 p0(origin.x, y), p1(origin.x + w - 8, y + 160);
-    dl->AddRectFilled(p0, p1, theme::c("#1f2937"), 12);
-    dl->AddRect(p0, p1, theme::c("#374151"), 12, 0, 1.0f);
+    dl->AddRectFilled(p0, p1, theme::c("#1f2937"), 16);
+    dl->AddRect(p0, p1, theme::c("#374151"), 16, 0, 1.0f);
 
     ImVec2 av(p0.x + 40, p0.y + 50);
     dl->AddCircleFilled(av, 28, theme::c("#6366f1"));
@@ -883,7 +1059,7 @@ void renderUsers() {
     y += 28;
 
     ImVec2 th0(origin.x, y), th1(origin.x + w - 8, y + 36);
-    dl->AddRectFilled(th0, th1, theme::c("#111827"), 8);
+    dl->AddRectFilled(th0, th1, theme::c("#111827"), 14);
     float cols[5] = {0.32f, 0.14f, 0.18f, 0.14f, 0.22f};
     const char* headers[] = {"Użytkownik", "Żądania", "Typ", "Rola", ""};
     float hx = th0.x + 16;
@@ -894,8 +1070,8 @@ void renderUsers() {
     y += 44;
 
     ImVec2 r0(origin.x, y), r1(origin.x + w - 8, y + 64);
-    dl->AddRectFilled(r0, r1, theme::c("#1f2937"), 8);
-    dl->AddRect(r0, r1, theme::c("#374151"), 8, 0, 1.0f);
+    dl->AddRectFilled(r0, r1, theme::c("#1f2937"), 14);
+    dl->AddRect(r0, r1, theme::c("#374151"), 14, 0, 1.0f);
 
     ImVec2 cav(r0.x + 28, r0.y + 32);
     dl->AddCircleFilled(cav, 16, theme::c("#6366f1"));
@@ -943,8 +1119,8 @@ void renderRequests() {
     std::reverse(reqs.begin(), reqs.end());
     for (auto& r : reqs) {
         ImVec2 p0(origin.x, y), p1(origin.x + w - 8, y + 72);
-        dl->AddRectFilled(p0, p1, theme::c("#1f2937"), 10);
-        dl->AddRect(p0, p1, theme::c("#374151"), 10, 0, 1.0f);
+        dl->AddRectFilled(p0, p1, theme::c("#1f2937"), 16);
+        dl->AddRect(p0, p1, theme::c("#374151"), 16, 0, 1.0f);
 
         ImU32 stCol = theme::c("#9ca3af");
         if (r.status == stack::ReqStatus::Available) stCol = theme::c("#10b981");
@@ -953,6 +1129,7 @@ void renderRequests() {
             stCol = theme::c("#f59e0b");
 
         std::string type = r.mediaType == MediaType::TV ? "SERIAL" : "FILM";
+        if (!r.preferredQuality.empty()) type += " · " + r.preferredQuality;
         dl->AddText(G.r14, 12, ImVec2(p0.x + 14, p0.y + 10), ATTR, type.c_str());
         dl->AddText(G.sb18, 16, ImVec2(p0.x + 14, p0.y + 28), TXT, r.title.c_str());
         std::string sub = std::string(stack::statusLabel(r.status));
@@ -965,19 +1142,293 @@ void renderRequests() {
         if (r.status != stack::ReqStatus::Available && r.status != stack::ReqStatus::Declined) {
             if (w::button(dl, ("##can" + r.id).c_str(), ImVec2(p1.x - 96, p0.y + 22), ImVec2(p1.x - 14, p0.y + 50),
                           "Anuluj", theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), 0,
-                          TXT, G.r14, 13, 6))
+                          TXT, G.r14, 13, 12))
                 stack::cancelRequest(r.id);
         } else if (r.status == stack::ReqStatus::Available) {
             if (w::button(dl, ("##open" + r.id).c_str(), ImVec2(p1.x - 96, p0.y + 22), ImVec2(p1.x - 14, p0.y + 50),
-                          "Otwórz", theme::c("#065f46"), theme::c("#047857"), theme::c("#059669"), 0,
-                          TXT, G.r14, 13, 6)) {
+                          "Odtwórz", theme::c("#065f46"), theme::c("#047857"), theme::c("#059669"), 0,
+                          TXT, G.r14, 13, 12)) {
                 std::string path = r.libraryPath.empty() ? stack::StackConfig::get().moviesPath : r.libraryPath;
-                platform::openPath(path);
+                player::open(library::resolvePlayable(path), r.title);
             }
         }
         y += 84;
     }
     ImGui::SetCursorScreenPos(ImVec2(origin.x, y + 8));
+}
+
+void renderLibrary() {
+    initColors();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 origin = ImGui::GetCursorScreenPos();
+    float w = ImGui::GetContentRegionAvail().x;
+
+    dl->AddText(G.sb26, 24, ImVec2(origin.x, origin.y), TXT, "Biblioteka");
+    dl->AddText(G.r14, 13, ImVec2(origin.x, origin.y + 32), ATTR,
+                "Kliknij, aby oglądać · PPM — opcje (usuń, właściwości…)");
+
+    static std::vector<library::Item> items;
+    static double lastScan = 0;
+    static std::map<std::string, AsyncReq<Details>> posterReqs;
+    static std::map<std::string, std::string> posterPaths; // id -> poster_path
+    static library::Item ctxItem;
+    static bool openProps = false;
+    static bool openDelete = false;
+    static std::string deleteErr;
+
+    double now = ImGui::GetTime();
+    if (items.empty() || now - lastScan > 3.0) {
+        items = library::scan();
+        lastScan = now;
+    }
+
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + 56));
+    if (ImGui::Button("Odśwież", ImVec2(100, 28))) {
+        items = library::scan();
+        lastScan = now;
+    }
+    ImGui::SameLine();
+    char countBuf[64];
+    std::snprintf(countBuf, sizeof(countBuf), "%d tytułów", (int)items.size());
+    ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", countBuf);
+
+    float y = origin.y + 100;
+    if (items.empty()) {
+        dl->AddText(G.r16, 15, ImVec2(origin.x, y), ATTR2,
+                    "Biblioteka jest pusta. Zażądaj film i poczekaj na pobranie — pojawią się tu.");
+        auto& cfg = stack::StackConfig::get();
+        dl->AddText(G.r14, 12, ImVec2(origin.x, y + 28), ATTR, ("Filmy: " + cfg.moviesPath).c_str());
+        dl->AddText(G.r14, 12, ImVec2(origin.x, y + 48), ATTR, ("Seriale: " + cfg.tvPath).c_str());
+        ImGui::SetCursorScreenPos(ImVec2(origin.x, y + 80));
+        return;
+    }
+
+    // resolve posters for items with tmdbId
+    for (auto& it : items) {
+        if (it.tmdbId <= 0 || posterPaths.count(it.id)) continue;
+        if (!posterReqs.count(it.id)) {
+            posterReqs[it.id] = (it.mediaType == MediaType::TV) ? Tmdb::tv(it.tmdbId) : Tmdb::movie(it.tmdbId);
+        } else if (posterReqs[it.id].valid() && posterReqs[it.id].ready()) {
+            auto d = posterReqs[it.id].take();
+            posterPaths[it.id] = d.posterPath;
+            if (!it.posterPath.empty()) posterPaths[it.id] = it.posterPath;
+            else it.posterPath = d.posterPath;
+        }
+    }
+
+    const float cardW = 160.0f, cardH = 240.0f, gap = 14.0f;
+    int cols = std::max(2, (int)((w + gap) / (cardW + gap)));
+    int i = 0;
+    for (auto& it : items) {
+        float x = origin.x + (i % cols) * (cardW + gap);
+        float yy = y + (i / cols) * (cardH + 56);
+        i++;
+
+        ImVec2 p0(x, yy), p1(x + cardW, yy + cardH);
+        dl->AddRectFilled(p0, p1, theme::c("#1f2937"), 16);
+
+        bool drew = false;
+        std::string pp = it.posterPath;
+        if (pp.empty()) {
+            auto pit = posterPaths.find(it.id);
+            if (pit != posterPaths.end()) pp = pit->second;
+        }
+        if (!pp.empty()) {
+            MediaItem stub;
+            stub.posterPath = pp;
+            auto* e = ImageCache::instance().request(stub.posterUrl("w300_and_h450_face"));
+            if (e && e->tex) {
+                w::imageCoverRounded(dl, e->tex, e->w, e->h, p0, ImVec2(cardW, cardH), 16);
+                drew = true;
+            } else if (e) {
+                icons::spinner(dl, ImVec2((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f), 36, IM_COL32(255, 255, 255, 180));
+                drew = true;
+            }
+        }
+        if (!drew) {
+            GLuint m = ImageCache::instance().missingPosterTex;
+            if (m) w::imageCoverRounded(dl, m, 300, 450, p0, ImVec2(cardW, cardH), 16);
+            else {
+                svgicon::draw(dl, svgicon::Play,
+                              ImVec2((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f - 10),
+                              36, theme::c("#00a4dc"));
+                const char* kind = it.mediaType == MediaType::TV ? "SERIAL" : "FILM";
+                ImVec2 ks = G.r14->CalcTextSizeA(12, FLT_MAX, 0, kind);
+                dl->AddText(G.r14, 12, ImVec2((p0.x + p1.x - ks.x) * 0.5f, (p0.y + p1.y) * 0.5f + 24), ATTR, kind);
+            }
+        }
+        dl->AddRect(p0, p1, theme::c("#374151"), 16, 0, 1.0f);
+
+        ImGui::SetCursorScreenPos(p0);
+        ImGui::PushID(it.id.c_str());
+        if (ImGui::InvisibleButton("##libcard", ImVec2(cardW, cardH))) {
+            player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
+        }
+        bool hov = ImGui::IsItemHovered();
+        if (ImGui::BeginPopupContextItem("##libctx")) {
+            ctxItem = it;
+            if (ImGui::MenuItem("Odtwórz")) {
+                player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
+            }
+            if (ImGui::MenuItem("Otwórz folder")) {
+                std::string folder = it.folder.empty()
+                    ? std::filesystem::path(it.path).parent_path().string()
+                    : it.folder;
+                platform::openPath(folder);
+            }
+            if (ImGui::MenuItem("Właściwości"))
+                openProps = true;
+            ImGui::Separator();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.96f, 0.45f, 0.45f, 1));
+            if (ImGui::MenuItem("Usuń…")) {
+                deleteErr.clear();
+                openDelete = true;
+            }
+            ImGui::PopStyleColor();
+            ImGui::EndPopup();
+        }
+        ImGui::PopID();
+        if (hov) {
+            dl->AddRectFilled(p0, p1, IM_COL32(0, 0, 0, 120), 16);
+            dl->AddCircleFilled(ImVec2((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f), 28, IM_COL32(0, 164, 220, 230));
+            svgicon::draw(dl, svgicon::Play,
+                          ImVec2((p0.x + p1.x) * 0.5f + 2, (p0.y + p1.y) * 0.5f),
+                          22, IM_COL32(255, 255, 255, 255));
+        }
+
+        std::string label = it.title;
+        if (label.size() > 22) label = label.substr(0, 20) + "…";
+        dl->AddText(G.m16, 14, ImVec2(x, yy + cardH + 8), TXT, label.c_str());
+        if (!it.year.empty())
+            dl->AddText(G.r14, 12, ImVec2(x, yy + cardH + 28), ATTR, it.year.c_str());
+    }
+
+    int rows = (i + cols - 1) / cols;
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, y + rows * (cardH + 56) + 16));
+
+    // ---- Właściwości ----
+    if (openProps) {
+        ImGui::OpenPopup("##lib_props");
+        openProps = false;
+    }
+    ImGui::SetNextWindowSize(ImVec2(520, 0), ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal("##lib_props", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.91f, 0.93f, 1));
+        ImGui::TextUnformatted("Właściwości");
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        auto row = [](const char* k, const std::string& v) {
+            ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", k);
+            ImGui::SameLine(140);
+            ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 340);
+            ImGui::TextUnformatted(v.empty() ? "—" : v.c_str());
+            ImGui::PopTextWrapPos();
+        };
+
+        std::string titleLine = ctxItem.title;
+        if (!ctxItem.year.empty()) titleLine += " (" + ctxItem.year + ")";
+        row("Tytuł", titleLine);
+        row("Typ", ctxItem.mediaType == MediaType::TV ? "Serial" : "Film");
+        if (ctxItem.tmdbId > 0)
+            row("TMDB ID", std::to_string(ctxItem.tmdbId));
+
+        int64_t sz = ctxItem.sizeBytes;
+        std::error_code ec;
+        namespace fs = std::filesystem;
+        if (sz <= 0 && !ctxItem.path.empty() && fs::exists(ctxItem.path, ec))
+            sz = (int64_t)fs::file_size(ctxItem.path, ec);
+        row("Rozmiar", library::formatSize(sz));
+
+        std::string ext;
+        if (!ctxItem.path.empty()) {
+            ext = fs::path(ctxItem.path).extension().string();
+            if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
+            for (auto& c : ext) c = (char)std::toupper((unsigned char)c);
+        }
+        row("Kontener", ext);
+
+        std::string modified;
+        if (!ctxItem.path.empty() && fs::exists(ctxItem.path, ec)) {
+            auto ft = fs::last_write_time(ctxItem.path, ec);
+            if (!ec) {
+                auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+                    ft - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
+                std::time_t tt = std::chrono::system_clock::to_time_t(sctp);
+                std::tm tm{};
+#ifdef _WIN32
+                localtime_s(&tm, &tt);
+#else
+                localtime_r(&tt, &tm);
+#endif
+                char tbuf[64];
+                std::strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M", &tm);
+                modified = tbuf;
+            }
+        }
+        row("Zmodyfikowano", modified);
+        row("Plik", ctxItem.path);
+        row("Folder", ctxItem.folder);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        if (ImGui::Button("Otwórz folder", ImVec2(140, 32))) {
+            std::string folder = ctxItem.folder.empty()
+                ? fs::path(ctxItem.path).parent_path().string()
+                : ctxItem.folder;
+            platform::openPath(folder);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Zamknij", ImVec2(120, 32)))
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+
+    // ---- Usuń ----
+    if (openDelete) {
+        ImGui::OpenPopup("##lib_delete");
+        openDelete = false;
+    }
+    if (ImGui::BeginPopupModal("##lib_delete", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.96f, 0.55f, 0.55f, 1));
+        ImGui::TextUnformatted("Usuń z biblioteki");
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::TextWrapped("Usunąć „%s” z dysku? Tej operacji nie można cofnąć.",
+                           ctxItem.title.c_str());
+        if (!ctxItem.folder.empty())
+            ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", ctxItem.folder.c_str());
+        else if (!ctxItem.path.empty())
+            ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", ctxItem.path.c_str());
+        if (!deleteErr.empty()) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.96f, 0.4f, 0.4f, 1), "%s", deleteErr.c_str());
+        }
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        if (ImGui::Button("Usuń", ImVec2(120, 32))) {
+            std::string err;
+            if (library::removeItem(ctxItem, &err)) {
+                items = library::scan();
+                lastScan = ImGui::GetTime();
+                posterPaths.erase(ctxItem.id);
+                posterReqs.erase(ctxItem.id);
+                ImGui::CloseCurrentPopup();
+            } else {
+                deleteErr = err.empty() ? "Nie udało się usunąć" : err;
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Anuluj", ImVec2(120, 32)))
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
 }
 
 void renderSettings() {
@@ -1009,6 +1460,15 @@ void renderSettings() {
     ImGui::InputText("##dl", dlpath, sizeof(dlpath));
     ImGui::Checkbox("Auto-start pobierania", &cfg.autoStart);
     ImGui::SliderInt("Min. seeders", &cfg.minSeeders, 0, 50);
+    {
+        const char* quals[] = { "any", "720p", "1080p", "2160p" };
+        const char* labels[] = { "Dowolna", "720p", "1080p", "2160p (4K)" };
+        int qi = 2;
+        for (int i = 0; i < 4; i++) if (cfg.preferredQuality == quals[i]) qi = i;
+        ImGui::TextUnformatted("Domyślna jakość (przy żądaniu)");
+        if (ImGui::Combo("##defq", &qi, labels, 4))
+            cfg.preferredQuality = quals[qi];
+    }
     ImGui::PopItemWidth();
 
     ImGui::Spacing();
@@ -1021,3 +1481,346 @@ void renderSettings() {
     ImGui::SameLine();
     ImGui::TextUnformatted("Zapis: %APPDATA%\\SeerrCpp\\stack.json");
 }
+
+// ------------------------------------------------------------------ request quality + interactive search
+
+namespace {
+struct RequestDlg {
+    bool wantOpen = false;
+    bool pendingOpenInteractive = false;
+    MediaType type = MediaType::Movie;
+    int id = 0;
+    std::string title, year, imdbId, originalTitle;
+    std::vector<int> seasons;
+    int qualityIdx = 2; // 1080p
+
+    AsyncReq<std::vector<stack::ReleaseHit>> searchReq;
+    std::vector<stack::ReleaseHit> hits;
+    bool searching = false;
+    bool searchDone = false;
+    std::string searchErr;
+    int selected = -1;
+};
+RequestDlg& reqDlg() { static RequestDlg d; return d; }
+
+const char* kQualValues[] = { "any", "720p", "1080p", "2160p" };
+const char* kQualLabels[] = { "Dowolna", "720p", "1080p", "2160p (4K)" };
+
+void startInteractiveSearch(RequestDlg& d) {
+    if (d.searching && d.searchReq.valid() && !d.searchReq.ready())
+        return; // already in flight
+    d.hits.clear();
+    d.searchErr.clear();
+    d.selected = -1;
+    d.searching = true;
+    d.searchDone = false;
+    const char* q = kQualValues[std::clamp(d.qualityIdx, 0, 3)];
+    MediaType type = d.type;
+    int id = d.id;
+    std::string title = d.title, year = d.year, imdb = d.imdbId, orig = d.originalTitle;
+    std::vector<int> seasons = d.seasons;
+    std::string prefQ = q;
+    d.searchReq.fut = std::async(std::launch::async,
+        [type, id, title, year, imdb, seasons, orig, prefQ]() {
+            return stack::searchReleasesInteractive(
+                type, id, title, year, imdb, seasons, orig, prefQ);
+        });
+}
+
+void pollInteractiveSearch(RequestDlg& d) {
+    if (!d.searching || !d.searchReq.valid()) return;
+    if (!d.searchReq.ready()) return;
+    try {
+        d.hits = d.searchReq.take();
+        d.searchErr.clear();
+    } catch (const std::exception& e) {
+        d.hits.clear();
+        d.searchErr = e.what();
+    } catch (...) {
+        d.hits.clear();
+        d.searchErr = "Błąd wyszukiwania";
+    }
+    d.searching = false;
+    d.searchDone = true;
+}
+
+void grabSelectedRelease(RequestDlg& d) {
+    if (d.selected < 0 || d.selected >= (int)d.hits.size()) return;
+    const auto& h = d.hits[d.selected];
+    const char* q = kQualValues[std::clamp(d.qualityIdx, 0, 3)];
+    stack::requestWithRelease(d.type, d.id, d.title, d.year, d.imdbId, d.seasons,
+                              d.originalTitle, q, h.magnet, h.title);
+}
+} // namespace
+
+void openRequestQualityDialog(MediaType type, int id, const std::string& title,
+                              const std::string& year, const std::string& imdbId,
+                              const std::string& originalTitle,
+                              const std::vector<int>& seasons) {
+    auto& d = reqDlg();
+    d.wantOpen = true;
+    d.type = type;
+    d.id = id;
+    d.title = title;
+    d.year = year;
+    d.imdbId = imdbId;
+    d.originalTitle = originalTitle;
+    d.seasons = seasons;
+    d.qualityIdx = 2;
+    auto& def = stack::StackConfig::get().preferredQuality;
+    for (int i = 0; i < 4; i++) if (def == kQualValues[i]) d.qualityIdx = i;
+}
+
+void renderRequestQualityDialog() {
+    auto& d = reqDlg();
+    pollInteractiveSearch(d);
+
+    if (d.wantOpen) {
+        ImGui::OpenPopup("##req_quality");
+        d.wantOpen = false;
+    }
+    if (d.pendingOpenInteractive) {
+        ImGui::OpenPopup("##req_interactive");
+        d.pendingOpenInteractive = false;
+    }
+
+    ImGuiViewport* vp = ImGui::GetMainViewport();
+
+    // ── Quality / mode picker ─────────────────────────────────────────
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(460, 0), ImGuiCond_Appearing);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 16.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24, 22));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10, 10));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.0f);
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.10f, 0.12f, 0.18f, 0.98f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.29f, 0.33f, 0.39f, 0.55f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.90f, 0.91f, 0.93f, 1));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.31f, 0.27f, 0.90f, 1));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.39f, 0.40f, 0.95f, 1));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.26f, 0.22f, 0.79f, 1));
+
+    if (ImGui::BeginPopupModal("##req_quality", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
+                               ImGuiWindowFlags_NoMove)) {
+        ImGui::PushFont(G.sb22 ? G.sb22 : ImGui::GetFont());
+        ImGui::TextUnformatted("Zażądaj");
+        ImGui::PopFont();
+        ImGui::Spacing();
+
+        std::string head = d.title;
+        if (!d.year.empty()) head += " (" + d.year + ")";
+        ImGui::PushFont(G.m18 ? G.m18 : ImGui::GetFont());
+        ImGui::TextWrapped("%s", head.c_str());
+        ImGui::PopFont();
+        if (!d.originalTitle.empty() && d.originalTitle != d.title) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.61f, 0.64f, 0.69f, 1));
+            ImGui::TextWrapped("Oryginalny: %s", d.originalTitle.c_str());
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.61f, 0.64f, 0.69f, 1));
+        ImGui::TextUnformatted("Preferowana jakość");
+        ImGui::PopStyleColor();
+
+        for (int i = 0; i < 4; i++) {
+            bool sel = (d.qualityIdx == i);
+            if (sel) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.31f, 0.27f, 0.90f, 1));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.39f, 0.40f, 0.95f, 1));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.26f, 0.22f, 0.79f, 1));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.16f, 0.22f, 1));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.22f, 0.26f, 0.32f, 1));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.18f, 0.22f, 0.28f, 1));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.80f, 0.83f, 0.88f, 1));
+            }
+            char qid[32];
+            std::snprintf(qid, sizeof(qid), "%s##q%d", kQualLabels[i], i);
+            if (ImGui::Button(qid, ImVec2(i == 0 ? 92.f : (i == 3 ? 110.f : 78.f), 34)))
+                d.qualityIdx = i;
+            ImGui::PopStyleColor(4);
+            if (i < 3) ImGui::SameLine();
+        }
+
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.58f, 0.64f, 1));
+        ImGui::TextWrapped(
+            "Automatycznie — jak Radarr Automatic Search. "
+            "Interactive Search — lista wydań, Ty wybierasz.");
+        ImGui::PopStyleColor();
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        float btnW = 128.f;
+        float gap = 10.f;
+        float total = btnW * 3 + gap * 2;
+        float startX = (ImGui::GetContentRegionAvail().x - total) * 0.5f;
+        if (startX > 0) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + startX);
+
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.26f, 0.32f, 1));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.34f, 0.40f, 1));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.18f, 0.22f, 0.28f, 1));
+        if (ImGui::Button("Anuluj", ImVec2(btnW, 38)))
+            ImGui::CloseCurrentPopup();
+        ImGui::PopStyleColor(3);
+
+        ImGui::SameLine(0, gap);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.35f, 0.48f, 1));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.14f, 0.45f, 0.60f, 1));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.10f, 0.30f, 0.42f, 1));
+        if (ImGui::Button("Interactive", ImVec2(btnW, 38))) {
+            ImGui::CloseCurrentPopup();
+            d.pendingOpenInteractive = true;
+            startInteractiveSearch(d);
+        }
+        ImGui::PopStyleColor(3);
+
+        ImGui::SameLine(0, gap);
+        if (ImGui::Button("Automatycznie", ImVec2(btnW, 38))) {
+            const char* q = kQualValues[std::clamp(d.qualityIdx, 0, 3)];
+            stack::requestMedia(d.type, d.id, d.title, d.year, d.imdbId, d.seasons,
+                                d.originalTitle, q);
+            ImGui::CloseCurrentPopup();
+            app().navigate(Page::Requests);
+        }
+
+        ImGui::EndPopup();
+    }
+    ImGui::PopStyleColor(6);
+    ImGui::PopStyleVar(4);
+
+    // ── Interactive Search (Radarr-style) ─────────────────────────────
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(780, 540), ImGuiCond_Appearing);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 16.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20, 18));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 8));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.10f, 0.12f, 0.18f, 0.98f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.29f, 0.33f, 0.39f, 0.55f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.90f, 0.91f, 0.93f, 1));
+    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.12f, 0.23f, 0.37f, 1));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.15f, 0.39f, 0.92f, 1));
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.11f, 0.30f, 0.85f, 1));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.31f, 0.27f, 0.90f, 1));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.39f, 0.40f, 0.95f, 1));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.07f, 0.09f, 0.14f, 1));
+    ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, ImVec4(0.12f, 0.14f, 0.20f, 1));
+    ImGui::PushStyleColor(ImGuiCol_TableBorderLight, ImVec4(0.22f, 0.25f, 0.32f, 0.4f));
+    ImGui::PushStyleColor(ImGuiCol_TableRowBg, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, ImVec4(1, 1, 1, 0.02f));
+
+    if (ImGui::BeginPopupModal("##req_interactive", nullptr,
+                               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove)) {
+        ImGui::PushFont(G.sb22 ? G.sb22 : ImGui::GetFont());
+        ImGui::TextUnformatted("Interactive Search");
+        ImGui::PopFont();
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.61f, 0.64f, 0.69f, 1));
+        std::string sub = d.title;
+        if (!d.year.empty()) sub += " (" + d.year + ")";
+        ImGui::TextWrapped("  %s", sub.c_str());
+        ImGui::PopStyleColor();
+
+        if (d.searchDone && d.searchErr.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.58f, 0.64f, 1));
+            ImGui::Text("%d wydań  ·  jakość: %s", (int)d.hits.size(),
+                        kQualLabels[std::clamp(d.qualityIdx, 0, 3)]);
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::Separator();
+
+        float footerH = 52.0f;
+        float listH = ImGui::GetContentRegionAvail().y - footerH - 4.0f;
+        if (listH < 120.f) listH = 120.f;
+
+        ImGui::BeginChild("##is_list", ImVec2(0, listH), ImGuiChildFlags_Borders);
+
+        if (d.searching) {
+            ImGui::Spacing();
+            ImGui::TextUnformatted("Szukam wydań…");
+        } else if (!d.searchErr.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.97f, 0.44f, 0.44f, 1));
+            ImGui::TextWrapped("%s", d.searchErr.c_str());
+            ImGui::PopStyleColor();
+        } else if (d.hits.empty() && d.searchDone) {
+            ImGui::TextUnformatted("Brak wyników. Zmień jakość i odśwież.");
+        } else if (ImGui::BeginTable("##is_tbl", 5,
+                                     ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
+                                     ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable |
+                                     ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Tytuł", ImGuiTableColumnFlags_WidthStretch, 3.5f);
+            ImGui::TableSetupColumn("Jakość", ImGuiTableColumnFlags_WidthFixed, 70.f);
+            ImGui::TableSetupColumn("Rozmiar", ImGuiTableColumnFlags_WidthFixed, 80.f);
+            ImGui::TableSetupColumn("Seeders", ImGuiTableColumnFlags_WidthFixed, 70.f);
+            ImGui::TableSetupColumn("Score", ImGuiTableColumnFlags_WidthFixed, 55.f);
+            ImGui::TableHeadersRow();
+
+            for (int i = 0; i < (int)d.hits.size(); i++) {
+                auto& h = d.hits[i];
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                bool sel = (d.selected == i);
+                ImGui::PushID(i);
+                if (ImGui::Selectable(h.title.c_str(), sel,
+                                      ImGuiSelectableFlags_SpanAllColumns |
+                                      ImGuiSelectableFlags_AllowDoubleClick)) {
+                    d.selected = i;
+                    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                        grabSelectedRelease(d);
+                        ImGui::CloseCurrentPopup();
+                        app().navigate(Page::Requests);
+                    }
+                }
+                ImGui::PopID();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(h.quality.c_str());
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(library::formatSize(h.sizeBytes).c_str());
+                ImGui::TableNextColumn();
+                ImGui::Text("%d", h.seeders);
+                ImGui::TableNextColumn();
+                ImGui::Text("%d", h.score);
+            }
+            ImGui::EndTable();
+        }
+        ImGui::EndChild();
+
+        float btnW = 140.f;
+        float gap = 10.f;
+        if (ImGui::Button("Zamknij", ImVec2(btnW, 38)))
+            ImGui::CloseCurrentPopup();
+        ImGui::SameLine(0, gap);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.26f, 0.32f, 1));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.34f, 0.40f, 1));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.18f, 0.22f, 0.28f, 1));
+        ImGui::BeginDisabled(d.searching);
+        if (ImGui::Button("Odśwież", ImVec2(btnW, 38)))
+            startInteractiveSearch(d);
+        ImGui::EndDisabled();
+        ImGui::PopStyleColor(3);
+        ImGui::SameLine(0, gap);
+        bool canGrab = d.selected >= 0 && d.selected < (int)d.hits.size() && !d.searching;
+        ImGui::BeginDisabled(!canGrab);
+        if (ImGui::Button("Pobierz", ImVec2(btnW, 38))) {
+            grabSelectedRelease(d);
+            ImGui::CloseCurrentPopup();
+            app().navigate(Page::Requests);
+        }
+        ImGui::EndDisabled();
+
+        ImGui::EndPopup();
+    }
+
+    ImGui::PopStyleColor(13);
+    ImGui::PopStyleVar(4);
+}
+

@@ -36,6 +36,22 @@ std::atomic<int> g_pending{0};
 std::mutex g_statMu;
 Stats g_stats{};
 
+// Rolling average of last 3 samples — keeps sidebar RAM/CPU/peers from jumping.
+constexpr int kSmoothN = 3;
+double g_ramHist[kSmoothN]{};
+double g_cpuHist[kSmoothN]{};
+double g_peerHist[kSmoothN]{};
+int g_smoothCount = 0;
+int g_smoothIdx = 0;
+
+static double pushSmooth(double* hist, double sample) {
+    hist[g_smoothIdx] = sample;
+    int n = g_smoothCount < kSmoothN ? g_smoothCount + 1 : kSmoothN;
+    double sum = 0;
+    for (int i = 0; i < n; i++) sum += hist[i];
+    return sum / (double)n;
+}
+
 #ifdef _WIN32
 ULARGE_INTEGER g_lastCpu{};
 ULARGE_INTEGER g_lastSys{};
@@ -92,12 +108,12 @@ void refreshProcessStats() {
             if (g_cpuInit && sysNow.QuadPart > g_lastSys.QuadPart) {
                 double dCpu = (double)(cpuNow.QuadPart - g_lastCpu.QuadPart);
                 double dSys = (double)(sysNow.QuadPart - g_lastSys.QuadPart);
-                SYSTEM_INFO si{}; GetSystemInfo(&si);
-                int n = (int)si.dwNumberOfProcessors;
-                if (n < 1) n = 1;
-                cpu = (dCpu / dSys) * 100.0 * n;
+                // dCpu / dSys already = share of total machine capacity (all cores).
+                // Do NOT multiply by core count — Task Manager uses 0..100% of the PC.
+                if (dSys > 0)
+                    cpu = (dCpu / dSys) * 100.0;
                 if (cpu < 0) cpu = 0;
-                if (cpu > 100.0 * n) cpu = 100.0 * n;
+                if (cpu > 100.0) cpu = 100.0;
             }
             g_lastCpu = cpuNow;
             g_lastSys = sysNow;
@@ -106,9 +122,11 @@ void refreshProcessStats() {
     }
 
     std::lock_guard<std::mutex> lk(g_statMu);
-    g_stats.cpuPct = cpu;
-    g_stats.ramMb = ramMb;
-    g_stats.peers = g_peers.load();
+    g_stats.cpuPct = pushSmooth(g_cpuHist, cpu);
+    g_stats.ramMb = pushSmooth(g_ramHist, ramMb);
+    g_stats.peers = (int)(pushSmooth(g_peerHist, (double)g_peers.load()) + 0.5);
+    g_smoothIdx = (g_smoothIdx + 1) % kSmoothN;
+    if (g_smoothCount < kSmoothN) ++g_smoothCount;
     g_stats.jobsPending = g_pending.load();
     g_stats.jobsRunning = g_running.load();
 }
@@ -147,19 +165,22 @@ void refreshProcessStats() {
     if (g_cpuInit && sysNow > g_lastSys) {
         double dCpu = (double)(cpuNow - g_lastCpu);
         double dSys = (double)(sysNow - g_lastSys);
-        long n = sysconf(_SC_NPROCESSORS_ONLN);
-        if (n < 1) n = 1;
-        cpu = (dCpu / dSys) * 100.0 * (double)n;
+        // Same as Windows: share of total capacity, not per-core * n
+        if (dSys > 0)
+            cpu = (dCpu / dSys) * 100.0;
         if (cpu < 0) cpu = 0;
+        if (cpu > 100.0) cpu = 100.0;
     }
     g_lastCpu = cpuNow;
     g_lastSys = sysNow;
     g_cpuInit = true;
 
     std::lock_guard<std::mutex> lk(g_statMu);
-    g_stats.cpuPct = cpu;
-    g_stats.ramMb = ramMb;
-    g_stats.peers = g_peers.load();
+    g_stats.cpuPct = pushSmooth(g_cpuHist, cpu);
+    g_stats.ramMb = pushSmooth(g_ramHist, ramMb);
+    g_stats.peers = (int)(pushSmooth(g_peerHist, (double)g_peers.load()) + 0.5);
+    g_smoothIdx = (g_smoothIdx + 1) % kSmoothN;
+    if (g_smoothCount < kSmoothN) ++g_smoothCount;
     g_stats.jobsPending = g_pending.load();
     g_stats.jobsRunning = g_running.load();
 }
@@ -210,7 +231,7 @@ void enqueue(std::function<void()> fn) {
 Stats stats() {
     std::lock_guard<std::mutex> lk(g_statMu);
     Stats s = g_stats;
-    s.peers = g_peers.load();
+    // peers stay smoothed (from tick); jobs stay live
     s.jobsPending = g_pending.load();
     s.jobsRunning = g_running.load();
     return s;

@@ -20,6 +20,7 @@
 #include "core.hpp"
 #include "localdb.hpp"
 #include "platform.hpp"
+#include "player.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -30,9 +31,11 @@
 #include <cstring>
 #include <vector>
 #include <string>
+#include <thread>
+#include <mutex>
+#include <atomic>
 
 static const float SIDEBAR_W = 256.0f;
-static const float NAVBAR_H = 64.0f;
 
 static GLuint g_logoTex = 0;
 static int g_logoW = 0, g_logoH = 0;
@@ -43,9 +46,9 @@ void setAppMainHwnd(void* hwnd) { g_mainHwnd = hwnd; }
 
 // ------------------------------------------------------------------ sidebar
 
-enum SideItem { SI_DISCOVER, SI_MOVIES, SI_TV, SI_REQUESTS, SI_BLOCKLIST, SI_ISSUES, SI_USERS, SI_SETTINGS, SI_COUNT };
+enum SideItem { SI_DISCOVER, SI_MOVIES, SI_TV, SI_REQUESTS, SI_LIBRARY, SI_BLOCKLIST, SI_ISSUES, SI_USERS, SI_SETTINGS, SI_COUNT };
 static const char* SIDE_LABELS[SI_COUNT] = {
-    "Odkrywaj", "Filmy", "Seriale", "Żądania", "Blokada", "Problemy", "Użytkownicy", "Ustawienia"
+    "Odkrywaj", "Filmy", "Seriale", "Żądania", "Biblioteka", "Blokada", "Problemy", "Użytkownicy", "Ustawienia"
 };
 
 static void sidebarIcon(int idx, ImDrawList* dl, ImVec2 c, float s, ImU32 col) {
@@ -54,6 +57,7 @@ static void sidebarIcon(int idx, ImDrawList* dl, ImVec2 c, float s, ImU32 col) {
         case SI_MOVIES: icons::film(dl, c, s, col); break;
         case SI_TV: icons::tv(dl, c, s, col); break;
         case SI_REQUESTS: icons::clock(dl, c, s, col); break;
+        case SI_LIBRARY: icons::play(dl, c, s, col); break;
         case SI_BLOCKLIST: icons::eyeslash(dl, c, s, col); break;
         case SI_ISSUES: icons::exclaim(dl, c, s, col); break;
         case SI_USERS: icons::users(dl, c, s, col); break;
@@ -103,6 +107,7 @@ static void renderSidebar(App& a) {
         case Page::Search: active = -1; break;
         case Page::MovieDetails: case Page::TvDetails: active = a.detailType == MediaType::TV ? SI_TV : SI_MOVIES; break;
         case Page::Requests: active = SI_REQUESTS; break;
+        case Page::Library: active = SI_LIBRARY; break;
         case Page::Blocklist: active = SI_BLOCKLIST; break;
         case Page::Issues: active = SI_ISSUES; break;
         case Page::Users: active = SI_USERS; break;
@@ -128,19 +133,13 @@ static void renderSidebar(App& a) {
         float ha = hoverAmt[i], aa = activeAmt[i];
 
         if (aa > 0.01f) {
-            ImU32 c0 = theme::withA(theme::c("#4f46e5"), aa);
-            ImU32 c1 = theme::withA(theme::c("#6a4fe0"), aa);
-            ImU32 c2 = theme::withA(theme::c("#9333ea"), aa);
-            ImU32 c3 = theme::withA(theme::c("#7a3ce5"), aa);
-            if (hv) {
-                c0 = theme::withA(theme::c("#6366f1"), aa);
-                c1 = theme::withA(theme::c("#7c5cf3"), aa);
-                c2 = theme::withA(theme::c("#a855f7"), aa);
-                c3 = theme::withA(theme::c("#8b4bf4"), aa);
-            }
-            dl->AddRectFilledMultiColor(p0, p1, c0, c1, c2, c3);
+            // Rounded solid (MultiColor can't round) — soft indigo pill
+            ImU32 fill = theme::withA(theme::c(hv ? "#7c5cf3" : "#6366f1"), aa);
+            dl->AddRectFilled(p0, p1, fill, 14.0f);
+            if (aa > 0.5f)
+                dl->AddRect(p0, p1, theme::withA(theme::c("#a78bfa"), aa * 0.35f), 14.0f, 0, 1.0f);
         } else if (ha > 0.01f) {
-            dl->AddRectFilled(p0, p1, theme::withA(theme::c("#374151"), ha), 6);
+            dl->AddRectFilled(p0, p1, theme::withA(theme::c("#374151"), ha), 14.0f);
         }
 
         float iconS = 20.0f + 2.0f * ha + 1.0f * aa;
@@ -161,6 +160,7 @@ static void renderSidebar(App& a) {
                 case SI_MOVIES: a.navigate(Page::Movies); break;
                 case SI_TV: a.navigate(Page::Tv); break;
                 case SI_REQUESTS: a.navigate(Page::Requests); break;
+                case SI_LIBRARY: a.navigate(Page::Library); break;
                 case SI_BLOCKLIST: a.navigate(Page::Blocklist); break;
                 case SI_ISSUES: a.navigate(Page::Issues); break;
                 case SI_USERS: a.navigate(Page::Users); break;
@@ -170,10 +170,29 @@ static void renderSidebar(App& a) {
         }
     }
 
-    // stats box at bottom (RAM / CPU / peers)
+    // stats box at bottom (RAM / CPU / peers) + user avatar
     {
         auto st = core::stats();
-        ImVec2 p0(wpos.x + 16, wpos.y + H - 72);
+        float boxTop = wpos.y + H - 108;
+        // avatar row
+        {
+            ImVec2 c(wpos.x + 36, boxTop + 14);
+            float r = 14;
+            dl->AddCircleFilled(c, r, theme::c("#6366f1"));
+            char ini[2] = {'T', 0};
+            auto& u = localdb::user();
+            if (!u.displayName.empty())
+                ini[0] = (char)std::toupper((unsigned char)u.displayName[0]);
+            dl->AddText(G.sb18, 13, ImVec2(c.x - 4, c.y - 7), IM_COL32(255, 255, 255, 255), ini);
+            dl->AddCircle(c, r + 2, theme::c("#4f46e5"), 24, 1.0f);
+            const char* name = u.displayName.empty() ? "Konto" : u.displayName.c_str();
+            dl->AddText(G.m16, 13, ImVec2(c.x + 22, c.y - 8), theme::c("#e5e7eb"), name);
+            ImGui::SetCursorScreenPos(ImVec2(wpos.x + 16, boxTop));
+            if (ImGui::InvisibleButton("##user", ImVec2(SIDEBAR_W - 32, 28)))
+                a.navigate(Page::Users);
+        }
+
+        ImVec2 p0(wpos.x + 16, boxTop + 36);
         ImVec2 p1(wpos.x + SIDEBAR_W - 16, wpos.y + H - 16);
         ImGui::SetCursorScreenPos(p0);
         ImGui::PushID("ver");
@@ -182,7 +201,7 @@ static void renderSidebar(App& a) {
         ImGui::PopID();
         static float verH = 0;
         verH = animToward(verH, hv ? 1.0f : 0.0f, 12.0f);
-        dl->AddRectFilled(p0, p1, theme::withA(theme::c("#374151"), 0.70f + 0.30f * verH), 6);
+        dl->AddRectFilled(p0, p1, theme::withA(theme::c("#374151"), 0.70f + 0.30f * verH), 14.0f);
 
         char line1[96], line2[96];
         std::snprintf(line1, sizeof(line1), "RAM %.0f MB  ·  CPU %.0f%%", st.ramMb, st.cpuPct);
@@ -193,73 +212,6 @@ static void renderSidebar(App& a) {
         if (cl) platform::openUrl("https://github.com/seerr-team/seerr");
     }
     ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
-    ImGui::End();
-}
-
-// ------------------------------------------------------------------ navbar
-
-static void renderNavbar(App& a, bool scrolled) {
-    ImGuiWindowFlags wf = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                          ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus |
-                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
-                          ImGuiWindowFlags_NoBackground;
-    ImGui::SetNextWindowPos(ImVec2(SIDEBAR_W, 0));
-    ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x - SIDEBAR_W, NAVBAR_H));
-    ImGui::Begin("##navbar", nullptr, wf);
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    ImVec2 wpos = ImGui::GetWindowPos();
-    float w = ImGui::GetWindowWidth();
-    if (scrolled) { // bg-gray-700/80 + blur
-        dl->AddRectFilled(wpos, ImVec2(wpos.x + w, wpos.y + NAVBAR_H), theme::c("#374151/CC"));
-        dl->AddLine(ImVec2(wpos.x, wpos.y + NAVBAR_H), ImVec2(wpos.x + w, wpos.y + NAVBAR_H), theme::c("#111827/66"));
-    }
-
-    // search input
-    float sbW = std::min(440.0f, w - 120);
-    ImVec2 sbMin(wpos.x + 16, wpos.y + 14);
-    ImVec2 sbMax(sbMin.x + sbW, wpos.y + NAVBAR_H - 14);
-    dl->AddRectFilled(sbMin, sbMax, theme::c("#111827/99"), 8);
-    dl->AddRect(sbMin, sbMax, theme::c("#4b5563"), 8, 0, 1.0f);
-    icons::search(dl, ImVec2(sbMin.x + 20, (sbMin.y + sbMax.y) / 2), 15, theme::c("#9ca3af"));
-
-    ImGui::SetCursorScreenPos(ImVec2(sbMin.x + 36, sbMin.y + 6));
-    ImGui::PushItemWidth(sbMax.x - sbMin.x - 60);
-    char buf[256] = {};
-    strncpy(buf, a.searchInput.c_str(), sizeof(buf) - 1);
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
-    ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, ImVec4(0.31f, 0.27f, 0.79f, 0.5f));
-    bool enter = ImGui::InputTextWithHint("##search", "Szukaj filmów i seriali…", buf, sizeof(buf),
-                                          ImGuiInputTextFlags_EnterReturnsTrue);
-    ImGui::PopStyleColor(3);
-    ImGui::PopItemWidth();
-    bool changedFocus = ImGui::IsItemActive();
-    a.searchInput = buf;
-    if (enter && !a.searchInput.empty()) a.navigate(Page::Search);
-    if (!a.searchInput.empty()) {
-        ImVec2 cl(sbMax.x - 26, (sbMin.y + sbMax.y) / 2 - 9);
-        if (w::iconButton(dl, "##clr", cl, ImVec2(cl.x + 18, cl.y + 18),
-                          [](ImDrawList* d2, ImVec2 c, float s, ImU32 col2) { icons::close(d2, c, s, col2, 1.6f); },
-                          0, theme::c("#1f2937"), 0, theme::c("#9ca3af"), true))
-            a.searchInput.clear();
-    }
-    (void)changedFocus;
-
-    // user avatar (gradient circle, like seerr's local user)
-    {
-        ImVec2 c(wpos.x + w - 30, NAVBAR_H / 2);
-        float r = 15;
-        dl->AddCircleFilled(c, r, theme::c("#6366f1"));
-        char ini[2] = {'T', 0};
-        auto& u = localdb::user();
-        if (!u.displayName.empty())
-            ini[0] = (char)std::toupper((unsigned char)u.displayName[0]);
-        dl->AddText(G.sb18, 14, ImVec2(c.x - 5, c.y - 8), IM_COL32(255, 255, 255, 255), ini);
-        dl->AddCircle(c, r + 2, theme::c("#4f46e5"), 24, 1.0f);
-        if (ImGui::IsMouseHoveringRect(ImVec2(c.x - r, c.y - r), ImVec2(c.x + r, c.y + r)) &&
-            ImGui::IsMouseClicked(0))
-            a.navigate(Page::Users);
-    }
     ImGui::End();
 }
 
@@ -276,6 +228,7 @@ static void renderContentPage(App& a) {
         case Page::MovieDetails: renderDetails(MediaType::Movie, a.detailId); break;
         case Page::TvDetails: renderDetails(MediaType::TV, a.detailId); break;
         case Page::Requests: renderRequests(); break;
+        case Page::Library: renderLibrary(); break;
         case Page::Blocklist: renderBlocklist(); break;
         case Page::Issues: renderIssues(); break;
         case Page::Users: renderUsers(); break;
@@ -305,6 +258,7 @@ int main() {
 #else
     setAppMainHwnd(nullptr);
 #endif
+    platform::applyDarkTitlebar(win);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -340,47 +294,151 @@ int main() {
     ImGui::StyleColorsDark();
     ImGuiStyle& st = ImGui::GetStyle();
     st.WindowPadding = ImVec2(0, 0);
+    st.FramePadding = ImVec2(12, 8);
+    st.ItemSpacing = ImVec2(10, 8);
+    st.WindowRounding = 14.0f;
+    st.ChildRounding = 14.0f;
+    st.FrameRounding = 12.0f;
+    st.PopupRounding = 14.0f;
+    st.ScrollbarRounding = 12.0f;
+    st.GrabRounding = 12.0f;
+    st.TabRounding = 12.0f;
     st.Colors[ImGuiCol_WindowBg] = ImVec4(0, 0, 0, 0);
     st.Colors[ImGuiCol_FrameBg] = ImVec4(0, 0, 0, 0);
+    st.Colors[ImGuiCol_PopupBg] = ImVec4(0.10f, 0.12f, 0.18f, 0.98f);
+    st.Colors[ImGuiCol_Border] = ImVec4(0.29f, 0.33f, 0.39f, 0.55f);
     st.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.067f, 0.094f, 0.157f, 1.0f);      // #111827
     st.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.294f, 0.337f, 0.392f, 0.75f);   // #4b5563
     st.Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.42f, 0.46f, 0.52f, 0.95f);
     st.Colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.5f, 0.54f, 0.6f, 1.0f);
     st.ScrollbarSize = 10;
-    st.GrabRounding = st.ScrollbarSize / 2;
+    st.GrabMinSize = 14;
 
     ImGui_ImplGlfw_InitForOpenGL(win, true);
     ImGui_ImplOpenGL3_Init("#version 330");
+    player::bindWindow(win);
 
     App& a = app();
 
-    while (!glfwWindowShouldClose(win)) {
-        // Idle: sleep until input or ~30Hz while images are still loading (spinners)
-        if (ImageCache::instance().busy())
+    // Graceful quit: heavy work on a background thread so the UI spinner stays live
+    static std::atomic<bool> quitting{false};
+    static std::atomic<bool> quitBgDone{false};
+    static std::atomic<bool> quitStarted{false};
+    static std::mutex quitStatusMu;
+    static std::string quitStatus = "Zamykanie…";
+    static std::thread quitThread;
+
+    auto setQuitStatus = [](const char* s) {
+        std::lock_guard<std::mutex> lk(quitStatusMu);
+        quitStatus = s;
+    };
+    auto getQuitStatus = []() -> std::string {
+        std::lock_guard<std::mutex> lk(quitStatusMu);
+        return quitStatus;
+    };
+
+    glfwSetWindowCloseCallback(win, [](GLFWwindow* w) {
+        if (!quitting.load()) {
+            glfwSetWindowShouldClose(w, GLFW_FALSE);
+            quitting.store(true);
+        }
+    });
+
+    while (true) {
+        if (quitting.load())
+            glfwWaitEventsTimeout(1.0 / 60.0);
+        else if (ImageCache::instance().busy() || player::isOpen())
             glfwWaitEventsTimeout(1.0 / 30.0);
         else
             glfwWaitEventsTimeout(0.05);
-        ImageCache::instance().pump();
-        core::tick();
-        stack::tick();
-        ytplayer::tick();
+
+        if (!quitting.load()) {
+            ImageCache::instance().pump();
+            core::tick();
+            stack::tick();
+            ytplayer::tick();
+            player::tick();
+        }
 
         int fbw, fbh;
         glfwGetFramebufferSize(win, &fbw, &fbh);
         glViewport(0, 0, fbw, fbh);
-        glClearColor(0.067f, 0.094f, 0.157f, 1.0f); // gray-900
+        glClearColor(0.067f, 0.094f, 0.157f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+        ImGuiIO& io = ImGui::GetIO();
+
+        if (quitting.load()) {
+            // Kick off: GL-safe player close on UI thread, then background shutdown
+            if (!quitStarted.exchange(true)) {
+                setQuitStatus("Zamykanie odtwarzacza…");
+                try { player::close(); } catch (...) {}
+                setQuitStatus("Zatrzymywanie pobierania torrentów…");
+                quitThread = std::thread([setQuitStatus]() {
+                    try {
+                        setQuitStatus("Zatrzymywanie pobierania torrentów…");
+                        stack::shutdown();
+                        setQuitStatus("Zatrzymywanie zadań w tle…");
+                        core::shutdown();
+                        setQuitStatus("Zamykanie cache obrazów i P2P…");
+                        ImageCache::instance().shutdown();
+                        setQuitStatus("Kończenie…");
+                    } catch (...) {
+                        setQuitStatus("Błąd podczas zamykania…");
+                    }
+                    quitBgDone.store(true);
+                });
+            }
+
+            ImDrawList* dl = ImGui::GetForegroundDrawList();
+            dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(17, 24, 39, 240));
+            const char* title = "Zamykanie Seerr…";
+            ImVec2 ts = G.sb26 ? G.sb26->CalcTextSizeA(22, FLT_MAX, 0, title)
+                               : ImGui::CalcTextSize(title);
+            ImVec2 tp((io.DisplaySize.x - ts.x) * 0.5f, io.DisplaySize.y * 0.42f);
+            if (G.sb26) dl->AddText(G.sb26, 22, tp, IM_COL32(229, 231, 235, 255), title);
+            else dl->AddText(tp, IM_COL32(229, 231, 235, 255), title);
+
+            std::string status = getQuitStatus();
+            ImVec2 ss = G.r16 ? G.r16->CalcTextSizeA(15, FLT_MAX, 0, status.c_str())
+                              : ImGui::CalcTextSize(status.c_str());
+            ImVec2 sp((io.DisplaySize.x - ss.x) * 0.5f, tp.y + 40);
+            if (G.r16) dl->AddText(G.r16, 15, sp, IM_COL32(156, 163, 175, 255), status.c_str());
+            else dl->AddText(sp, IM_COL32(156, 163, 175, 255), status.c_str());
+
+            ImVec2 c(io.DisplaySize.x * 0.5f, sp.y + 48);
+            w::orbitSpinner(dl, c, 14.f, 3.2f);
+
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            glfwSwapBuffers(win);
+
+            if (quitBgDone.load()) {
+                if (quitThread.joinable()) quitThread.join();
+                setQuitStatus("Zwalnianie ikon i interfejsu…");
+                try { svgicon::shutdown(); } catch (...) {}
+                ImGui_ImplOpenGL3_Shutdown();
+                ImGui_ImplGlfw_Shutdown();
+                ImGui::DestroyContext();
+                glfwDestroyWindow(win);
+                glfwTerminate();
+                return 0;
+            }
+            continue;
+        }
 
         // F5 = hard reload (clear failed images + refetch data), like Ctrl+F5 in browser
-        if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
+        if (ImGui::IsKeyPressed(ImGuiKey_F5) && !player::isOpen()) {
             ImageCache::instance().purgeFailed();
             a.reloadSeq++;
         }
 
+        if (player::isOpen()) {
+            player::render();
+        } else {
         // content column only (seerr: lg:ml-64) — never draw under the fixed sidebar
         ImGuiWindowFlags cwf = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus |
@@ -407,9 +465,8 @@ int main() {
             dl->AddRectFilledMultiColor(cpos, ImVec2(cpos.x + cw, cpos.y + gh),
                                         theme::c("#1f2937"), theme::c("#1f2937"), theme::c("#111827"), theme::c("#111827"));
         }
-        bool scrolled = ImGui::GetScrollY() > 6;
         float left = ImGui::GetCursorStartPos().x; // WindowPadding.x
-        float topPad = NAVBAR_H + 8;
+        float topPad = 16.0f;
 
         auto& ap = a;
         bool subpage = ap.page != Page::Discover;
@@ -418,7 +475,7 @@ int main() {
             ImVec2 backMin = ImGui::GetCursorScreenPos();
             if (w::button(dl, "##back", backMin, ImVec2(backMin.x + 84, backMin.y + 26), "« Wróć",
                           theme::c("#111827/01"), theme::c("#1f2937"), theme::c("#374151"), 0,
-                          theme::c("#9ca3af"), G.r14, 13, 5))
+                          theme::c("#9ca3af"), G.r14, 13, 12))
                 ap.back();
             ImGui::SetCursorPos(ImVec2(left, topPad + 36));
         } else {
@@ -429,21 +486,13 @@ int main() {
         ImGui::PopStyleVar();
 
         renderSidebar(a);
-        renderNavbar(a, scrolled);
+        renderRequestQualityDialog();
+        }
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(win);
     }
 
-    svgicon::shutdown();
-    stack::shutdown();
-    core::shutdown();
-    ImageCache::instance().shutdown();
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-    glfwDestroyWindow(win);
-    glfwTerminate();
     return 0;
 }

@@ -146,7 +146,6 @@ static MediaType typeFromStr(const std::string& s) {
 MediaItem itemFromJson(const json& r, MediaType defaultType) {
     MediaItem m;
     m.mediaType = r.contains("media_type") ? typeFromStr(jstr(r, "media_type")) : defaultType;
-    if (m.mediaType == MediaType::Person) m.mediaType = defaultType; // search/multi persons -> skip handled by caller
     m.id = (int)jnum(r, "id");
     m.title = jstr(r, "title");
     if (m.title.empty()) m.title = jstr(r, "name");
@@ -163,10 +162,29 @@ MediaItem itemFromJson(const json& r, MediaType defaultType) {
     m.numberOfSeasons = (int)jnum(r, "number_of_seasons");
     m.numberOfEpisodes = (int)jnum(r, "number_of_episodes");
     m.status = jstr(r, "status");
+
+    if (m.mediaType == MediaType::Person || defaultType == MediaType::Person) {
+        m.mediaType = MediaType::Person;
+        std::string profile = jstr(r, "profile_path");
+        if (m.posterPath.empty()) m.posterPath = profile;
+        m.knownForDepartment = jstr(r, "known_for_department");
+        if (m.overview.empty() && r.contains("known_for") && r["known_for"].is_array()) {
+            std::string kf;
+            for (auto& k : r["known_for"]) {
+                std::string t = jstr(k, "title");
+                if (t.empty()) t = jstr(k, "name");
+                if (t.empty()) continue;
+                if (!kf.empty()) kf += ", ";
+                kf += t;
+                if (kf.size() > 90) break;
+            }
+            m.overview = std::move(kf);
+        }
+    }
     return m;
 }
 
-PagedResult parsePaged(const json& j, MediaType defaultType) {
+PagedResult parsePaged(const json& j, MediaType defaultType, bool includePeople) {
     PagedResult p;
     p.loaded = true;
     if (!j.contains("results") || !j["results"].is_array()) { p.error = "unexpected response"; return p; }
@@ -174,9 +192,12 @@ PagedResult parsePaged(const json& j, MediaType defaultType) {
     p.total_pages = (int)jnum(j, "total_pages", 1);
     p.total_results = (int)jnum(j, "total_results", 0);
     for (auto& r : j["results"]) {
-        // Skip people in mixed feeds (trending/search) — they lack poster/overview and confuse the UI
-        if (r.contains("media_type") && jstr(r, "media_type") == "person") continue;
-        p.results.push_back(itemFromJson(r, defaultType));
+        if (!includePeople && r.contains("media_type") && jstr(r, "media_type") == "person")
+            continue;
+        MediaItem item = itemFromJson(r, defaultType);
+        if (!includePeople && item.mediaType == MediaType::Person)
+            continue;
+        p.results.push_back(std::move(item));
     }
     return p;
 }
@@ -268,13 +289,14 @@ static std::string withKey(const std::string& path, std::map<std::string, std::s
     return std::string(Tmdb::BASE) + path + "?" + util::buildQuery(params);
 }
 
-static AsyncReq<PagedResult> pagedReq(const std::string& url, MediaType defaultType) {
+static AsyncReq<PagedResult> pagedReq(const std::string& url, MediaType defaultType,
+                                      bool includePeople = false) {
     AsyncReq<PagedResult> req;
-    req.fut = std::async(std::launch::async, [url, defaultType]() -> PagedResult {
+    req.fut = std::async(std::launch::async, [url, defaultType, includePeople]() -> PagedResult {
         PagedResult p;
         auto r = http::get(url);
         if (!r.ok()) { p.error = r.err.empty() ? "HTTP " + std::to_string(r.status) : r.err; return p; }
-        try { p = parsePaged(json::parse(r.body), defaultType); }
+        try { p = parsePaged(json::parse(r.body), defaultType, includePeople); }
         catch (std::exception& e) { p.error = e.what(); }
         return p;
     });
@@ -297,8 +319,24 @@ AsyncReq<PagedResult> Tmdb::discover(int page, const std::map<std::string, std::
 }
 
 AsyncReq<PagedResult> Tmdb::searchMulti(const std::string& query, int page) {
-    return pagedReq(withKey("/search/multi", {{"query", query}, {"page", std::to_string(page)}, {"include_adult", "false"}}),
-                    MediaType::Person);
+    return search(query, page, SearchFilter::All);
+}
+
+AsyncReq<PagedResult> Tmdb::search(const std::string& query, int page, SearchFilter filter) {
+    std::map<std::string, std::string> params = {
+        {"query", query}, {"page", std::to_string(page)}, {"include_adult", "false"}
+    };
+    switch (filter) {
+    case SearchFilter::Movies:
+        return pagedReq(withKey("/search/movie", params), MediaType::Movie);
+    case SearchFilter::Tv:
+        return pagedReq(withKey("/search/tv", params), MediaType::TV);
+    case SearchFilter::People:
+        return pagedReq(withKey("/search/person", params), MediaType::Person, true);
+    case SearchFilter::All:
+    default:
+        return pagedReq(withKey("/search/multi", params), MediaType::Movie, true);
+    }
 }
 
 AsyncReq<PagedResult> Tmdb::movieList(const std::string& endpoint) {

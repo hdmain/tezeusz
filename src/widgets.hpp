@@ -47,6 +47,9 @@ void spinner(ImDrawList* dl, ImVec2 ctr, float s, ImU32 col);
 
 namespace w {
 
+// Indigo orbiting-dots spinner (used on quit / player loading)
+void orbitSpinner(ImDrawList* dl, ImVec2 ctr, float radius = 14.f, float dotR = 3.2f);
+
 // returns drawn height; wraps text, clamps to maxLines with ellipsis
 float textClamped(ImDrawList* dl, ImVec2 pos, float maxW, const std::string& text,
                   ImFont* font, float fontSize, ImU32 col, int maxLines, float lineH = 0);
@@ -65,7 +68,7 @@ void voteCircle(ImDrawList* dl, ImVec2 pos, float r, double voteAvg);
 // rounded button. Returns true when clicked. alignRight: draws right-aligned ending at max.x
 bool button(ImDrawList* dl, const char* id, ImVec2 min, ImVec2 max, const std::string& label,
             ImU32 bg, ImU32 bgHover, ImU32 bgActive, ImU32 border, ImU32 textCol, ImFont* font, float fs,
-            float rounding = 6.0f, float iconGap = 0);
+            float rounding = 12.0f, float iconGap = 0);
 
 // icon-only square button (returns clicked)
 bool iconButton(ImDrawList* dl, const char* id, ImVec2 min, ImVec2 max, void (*icon)(ImDrawList*, ImVec2, float, ImU32),

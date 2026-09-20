@@ -221,6 +221,9 @@ if (WIN32)
         z # gzip for NapiProjekt subtitles (subs.cpp); zlib.h is on the compiler default path,
           # do NOT add it via include dirs — -isystem before the C++ sysroot breaks include_next
     )
+    # GUI subsystem — no black console window flashing beside the app.
+    set_target_properties(seerr PROPERTIES WIN32_EXECUTABLE TRUE)
+    target_link_options(seerr PRIVATE -mwindows)
     if(SEERR_BUNDLED_DEPS)
         target_link_options(seerr PRIVATE -static -static-libgcc -static-libstdc++)
     endif()

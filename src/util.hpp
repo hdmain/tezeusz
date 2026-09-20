@@ -24,4 +24,10 @@ std::string readFile(const std::string& path);
 bool writeFile(const std::string& path, const std::string& data);
 std::string exeDir();
 
+// Shared data root (fonts, icons, images). Resolves installed /usr/share/seerr
+// as well as the compile-time APP_ASSET_DIR used for local builds.
+std::string assetDir();
+// Translation JSON directory (…/locales).
+std::string localeDir();
+
 } // namespace util

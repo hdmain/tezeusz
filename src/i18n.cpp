@@ -337,12 +337,14 @@ void seedEnglish() {
 
 std::string tryReadLocale(const std::string& code) {
     const std::string name = code + ".json";
-    std::vector<std::string> paths;
+    std::vector<std::string> paths = {
+        util::localeDir() + "/" + name,
+        util::exeDir() + "/locales/" + name,
+        util::appDataPath("locales/" + name),
+    };
 #ifdef APP_LOCALE_DIR
     paths.push_back(std::string(APP_LOCALE_DIR) + "/" + name);
 #endif
-    paths.push_back(util::exeDir() + "/locales/" + name);
-    paths.push_back(util::appDataPath("locales/" + name));
     for (auto& p : paths) {
         std::string s = util::readFile(p);
         if (!s.empty()) return s;

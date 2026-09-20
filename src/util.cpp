@@ -6,14 +6,15 @@
 #else
 #include <unistd.h>
 #include <cstdlib>
-#include <filesystem>
 #endif
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 namespace util {
 
@@ -185,6 +186,91 @@ std::string exeDir() {
     size_t s = p.find_last_of('/');
     return s == std::string::npos ? "." : p.substr(0, s);
 #endif
+}
+
+namespace {
+
+std::string normalizeDir(const std::string& p) {
+    std::error_code ec;
+    auto c = std::filesystem::weakly_canonical(p, ec);
+    if (!ec) return c.string();
+    return p;
+}
+
+bool looksLikeAssetRoot(const std::string& dir) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    return fs::exists(dir + "/fonts/Inter-Regular.ttf", ec)
+        || fs::exists(dir + "/logo_full.png", ec);
+}
+
+bool looksLikeLocaleRoot(const std::string& dir) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    return fs::exists(dir + "/en.json", ec) || fs::exists(dir + "/pl.json", ec);
+}
+
+} // namespace
+
+std::string assetDir() {
+    static std::string cached;
+    if (!cached.empty()) return cached;
+
+    std::string exe = exeDir();
+    std::vector<std::string> cands = {
+        exe + "/../share/seerr",
+        exe + "/share/seerr",
+        "/usr/share/seerr",
+        "/usr/local/share/seerr",
+#ifdef APP_ASSET_DIR
+        APP_ASSET_DIR,
+#endif
+        exe,
+    };
+    for (auto& c : cands) {
+        std::string n = normalizeDir(c);
+        if (looksLikeAssetRoot(n)) {
+            cached = n;
+            return cached;
+        }
+    }
+#ifdef APP_ASSET_DIR
+    cached = APP_ASSET_DIR;
+#else
+    cached = ".";
+#endif
+    return cached;
+}
+
+std::string localeDir() {
+    static std::string cached;
+    if (!cached.empty()) return cached;
+
+    std::string assets = assetDir();
+    std::string exe = exeDir();
+    std::vector<std::string> cands = {
+        assets + "/locales",
+        exe + "/../share/seerr/locales",
+        exe + "/locales",
+        "/usr/share/seerr/locales",
+        "/usr/local/share/seerr/locales",
+#ifdef APP_LOCALE_DIR
+        APP_LOCALE_DIR,
+#endif
+    };
+    for (auto& c : cands) {
+        std::string n = normalizeDir(c);
+        if (looksLikeLocaleRoot(n)) {
+            cached = n;
+            return cached;
+        }
+    }
+#ifdef APP_LOCALE_DIR
+    cached = APP_LOCALE_DIR;
+#else
+    cached = assets + "/locales";
+#endif
+    return cached;
 }
 
 } // namespace util

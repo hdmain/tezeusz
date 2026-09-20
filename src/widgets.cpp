@@ -41,7 +41,7 @@ ImU32 theme::withA(ImU32 col, float alpha) {
 
 void initFonts() {
     ImGuiIO& io = ImGui::GetIO();
-    std::string base = std::string(APP_ASSET_DIR) + "/fonts/";
+    std::string base = util::assetDir() + "/fonts/";
     ImFontConfig cfg;
     cfg.OversampleH = 1;
     static ImVector<ImWchar> rangesPL;

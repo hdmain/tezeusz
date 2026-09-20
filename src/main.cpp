@@ -290,7 +290,7 @@ int main() {
 
     // assets
     {
-        std::string dir = std::string(APP_ASSET_DIR) + "/";
+        std::string dir = util::assetDir() + "/";
         g_logoTex = ImageCache::instance().loadLocal(dir + "logo_full.png", &g_logoW, &g_logoH);
 #ifdef _WIN32
         int iw = 0, ih = 0;

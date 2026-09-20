@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Seerr
+GenericName=Media Discovery
+Comment=Discover, request and download movies and TV shows
+Exec=seerr
+Icon=seerr
+Terminal=false
+Categories=AudioVideo;Video;Player;
+StartupNotify=true
+Keywords=movies;tv;torrent;seerr;jellyseerr;

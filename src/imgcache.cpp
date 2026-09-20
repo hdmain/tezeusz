@@ -81,7 +81,7 @@ void ImageCache::init() {
     imgswarm::init();
     nextStart_ = std::chrono::steady_clock::now();
     for (int i = 0; i < 2; i++) workers_.emplace_back([this] { workerLoop(); });
-    missingPosterTex = loadLocal(std::string(APP_ASSET_DIR) + "/poster_missing.png");
+    missingPosterTex = loadLocal(util::assetDir() + "/poster_missing.png");
 }
 
 void ImageCache::shutdown() {

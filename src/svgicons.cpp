@@ -113,7 +113,7 @@ GLuint rasterizeSvg(const std::string& path) {
 } // namespace
 
 void init() {
-    const std::string dir = std::string(APP_ASSET_DIR) + "/icons/";
+    const std::string dir = util::assetDir() + "/icons/";
     for (int i = 0; i < COUNT; i++) {
         const char* f = fileFor((Id)i);
         if (!f) continue;

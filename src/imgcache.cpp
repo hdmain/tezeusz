@@ -43,7 +43,7 @@ static std::string cacheFileName(const std::string& url) {
 }
 
 static std::string cachePath(const std::string& url) {
-    return cacheRoot() + "\\" + cacheFileName(url);
+    return (fs::path(cacheRoot()) / cacheFileName(url)).string();
 }
 
 static bool readBinaryFile(const std::string& path, std::vector<uint8_t>* out) {

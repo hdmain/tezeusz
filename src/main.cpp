@@ -23,6 +23,7 @@
 #include "player.hpp"
 #include "subs.hpp"
 #include "i18n.hpp"
+#include "gl_compat.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -263,6 +264,12 @@ int main() {
     glfwWindowHint(GLFW_SAMPLES, 0); // UI doesn't need MSAA — saves GPU fillrate
 
     GLFWwindow* win = glfwCreateWindow(1500, 900, "Seerr C++ - Media Discovery", nullptr, nullptr);
+    if (!win) {
+        // Some drivers reject Core 3.3 — fall back to any available OpenGL.
+        glfwDefaultWindowHints();
+        glfwWindowHint(GLFW_SAMPLES, 0);
+        win = glfwCreateWindow(1500, 900, "Seerr C++ - Media Discovery", nullptr, nullptr);
+    }
     if (!win) { glfwTerminate(); return 1; }
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
@@ -273,10 +280,24 @@ int main() {
 #endif
     platform::applyDarkTitlebar(win);
 
+    if (!seerrLoadGL()) {
+        fprintf(stderr, "seerr: failed to load OpenGL functions\n");
+        glfwDestroyWindow(win);
+        glfwTerminate();
+        return 1;
+    }
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;
+
+    // ImGui's own GL loader (separate from seerrLoadGL) must init before first frame.
+    ImGui_ImplGlfw_InitForOpenGL(win, true);
+    if (!ImGui_ImplOpenGL3_Init("#version 330")) {
+        fprintf(stderr, "seerr: OpenGL 3.3 renderer init failed\n");
+        return 1;
+    }
 
     initFonts();
     i18n::init();
@@ -329,8 +350,6 @@ int main() {
     st.ScrollbarSize = 10;
     st.GrabMinSize = 14;
 
-    ImGui_ImplGlfw_InitForOpenGL(win, true);
-    ImGui_ImplOpenGL3_Init("#version 330");
     player::bindWindow(win);
 
     App& a = app();

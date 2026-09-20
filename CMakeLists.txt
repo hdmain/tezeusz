@@ -168,6 +168,7 @@ add_library(imgui STATIC
     ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
 )
 target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
+target_compile_definitions(imgui PUBLIC GLFW_INCLUDE_NONE)
 
 if (WIN32)
     target_include_directories(imgui PUBLIC ${GLFW_DIR}/include)
@@ -199,6 +200,7 @@ add_executable(seerr
     src/player.cpp
     src/subs.cpp
     src/i18n.cpp
+    src/gl_load.cpp
 )
 target_include_directories(seerr PRIVATE
     src
@@ -207,6 +209,7 @@ target_include_directories(seerr PRIVATE
 target_compile_definitions(seerr PRIVATE
     APP_ASSET_DIR="${CMAKE_SOURCE_DIR}/vendor"
     APP_LOCALE_DIR="${CMAKE_SOURCE_DIR}/locales"
+    GLFW_INCLUDE_NONE
 )
 target_link_libraries(seerr PRIVATE imgui ${SEERR_TORRENT_TARGET} Boost::headers)
 

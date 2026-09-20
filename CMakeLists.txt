@@ -285,5 +285,5 @@ set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS OFF)
 # Fallback Depends if shlibdeps is unavailable in the packaging environment
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
-    "libglfw3 | libglfw3-wayland, libcurl4 | libcurl3t64, zlib1g, libstdc++6")
+    "libglfw3 | libglfw3-wayland, libcurl4 | libcurl3t64, zlib1g, libstdc++6, libvlc5 | vlc")
 include(CPack)

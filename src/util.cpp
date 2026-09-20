@@ -273,4 +273,45 @@ std::string localeDir() {
     return cached;
 }
 
+std::string libvlcDir() {
+#ifdef _WIN32
+    static std::string cached;
+    static bool once = false;
+    if (once) return cached;
+    once = true;
+
+    auto hasDll = [](const std::string& dir) {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        return fs::exists(dir + "\\libvlc.dll", ec) || fs::exists(dir + "/libvlc.dll", ec);
+    };
+
+    std::string exe = exeDir();
+    std::string assets = assetDir();
+    std::vector<std::string> cands = {
+        exe + "\\libvlc",
+        exe + "/libvlc",
+        assets + "\\libvlc",
+        assets + "/libvlc",
+#ifdef APP_ASSET_DIR
+        std::string(APP_ASSET_DIR) + "\\libvlc",
+#endif
+        "C:\\Program Files\\VideoLAN\\VLC",
+        "C:\\Program Files (x86)\\VideoLAN\\VLC",
+    };
+    // Also accept VLC laid flat next to the exe (some portable layouts).
+    cands.insert(cands.begin(), exe);
+
+    for (auto& c : cands) {
+        if (hasDll(c)) {
+            cached = normalizeDir(c);
+            return cached;
+        }
+    }
+    return cached; // empty
+#else
+    return {};
+#endif
+}
+
 } // namespace util

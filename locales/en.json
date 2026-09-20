@@ -247,7 +247,7 @@
   "player.stats": "Stats for nerds",
   "player.hide_stats": "Hide Stats for nerds",
   "player.shortcuts": "Space pause | â/â Â±10s | F fullscreen | M mute | C subtitles | ` / Ctrl+Shift+I stats | Esc",
-  "player.no_vlc": "libVLC not found (vendor/libvlc or VLC)",
+  "player.no_vlc": "libVLC not found — install VLC or place libvlc next to seerr.exe",
   "player.vlc_load_failed": "Failed to load libVLC",
   "yt.connecting": "Connecting to YouTubeâ¦",
   "yt.loading": "Loading trailerâ¦",

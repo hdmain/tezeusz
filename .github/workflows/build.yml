@@ -39,6 +39,9 @@ jobs:
             mingw-w64-x86_64-zlib
             mingw-w64-x86_64-ntldd
             zip
+            unzip
+            curl
+            mingw-w64-x86_64-curl
 
       - name: Version
         id: ver

@@ -161,10 +161,58 @@ cat > "$OUT/README-PORTABLE.txt" <<EOF
 Seerr portable (Windows) ${VER}
 
 Extract anywhere and run seerr.exe.
-Fonts, icons, locales and images are bundled next to the executable.
+Fonts, icons, locales, images and libVLC are bundled next to the executable.
 
 Config / cache: %APPDATA%\\SeerrCpp
 EOF
 
+# Bundle libVLC so playback works without a system VLC install.
+VLC_VER="${SEERR_VLC_VERSION:-3.0.21}"
+VLC_ZIP_URL="${SEERR_VLC_URL:-https://get.videolan.org/vlc/${VLC_VER}/win64/vlc-${VLC_VER}-win64.zip}"
+VLC_CACHE="${ROOT}/build/vlc-cache"
+mkdir -p "$VLC_CACHE"
+VLC_ZIP="$VLC_CACHE/vlc-${VLC_VER}-win64.zip"
+
+if [[ ! -f "$OUT/libvlc/libvlc.dll" ]]; then
+  echo "Fetching VLC ${VLC_VER} for portable libvlc…"
+  if [[ ! -f "$VLC_ZIP" ]]; then
+    if command -v curl >/dev/null 2>&1; then
+      curl -L --retry 3 --fail -o "$VLC_ZIP" "$VLC_ZIP_URL"
+    elif command -v wget >/dev/null 2>&1; then
+      wget -O "$VLC_ZIP" "$VLC_ZIP_URL"
+    else
+      echo "warning: no curl/wget — skipping libvlc bundle" >&2
+      VLC_ZIP=""
+    fi
+  fi
+  if [[ -n "$VLC_ZIP" && -f "$VLC_ZIP" ]]; then
+    VLC_EXTRACT="$VLC_CACHE/extract-${VLC_VER}"
+    rm -rf "$VLC_EXTRACT"
+    mkdir -p "$VLC_EXTRACT"
+    unzip -q -o "$VLC_ZIP" -d "$VLC_EXTRACT"
+    # Zip root is usually vlc-3.0.21/
+    SRC="$(find "$VLC_EXTRACT" -maxdepth 2 -type f -name libvlc.dll | head -n1 || true)"
+    if [[ -n "$SRC" ]]; then
+      SRC_DIR="$(dirname "$SRC")"
+      mkdir -p "$OUT/libvlc"
+      cp -f "$SRC_DIR/libvlc.dll" "$OUT/libvlc/"
+      cp -f "$SRC_DIR/libvlccore.dll" "$OUT/libvlc/" 2>/dev/null || true
+      if [[ -d "$SRC_DIR/plugins" ]]; then
+        cp -a "$SRC_DIR/plugins" "$OUT/libvlc/"
+      fi
+      # A few runtime DLLs VLC ships beside libvlc
+      for d in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+        [[ -f "$SRC_DIR/$d" ]] && cp -f "$SRC_DIR/$d" "$OUT/libvlc/" || true
+      done
+      echo "Bundled libvlc from $SRC_DIR"
+    else
+      echo "warning: libvlc.dll not found inside VLC zip" >&2
+    fi
+  fi
+fi
+
 echo "Portable package ready: $OUT (${COPIED} MinGW DLLs)"
 ls -la "$OUT" | head -n 60
+if [[ -d "$OUT/libvlc" ]]; then
+  ls -la "$OUT/libvlc" | head -n 20
+fi

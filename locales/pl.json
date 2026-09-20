@@ -247,7 +247,7 @@
   "player.stats": "Stats for nerds",
   "player.hide_stats": "Ukryj Stats for nerds",
   "player.shortcuts": "Spacja pauza | ←/→ ±10s | F full | M mute | C napisy | ` / Ctrl+Shift+I stats | Esc",
-  "player.no_vlc": "Brak libVLC (vendor/libvlc lub VLC)",
+  "player.no_vlc": "Brak libVLC — zainstaluj VLC albo umieść folder libvlc obok seerr.exe",
   "player.vlc_load_failed": "Nie załadowano libVLC",
   "yt.connecting": "Łączenie z YouTube…",
   "yt.loading": "Ładowanie zwiastunu…",

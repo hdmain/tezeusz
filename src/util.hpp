@@ -29,5 +29,8 @@ std::string exeDir();
 std::string assetDir();
 // Translation JSON directory (…/locales).
 std::string localeDir();
+// Directory containing libvlc.dll + plugins (Windows). Empty if not found.
+// On Linux playback uses system libvlc via soname; this may still be empty.
+std::string libvlcDir();
 
 } // namespace util

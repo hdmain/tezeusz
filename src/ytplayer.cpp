@@ -1,5 +1,6 @@
 #include "ytplayer.hpp"
 #include "i18n.hpp"
+#include "util.hpp"
 
 #ifdef _WIN32
 
@@ -15,7 +16,7 @@
 #include <string>
 #include <filesystem>
 
-// libVLC loaded at runtime from vendor/libvlc (no PE import → exe starts without DLLs beside it).
+// libVLC loaded at runtime (no PE import → exe starts without DLLs beside it).
 struct libvlc_instance_t;
 struct libvlc_media_t;
 struct libvlc_media_player_t;
@@ -118,16 +119,7 @@ void centerOnParent(HWND hwnd, HWND parent) {
 }
 
 std::string libvlcRoot() {
-    std::string v = std::string(APP_ASSET_DIR) + "\\libvlc";
-    if (fs::exists(v + "\\libvlc.dll")) return v;
-    const char* candidates[] = {
-        "C:\\Program Files\\VideoLAN\\VLC",
-        "C:\\Program Files (x86)\\VideoLAN\\VLC",
-    };
-    for (auto* c : candidates) {
-        if (fs::exists(std::string(c) + "\\libvlc.dll")) return c;
-    }
-    return v;
+    return util::libvlcDir();
 }
 
 template <typename T>
@@ -139,11 +131,11 @@ bool loadFn(HMODULE m, const char* name, T& out) {
 bool loadLibVlc(std::string* err) {
     if (g_libvlcMod) return true;
     const std::string root = libvlcRoot();
-    const std::wstring dll = widen(root + "\\libvlc.dll");
-    if (!fs::exists(root + "\\libvlc.dll")) {
-        if (err) *err = "brak libvlc.dll w " + root;
+    if (root.empty() || !fs::exists(root + "\\libvlc.dll")) {
+        if (err) *err = i18n::tr("player.no_vlc");
         return false;
     }
+    const std::wstring dll = widen(root + "\\libvlc.dll");
     SetDllDirectoryW(widen(root).c_str());
     SetEnvironmentVariableA("VLC_PLUGIN_PATH", (root + "\\plugins").c_str());
     g_libvlcMod = LoadLibraryW(dll.c_str());

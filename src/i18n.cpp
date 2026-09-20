@@ -299,7 +299,7 @@ void seedEnglish() {
     g_en["player.hide_stats"] = "Hide Stats for nerds";
     g_en["player.shortcuts"] =
         "Space pause | ←/→ ±10s | F fullscreen | M mute | C subtitles | ` / Ctrl+Shift+I stats | Esc";
-    g_en["player.no_vlc"] = "libVLC not found (vendor/libvlc or VLC)";
+    g_en["player.no_vlc"] = "libVLC not found — install VLC or place libvlc next to seerr.exe";
     g_en["player.vlc_load_failed"] = "Failed to load libVLC";
     g_en["yt.connecting"] = "Connecting to YouTube…";
     g_en["yt.loading"] = "Loading trailer…";

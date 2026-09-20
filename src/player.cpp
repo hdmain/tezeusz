@@ -171,22 +171,22 @@ PendingOpen g_pending;
 bool loadVlc(std::string* err) {
     if (g_mod) return true;
 #ifdef _WIN32
-    std::string root = std::string(APP_ASSET_DIR) + "\\libvlc";
-    if (!fs::exists(root + "\\libvlc.dll")) {
-        root.clear();
-        const char* cands[] = {
-            "C:\\Program Files\\VideoLAN\\VLC",
-            "C:\\Program Files (x86)\\VideoLAN\\VLC",
-        };
-        for (auto* c : cands)
-            if (fs::exists(std::string(c) + "\\libvlc.dll")) { root = c; break; }
-    }
+    std::string root = util::libvlcDir();
     if (root.empty()) { if (err) *err = i18n::tr("player.no_vlc"); return false; }
     SetDllDirectoryW(widen(root).c_str());
     SetEnvironmentVariableA("VLC_PLUGIN_PATH", (root + "\\plugins").c_str());
     g_mod = loadLib(widen(root + "\\libvlc.dll").c_str());
 #else
-    for (auto* c : {"libvlc.so.5", "libvlc.so"}) { g_mod = loadLib(c); if (g_mod) break; }
+    // System packages: libvlc5 / vlc
+    for (auto* c : {
+             "libvlc.so.5",
+             "libvlc.so",
+             "/usr/lib/x86_64-linux-gnu/libvlc.so.5",
+             "/usr/lib/libvlc.so.5",
+         }) {
+        g_mod = loadLib(c);
+        if (g_mod) break;
+    }
 #endif
     if (!g_mod) { if (err) *err = i18n::tr("player.vlc_load_failed"); return false; }
 #define L(n) do { p_##n = (decltype(p_##n))getSym(g_mod, #n); if (!p_##n) { if (err) *err = "brak " #n; closeLib(g_mod); g_mod = nullptr; return false; } } while (0)

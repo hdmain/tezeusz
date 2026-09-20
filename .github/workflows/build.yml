@@ -31,13 +31,13 @@ jobs:
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-boost
             mingw-w64-x86_64-libtorrent-rasterbar
+            mingw-w64-x86_64-zlib
 
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DSEERR_BUNDLED_DEPS=OFF \
-            -Dencryption=OFF
+            -DSEERR_BUNDLED_DEPS=OFF
 
       - name: Build
         run: cmake --build build --config Release
@@ -63,7 +63,8 @@ jobs:
             libglfw3-dev libgl1-mesa-dev \
             libcurl4-openssl-dev \
             libboost-dev \
-            libtorrent-rasterbar-dev
+            libtorrent-rasterbar-dev \
+            zlib1g-dev
 
       - name: Configure
         run: |

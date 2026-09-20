@@ -10,7 +10,6 @@
 #include <libtorrent/bencode.hpp>
 #include <libtorrent/entry.hpp>
 #include <libtorrent/hasher.hpp>
-#include <libtorrent/hex.hpp>
 #include <libtorrent/kademlia/ed25519.hpp>
 #include <libtorrent/kademlia/item.hpp>
 
@@ -71,13 +70,35 @@ std::string fileNameForUrl(const std::string& url) {
     return buf;
 }
 
+// Local hex helpers — libtorrent::aux::{to,from}_hex are TORRENT_EXTRA_EXPORT
+// and are not linked from the shared MinGW package on CI.
 std::string toHex(lt::sha1_hash const& ih) {
-    return lt::aux::to_hex({ih.data(), std::size_t(lt::sha1_hash::size())});
+    static const char* kHex = "0123456789abcdef";
+    std::string out;
+    out.resize(lt::sha1_hash::size() * 2);
+    auto const* p = reinterpret_cast<unsigned char const*>(ih.data());
+    for (int i = 0; i < lt::sha1_hash::size(); ++i) {
+        out[(size_t)i * 2] = kHex[p[i] >> 4];
+        out[(size_t)i * 2 + 1] = kHex[p[i] & 0xf];
+    }
+    return out;
 }
 
 bool fromHex(const std::string& hex, lt::sha1_hash& out) {
-    if (hex.size() != 40) return false;
-    return lt::aux::from_hex(hex, out.data());
+    if (hex.size() != (size_t)lt::sha1_hash::size() * 2) return false;
+    auto* dest = reinterpret_cast<unsigned char*>(out.data());
+    auto nibble = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    for (size_t i = 0; i < hex.size(); i += 2) {
+        int hi = nibble(hex[i]), lo = nibble(hex[i + 1]);
+        if (hi < 0 || lo < 0) return false;
+        dest[i / 2] = (unsigned char)((hi << 4) | lo);
+    }
+    return true;
 }
 
 void trimSeedsLocked() {

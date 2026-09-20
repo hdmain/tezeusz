@@ -57,7 +57,8 @@ struct App {
 App& app();
 
 // TMDB api key config (config.json next to exe / in %APPDATA%\SeerrCpp, field "tmdb_api_key";
-// env var TMDB_API_KEY also honored). Falls back to the public key seerr itself ships.
+// env var TMDB_API_KEY also honored). UI language is stack.json "uiLanguage" (default en).
+// Falls back to the public key seerr itself ships.
 namespace cfg { const char* apiKey(); const char* language(); }
 
 // page render entry points (pages.cpp)
@@ -74,11 +75,11 @@ void renderBlocklist();
 void renderIssues();
 void renderUsers();
 void renderSettings();
-void renderRequestQualityDialog(); // modal: wybór jakości przy „Zażądaj”
+void renderRequestQualityDialog(); // modal: jakość + sezony/odcinki
 void openRequestQualityDialog(MediaType type, int id, const std::string& title,
                               const std::string& year, const std::string& imdbId,
                               const std::string& originalTitle,
-                              const std::vector<int>& seasons = {});
+                              const std::vector<SeasonInfo>& availableSeasons = {});
 
 // GLFW Win32 HWND for owned popups (trailer player). Set from main.
 void* appMainHwnd();

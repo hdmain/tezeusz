@@ -2,6 +2,7 @@
 #include "imgcache.hpp"
 #include "svgicons.hpp"
 #include "util.hpp"
+#include "i18n.hpp"
 #include <cmath>
 #include <cstdio>
 #include <algorithm>
@@ -408,8 +409,38 @@ void w::imageCoverRounded(ImDrawList* dl, GLuint tex, int imgW, int imgH, ImVec2
     dl->AddImageRounded((ImTextureID)(intptr_t)tex, min, max, uv0, uv1, tint, r);
 }
 
-void w::gradientRect(ImDrawList* dl, ImVec2 min, ImVec2 max, ImU32 topCol, ImU32 botCol) {
-    dl->AddRectFilledMultiColor(min, max, topCol, topCol, botCol, botCol);
+void w::gradientRect(ImDrawList* dl, ImVec2 min, ImVec2 max, ImU32 topCol, ImU32 botCol, float rounding) {
+    if (rounding <= 0.5f) {
+        dl->AddRectFilledMultiColor(min, max, topCol, topCol, botCol, botCol);
+        return;
+    }
+    // Rounded fill + vertical RGBA gradient (ImGui's ShadeVerts keeps alpha — we need it too)
+    const int v0 = dl->VtxBuffer.Size;
+    dl->AddRectFilled(min, max, IM_COL32_WHITE, rounding);
+    const int v1 = dl->VtxBuffer.Size;
+    const float h = max.y - min.y;
+    if (h <= 0.0f || v1 <= v0) return;
+    const float invH = 1.0f / h;
+    const int r0 = (int)((topCol >> IM_COL32_R_SHIFT) & 0xFF);
+    const int g0 = (int)((topCol >> IM_COL32_G_SHIFT) & 0xFF);
+    const int b0 = (int)((topCol >> IM_COL32_B_SHIFT) & 0xFF);
+    const int a0 = (int)((topCol >> IM_COL32_A_SHIFT) & 0xFF);
+    const int dr = (int)((botCol >> IM_COL32_R_SHIFT) & 0xFF) - r0;
+    const int dg = (int)((botCol >> IM_COL32_G_SHIFT) & 0xFF) - g0;
+    const int db = (int)((botCol >> IM_COL32_B_SHIFT) & 0xFF) - b0;
+    const int da = (int)((botCol >> IM_COL32_A_SHIFT) & 0xFF) - a0;
+    ImDrawVert* vertStart = dl->VtxBuffer.Data + v0;
+    ImDrawVert* vertEnd = dl->VtxBuffer.Data + v1;
+    for (ImDrawVert* v = vertStart; v < vertEnd; ++v) {
+        float t = (v->pos.y - min.y) * invH;
+        if (t < 0.f) t = 0.f;
+        else if (t > 1.f) t = 1.f;
+        int r = (int)(r0 + dr * t);
+        int g = (int)(g0 + dg * t);
+        int b = (int)(b0 + db * t);
+        int a = (int)(a0 + da * t);
+        v->col = IM_COL32(r, g, b, a);
+    }
 }
 
 // --------------------------------------------------------------------- small widgets
@@ -564,12 +595,12 @@ int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool wat
             return (c & 0x00FFFFFF) | ((ImU32)a << 24);
         };
         float oa = (giveUp && !hov) ? 1.0f : ha;
-        w::gradientRect(dl, min, max, scaleA(C.ovTop, oa), scaleA(C.ovBot, oa));
+        w::gradientRect(dl, min, max, scaleA(C.ovTop, oa), scaleA(C.ovBot, oa), rad);
     }
 
     {
-        const char* typeLabel = isPerson ? "OSOBA"
-            : (item.mediaType == MediaType::TV ? "SERIAL" : "FILM");
+        const char* typeLabel = isPerson ? i18n::tr("common.person")
+            : (item.mediaType == MediaType::TV ? i18n::tr("common.tv") : i18n::tr("common.movie"));
         ImU32 bg = isPerson ? C.badgePerson
             : (item.mediaType == MediaType::TV ? C.badgeTv : C.badgeMovie);
         ImU32 bd = isPerson ? C.badgePersonBd
@@ -670,7 +701,7 @@ int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool wat
         bool rh = ImGui::IsItemHovered();
         bool ra = ImGui::IsItemActive();
         if (rh || ra) dl->AddRectFilled(bp, be, theme::withA(ra ? C.reqA : C.reqH, ha), 12);
-        const char* lbl = "Zażądaj";
+        const char* lbl = i18n::tr("common.request");
         ImVec2 ts = G.m16->CalcTextSizeA(13, FLT_MAX, 0, lbl);
         float cx = (bp.x + be.x) / 2, total = ts.x + 18;
         icons::download(dl, ImVec2(cx - total / 2 + 6, (bp.y + be.y) / 2), 13, IM_COL32(255, 255, 255, ba));

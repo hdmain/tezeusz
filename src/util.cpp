@@ -1,4 +1,5 @@
 #include "util.hpp"
+#include "i18n.hpp"
 #ifdef _WIN32
 #include <windows.h>
 #include <shlobj.h>
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 
 namespace util {
 
@@ -77,17 +79,20 @@ std::string yearOf(const std::string& date) {
     return "";
 }
 
-static const char* MONTHS_PL[] = { "stycznia","lutego","marca","kwietnia","maja","czerwca",
-                                   "lipca","sierpnia","września","października","listopada","grudnia" };
-
-std::string formatDatePl(const std::string& iso) {
+std::string formatDate(const std::string& iso) {
     // 2024-05-10
     if (iso.size() < 10 || iso[4] != '-') return iso;
     int m = atoi(iso.substr(5, 2).c_str());
     int d = atoi(iso.substr(8, 2).c_str());
     if (m < 1 || m > 12) return iso;
+    char key[16];
+    std::snprintf(key, sizeof(key), "month.%d", m);
+    const char* month = i18n::tr(key);
     std::ostringstream os;
-    os << d << " " << MONTHS_PL[m - 1] << " " << iso.substr(0, 4);
+    if (i18n::language() == "pl")
+        os << d << " " << month << " " << iso.substr(0, 4);
+    else
+        os << month << " " << d << ", " << iso.substr(0, 4);
     return os.str();
 }
 

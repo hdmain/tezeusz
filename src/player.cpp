@@ -1,9 +1,12 @@
 ﻿#include "player.hpp"
+#include "stack.hpp"
+#include "util.hpp"
 #include "core.hpp"
 #include "gl_compat.hpp"
 #include "widgets.hpp"
 #include "platform.hpp"
 #include "svgicons.hpp"
+#include "i18n.hpp"
 #include <GLFW/glfw3.h>
 #include "imgui.h"
 #include <atomic>
@@ -178,14 +181,14 @@ bool loadVlc(std::string* err) {
         for (auto* c : cands)
             if (fs::exists(std::string(c) + "\\libvlc.dll")) { root = c; break; }
     }
-    if (root.empty()) { if (err) *err = "Brak libVLC (vendor/libvlc lub VLC)"; return false; }
+    if (root.empty()) { if (err) *err = i18n::tr("player.no_vlc"); return false; }
     SetDllDirectoryW(widen(root).c_str());
     SetEnvironmentVariableA("VLC_PLUGIN_PATH", (root + "\\plugins").c_str());
     g_mod = loadLib(widen(root + "\\libvlc.dll").c_str());
 #else
     for (auto* c : {"libvlc.so.5", "libvlc.so"}) { g_mod = loadLib(c); if (g_mod) break; }
 #endif
-    if (!g_mod) { if (err) *err = "Nie zaladowano libVLC"; return false; }
+    if (!g_mod) { if (err) *err = i18n::tr("player.vlc_load_failed"); return false; }
 #define L(n) do { p_##n = (decltype(p_##n))getSym(g_mod, #n); if (!p_##n) { if (err) *err = "brak " #n; closeLib(g_mod); g_mod = nullptr; return false; } } while (0)
     L(libvlc_new); L(libvlc_release); L(libvlc_media_new_path); L(libvlc_media_release);
     L(libvlc_media_player_new_from_media); L(libvlc_media_player_release);
@@ -291,7 +294,7 @@ void onEvent(const libvlc_event_t* ev, void*) {
     if (ev->type == libvlc_MediaPlayerPlaying) { g_st.playing = true; g_st.paused = false; g_st.ready = true; g_st.loading = false; g_tracksDirty = true; }
     if (ev->type == libvlc_MediaPlayerPaused) g_st.paused = true;
     if (ev->type == libvlc_MediaPlayerStopped || ev->type == libvlc_MediaPlayerEndReached) { g_st.playing = false; g_st.paused = true; }
-    if (ev->type == libvlc_MediaPlayerEncounteredError) { g_st.failed = true; g_st.loading = false; g_st.error = "Blad odtwarzania"; }
+    if (ev->type == libvlc_MediaPlayerEncounteredError) { g_st.failed = true; g_st.loading = false; g_st.error = i18n::tr("player.error"); }
 }
 void refreshTracks() {
     if (!g_mp) return;
@@ -302,6 +305,27 @@ void refreshTracks() {
             g_st.subtitles.push_back({t->i_id, t->psz_name ? t->psz_name : ("Sub " + std::to_string(t->i_id))});
         p_libvlc_track_description_list_release(list);
         g_st.subtitleId = p_libvlc_video_get_spu(g_mp);
+
+        // Prefer preferred language, then EN (Bazarr-style)
+        std::string pref = util::lower(stack::StackConfig::get().subsPreferredLang);
+        if (pref.empty()) pref = "pl";
+        auto matchLang = [](const std::string& name, const std::string& lang) {
+            std::string n = util::lower(name);
+            return n.find(lang) != std::string::npos ||
+                   (lang == "pl" && (n.find("polski") != std::string::npos || n.find("polish") != std::string::npos)) ||
+                   (lang == "en" && (n.find("english") != std::string::npos || n.find("angiel") != std::string::npos));
+        };
+        int pick = -1;
+        for (auto& t : g_st.subtitles)
+            if (t.id >= 0 && matchLang(t.name, pref)) { pick = t.id; break; }
+        if (pick < 0 && pref != "en") {
+            for (auto& t : g_st.subtitles)
+                if (t.id >= 0 && matchLang(t.name, "en")) { pick = t.id; break; }
+        }
+        if (pick >= 0 && pick != g_st.subtitleId) {
+            p_libvlc_video_set_spu(g_mp, pick);
+            g_st.subtitleId = pick;
+        }
     }
     if (auto* list = p_libvlc_audio_get_track_description(g_mp)) {
         for (auto* t = list; t; t = t->p_next)
@@ -373,7 +397,7 @@ void applyPendingOpen() {
     if (!p.ok) {
         g_st.failed = true;
         g_st.loading = false;
-        g_st.error = p.error.empty() ? "Nie udalo sie otworzyc" : p.error;
+        g_st.error = p.error.empty() ? i18n::tr("player.open_failed") : p.error;
         if (p.mp || p.vlc)
             core::enqueue([mp = p.mp, vlc = p.vlc]() { releaseVlcObjects(mp, vlc); });
         return;
@@ -409,15 +433,21 @@ void startOpenJob(uint64_t gen, std::string path, int volume) {
         std::string err;
         if (!loadVlc(&err)) { fail(err); return; }
         std::error_code ec;
-        if (!fs::exists(path, ec)) { fail("Plik nie istnieje"); return; }
+        if (!fs::exists(path, ec)) { fail(i18n::tr("player.file_missing")); return; }
 
+        std::string pref = util::lower(stack::StackConfig::get().subsPreferredLang);
+        if (pref.empty()) pref = "pl";
+        std::string subLangArg = "--sub-language=" + pref + ",en";
         const char* args[] = {
             "--no-video-title-show",
             "--quiet",
             "--network-caching=300",
             "--file-caching=300",
+            "--sub-autodetect-file",
+            "--sub-autodetect-fuzzy=1",
+            subLangArg.c_str(),
         };
-        auto* vlc = p_libvlc_new(4, args);
+        auto* vlc = p_libvlc_new(7, args);
         if (!vlc) vlc = p_libvlc_new(0, nullptr);
         if (!vlc) { fail("libvlc_new failed"); return; }
         out.vlc = vlc;
@@ -425,7 +455,7 @@ void startOpenJob(uint64_t gen, std::string path, int volume) {
         if (gen != g_openGen.load()) { releaseVlcObjects(nullptr, vlc); return; }
 
         auto* media = p_libvlc_media_new_path(vlc, path.c_str());
-        if (!media) { fail("Nie otwarto pliku"); return; }
+        if (!media) { fail(i18n::tr("player.file_open_failed")); return; }
         auto* mp = p_libvlc_media_player_new_from_media(media);
         p_libvlc_media_release(media);
         if (!mp) { fail("media_player failed"); return; }
@@ -766,24 +796,24 @@ bool render() {
     } else if (g_st.loading) {
         ImVec2 c(wpos.x + wsize.x * 0.5f, wpos.y + wsize.y * 0.5f - 8.f);
         w::orbitSpinner(dl, c, 16.f, 3.6f);
-        const char* msg = "Ładowanie…";
+        const char* msg = i18n::tr("player.loading");
         ImFont* f = G.r16 ? G.r16 : ImGui::GetFont();
         float fs = G.r16 ? 15.f : ImGui::GetFontSize();
         ImVec2 ts = f->CalcTextSizeA(fs, FLT_MAX, 0, msg);
         dl->AddText(f, fs, ImVec2(c.x - ts.x * 0.5f, c.y + 36.f), IM_COL32(156, 163, 175, 255), msg);
     } else if (g_st.failed) {
-        const char* msg = g_st.error.empty() ? "Błąd odtwarzania" : g_st.error.c_str();
+        const char* msg = g_st.error.empty() ? i18n::tr("player.error") : g_st.error.c_str();
         ImVec2 ts = ImGui::CalcTextSize(msg);
         dl->AddText(ImVec2(wpos.x + (wsize.x - ts.x) * 0.5f, wpos.y + (wsize.y - ts.y) * 0.5f),
                     IM_COL32(248, 113, 113, 255), msg);
         ImGui::SetCursorScreenPos(ImVec2(wpos.x + wsize.x * 0.5f - 110, wpos.y + wsize.y * 0.5f + 36));
-        if (ImGui::Button("Otworz zewnetrznie", ImVec2(200, 34))) platform::openPath(g_st.path);
+        if (ImGui::Button(i18n::tr("player.open_external"), ImVec2(200, 34))) platform::openPath(g_st.path);
         ImGui::SameLine();
-        if (ImGui::Button("Zamknij", ImVec2(90, 34))) close();
+        if (ImGui::Button(i18n::tr("common.close"), ImVec2(90, 34))) close();
     } else {
         ImVec2 c(wpos.x + wsize.x * 0.5f, wpos.y + wsize.y * 0.5f - 8.f);
         w::orbitSpinner(dl, c, 16.f, 3.6f);
-        const char* msg = "Ładowanie…";
+        const char* msg = i18n::tr("player.loading");
         ImFont* f = G.r16 ? G.r16 : ImGui::GetFont();
         float fs = G.r16 ? 15.f : ImGui::GetFontSize();
         ImVec2 ts = f->CalcTextSizeA(fs, FLT_MAX, 0, msg);
@@ -976,27 +1006,27 @@ bool render() {
         ImGui::Begin(title, &flag, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar);
         ImGui::TextUnformatted(title);
         ImGui::Separator();
-        if (off && ImGui::Selectable("Wylaczone", cur < 0)) { apply(-1); flag = false; }
+        if (off && ImGui::Selectable(i18n::tr("player.off"), cur < 0)) { apply(-1); flag = false; }
         for (auto& t : tracks)
             if (ImGui::Selectable(t.name.c_str(), t.id == cur)) { apply(t.id); flag = false; }
         ImGui::End();
         ImGui::PopStyleColor();
     };
-    popup("Napisy", g_st.subtitles, g_st.subtitleId, true, g_showSubsMenu, [](int id) { setSubtitle(id); });
-    popup("Sciezka audio", g_st.audioTracks, g_st.audioId, false, g_showAudioMenu, [](int id) { setAudioTrack(id); });
+    popup(i18n::tr("player.subtitles"), g_st.subtitles, g_st.subtitleId, true, g_showSubsMenu, [](int id) { setSubtitle(id); });
+    popup(i18n::tr("player.audio_track"), g_st.audioTracks, g_st.audioId, false, g_showAudioMenu, [](int id) { setAudioTrack(id); });
 
     if (g_showSettings) {
         ImGui::SetNextWindowPos(ImVec2(wpos.x + wsize.x - 320, wpos.y + wsize.y - 340));
         ImGui::SetNextWindowSize(ImVec2(300, 260));
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.11f, 0.11f, 0.13f, 0.97f));
         ImGui::Begin("##pset", &g_showSettings, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar);
-        ImGui::TextUnformatted("Ustawienia");
+        ImGui::TextUnformatted(i18n::tr("player.settings"));
         ImGui::Separator();
-        if (ImGui::Button(g_st.fullscreen ? "Okno" : "Pelny ekran", ImVec2(-1, 32))) toggleFullscreen();
-        if (ImGui::Button("Napisy", ImVec2(-1, 32))) { g_showSettings = false; g_showSubsMenu = true; }
-        if (ImGui::Button("Audio", ImVec2(-1, 32))) { g_showSettings = false; g_showAudioMenu = true; }
-        if (ImGui::Button(g_showStats ? "Ukryj Stats for nerds" : "Stats for nerds", ImVec2(-1, 32))) toggleStats();
-        ImGui::TextWrapped("Spacja pauza | <-/-> +/-10s | F full | M mute | C napisy | ` / Ctrl+Shift+I stats | Esc");
+        if (ImGui::Button(g_st.fullscreen ? i18n::tr("player.window") : i18n::tr("player.fullscreen"), ImVec2(-1, 32))) toggleFullscreen();
+        if (ImGui::Button(i18n::tr("player.subtitles"), ImVec2(-1, 32))) { g_showSettings = false; g_showSubsMenu = true; }
+        if (ImGui::Button(i18n::tr("player.audio"), ImVec2(-1, 32))) { g_showSettings = false; g_showAudioMenu = true; }
+        if (ImGui::Button(g_showStats ? i18n::tr("player.hide_stats") : i18n::tr("player.stats"), ImVec2(-1, 32))) toggleStats();
+        ImGui::TextWrapped("%s", i18n::tr("player.shortcuts"));
         ImGui::End();
         ImGui::PopStyleColor();
     }

@@ -1,4 +1,5 @@
 #include "torrent.hpp"
+#include "i18n.hpp"
 
 #include <libtorrent/session.hpp>
 #include <libtorrent/add_torrent_params.hpp>
@@ -39,7 +40,7 @@ bool downloadMagnet(const std::string& magnet,
                     std::string* err,
                     int timeoutSec) {
     if (magnet.empty()) {
-        if (err) *err = "Pusty magnet";
+        if (err) *err = i18n::tr("torrent.empty_magnet");
         return false;
     }
     std::error_code ec;
@@ -104,7 +105,7 @@ bool downloadMagnet(const std::string& magnet,
     lt::error_code pec;
     lt::add_torrent_params atp = lt::parse_magnet_uri(magnet, pec);
     if (pec) {
-        if (err) *err = "Zły magnet: " + pec.message();
+        if (err) *err = std::string(i18n::tr("torrent.bad_magnet")) + pec.message();
         return false;
     }
     atp.save_path = outDir;

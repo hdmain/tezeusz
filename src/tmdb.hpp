@@ -61,6 +61,11 @@ struct SeasonInfo {
     std::string name, overview, posterPath, airDate;
 };
 
+struct EpisodeInfo {
+    int id = 0, episodeNumber = 0, seasonNumber = 0;
+    std::string name, overview, airDate, stillPath;
+};
+
 struct Details {
     MediaType mediaType = MediaType::Movie;
     int id = 0;
@@ -132,6 +137,7 @@ public:
     static AsyncReq<PagedResult> recommendations(MediaType t, int id);
     static AsyncReq<Details> movie(int id);
     static AsyncReq<Details> tv(int id);
+    static AsyncReq<std::vector<EpisodeInfo>> tvSeason(int tvId, int seasonNumber);
     static AsyncReq<std::vector<Genre>> genres(bool tv);
     static AsyncReq<std::vector<std::string>> languages();
 };

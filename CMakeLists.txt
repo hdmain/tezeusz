@@ -81,6 +81,28 @@ else()
                 string(REPLACE "/mingw64" "$ENV{MSYSTEM_PREFIX}" LIBTORRENT_LIBRARY_DIRS "${LIBTORRENT_LIBRARY_DIRS}")
                 string(REPLACE "/mingw64" "$ENV{MSYSTEM_PREFIX}" LIBTORRENT_LDFLAGS "${LIBTORRENT_LDFLAGS}")
             endif()
+            # Drop "-isystem <mingw prefix>/include" from pkg-config Cflags: putting the C
+            # sysroot dir BEFORE the C++ stdlib dirs breaks #include_next <stdlib.h>
+            # (fatal error: stdlib.h: No such file or directory). The compiler already
+            # searches the sysroot as a fallback directory anyway.
+            set(_lt_cflags "")
+            set(_lt_drop_next FALSE)
+            foreach(_lt_flag IN LISTS LIBTORRENT_CFLAGS_OTHER)
+                if(_lt_drop_next)
+                    set(_lt_drop_next FALSE)
+                    continue()
+                endif()
+                if(_lt_flag STREQUAL "-isystem")
+                    set(_lt_drop_next TRUE)
+                    continue()
+                endif()
+                string(FIND "${_lt_flag}" "-isystem" _lt_pos)
+                if(_lt_pos EQUAL 0)
+                    continue() # e.g. -isystem/path forms
+                endif()
+                list(APPEND _lt_cflags "${_lt_flag}")
+            endforeach()
+            set(LIBTORRENT_CFLAGS_OTHER "${_lt_cflags}")
             add_library(seerr_libtorrent INTERFACE)
             target_include_directories(seerr_libtorrent INTERFACE ${LIBTORRENT_INCLUDE_DIRS})
             target_link_directories(seerr_libtorrent INTERFACE ${LIBTORRENT_LIBRARY_DIRS})
@@ -143,6 +165,8 @@ add_executable(seerr
     src/platform.cpp
     src/library.cpp
     src/player.cpp
+    src/subs.cpp
+    src/i18n.cpp
 )
 target_include_directories(seerr PRIVATE
     src
@@ -150,6 +174,7 @@ target_include_directories(seerr PRIVATE
 )
 target_compile_definitions(seerr PRIVATE
     APP_ASSET_DIR="${CMAKE_SOURCE_DIR}/vendor"
+    APP_LOCALE_DIR="${CMAKE_SOURCE_DIR}/locales"
 )
 target_link_libraries(seerr PRIVATE imgui ${SEERR_TORRENT_TARGET} Boost::headers)
 
@@ -157,6 +182,8 @@ if (WIN32)
     target_link_libraries(seerr PRIVATE
         winhttp shell32 ole32 oleaut32 gdi32 user32 winmm version uuid opengl32 shlwapi advapi32 psapi
         ws2_32 iphlpapi dwmapi
+        z # gzip for NapiProjekt subtitles (subs.cpp); zlib.h is on the compiler default path,
+          # do NOT add it via include dirs — -isystem before the C++ sysroot breaks include_next
     )
     if(SEERR_BUNDLED_DEPS)
         target_link_options(seerr PRIVATE -static -static-libgcc -static-libstdc++)
@@ -164,5 +191,5 @@ if (WIN32)
 else()
     find_package(CURL REQUIRED)
     find_package(Threads REQUIRED)
-    target_link_libraries(seerr PRIVATE CURL::libcurl Threads::Threads dl)
+    target_link_libraries(seerr PRIVATE CURL::libcurl Threads::Threads dl z)
 endif()

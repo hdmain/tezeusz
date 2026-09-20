@@ -4,6 +4,9 @@
 #include "http.hpp"
 #include "torrent.hpp"
 #include "util.hpp"
+#include "library.hpp"
+#include "subs.hpp"
+#include "i18n.hpp"
 #include "json.hpp"
 
 #include <filesystem>
@@ -61,7 +64,8 @@ void saveRequestsLocked() {
             {"id", r.id}, {"mediaType", r.mediaType == MediaType::TV ? "tv" : "movie"},
             {"tmdbId", r.tmdbId}, {"title", r.title}, {"originalTitle", r.originalTitle},
             {"year", r.year}, {"imdbId", r.imdbId},
-            {"seasons", r.seasons}, {"status", (int)r.status}, {"message", r.message},
+            {"seasons", r.seasons}, {"episodes", r.episodes},
+            {"status", (int)r.status}, {"message", r.message},
             {"releaseTitle", r.releaseTitle}, {"magnetOrUrl", r.magnetOrUrl},
             {"torrentHash", r.torrentHash}, {"libraryPath", r.libraryPath},
             {"progress", r.progress}, {"createdAt", r.createdAt}, {"updatedAt", r.updatedAt},
@@ -100,6 +104,8 @@ void loadRequests() {
             r.imdbId = j.value("imdbId", "");
             if (j.contains("seasons") && j["seasons"].is_array())
                 r.seasons = j["seasons"].get<std::vector<int>>();
+            if (j.contains("episodes") && j["episodes"].is_array())
+                r.episodes = j["episodes"].get<std::vector<int>>();
             r.status = (ReqStatus)j.value("status", 0);
             r.message = j.value("message", "");
             r.releaseTitle = j.value("releaseTitle", "");
@@ -219,6 +225,136 @@ std::vector<Release> searchApibay(const std::string& query) {
     return out;
 }
 
+// "700.12 MB" / "2.06 GB" → bytes
+long long parseHumanSize(const std::string& s) {
+    size_t i = 0;
+    double v = 0;
+    try { v = std::stod(s, &i); } catch (...) { return 0; }
+    std::string u = toLower(s.substr(i));
+    if (u.find("tb") != std::string::npos) return (long long)(v * 1e12);
+    if (u.find("gb") != std::string::npos) return (long long)(v * 1e9);
+    if (u.find("mb") != std::string::npos) return (long long)(v * 1e6);
+    if (u.find("kb") != std::string::npos) return (long long)(v * 1e3);
+    return (long long)v;
+}
+
+std::string xmlUnescape(const std::string& s) {
+    std::string out;
+    for (size_t i = 0; i < s.size();) {
+        if (s[i] == '&') {
+            auto sub = [&](const char* ent, char ch) {
+                size_t n = std::strlen(ent);
+                if (s.compare(i, n, ent) == 0) { out += ch; i += n; return true; }
+                return false;
+            };
+            if (sub("&amp;", '&')) continue;
+            if (sub("&lt;", '<')) continue;
+            if (sub("&gt;", '>')) continue;
+            if (sub("&quot;", '"')) continue;
+            if (sub("&#39;", '\'')) continue;
+            if (sub("&apos;", '\'')) continue;
+        }
+        out += s[i++];
+    }
+    return out;
+}
+
+// YTS — movies only, official JSON API, no key. Domains rotate often (DMCA),
+// so try a few known mirrors until one answers.
+inline std::vector<Release> searchYtsOne(const std::string& host, const std::string& query) {
+    std::vector<Release> out;
+    std::string url = "https://" + host + "/api/v2/list_movies.json?limit=15&query_parameters=" +
+                      util::urlEncode(query);
+    auto r = http::get(url, "application/json");
+    if (!r.ok()) return out;
+    try {
+        auto j = json::parse(r.body);
+        if (!j.contains("data") || !j["data"].contains("movies")) return out;
+        for (auto& m : j["data"]["movies"]) {
+            if (!m.is_object()) continue;
+            std::string name = m.value("title", "");
+            int year = 0;
+            try { year = m.value("year", 0); } catch (...) {}
+            if (!m.contains("torrents") || !m["torrents"].is_array()) continue;
+            for (auto& t : m["torrents"]) {
+                if (!t.is_object()) continue;
+                std::string hash = t.value("hash", "");
+                if (hash.empty()) continue;
+                std::string quality = t.value("quality", "");
+                std::string type = t.value("type", "");
+                std::string codec = t.value("codec", "");
+                Release rel;
+                rel.title = name + (year ? " (" + std::to_string(year) + ")" : "") +
+                            " " + quality + (type == "remux" ? " Remux" : "") + " " + codec;
+                rel.magnet = makeMagnet(hash, rel.title);
+                rel.indexer = "yts";
+                rel.seeders = t.value("seeds", 0);
+                rel.size = parseHumanSize(t.value("size", ""));
+                out.push_back(std::move(rel));
+            }
+        }
+    } catch (...) {}
+    return out;
+}
+
+// YTS entry point: try known mirrors until one answers with data.
+std::vector<Release> searchYts(const std::string& query) {
+    static const char* hosts[] = {"yts.gg", "yts.mx", "yts.lt", "yts.ag", "yts.rs"};
+    for (auto* h : hosts) {
+        auto out = searchYtsOne(h, query);
+        if (!out.empty()) return out;
+    }
+    return {};
+}
+
+// Nyaa.si — anime/serial + packs, public RSS, no key.
+std::vector<Release> searchNyaa(const std::string& query) {
+    std::vector<Release> out;
+    auto r = http::get("https://nyaa.si/?page=rss&q=" + util::urlEncode(query) + "&c=0_0&f=0",
+                       "application/rss+xml,*/*");
+    if (!r.ok() || r.body.find("<item>") == std::string::npos) return out;
+    const std::string& b = r.body;
+    size_t pos = 0;
+    while ((pos = b.find("<item>", pos)) != std::string::npos) {
+        size_t end = b.find("</item>", pos);
+        if (end == std::string::npos) break;
+        std::string item = b.substr(pos + 6, end - pos - 6);
+        pos = end;
+        auto tag = [&](const char* name) -> std::string {
+            std::string o = std::string("<") + name;
+            size_t a = item.find(o);
+            if (a == std::string::npos) return {};
+            size_t gt = item.find('>', a);
+            if (gt == std::string::npos) return {};
+            std::string close = "</" + std::string(name) + ">";
+            size_t z = item.find(close, gt);
+            if (z == std::string::npos) return {};
+            return item.substr(gt + 1, z - gt - 1);
+        };
+        std::string title = xmlUnescape(tag("title"));
+        if (title.empty()) continue;
+        // guid is a permalink these days; hash comes from nyaa:infoHash (fallback: guid)
+        std::string hash = tag("nyaa:infoHash");
+        if (hash.empty()) {
+            std::string guid = xmlUnescape(tag("guid"));
+            if (guid.rfind("magnet:", 0) == 0) {
+                size_t a = guid.find("btih:");
+                if (a != std::string::npos) hash = guid.substr(a + 5, 40);
+            }
+        }
+        for (auto& c : hash) c = (char)std::tolower((unsigned char)c);
+        if (hash.size() != 40) continue;
+        Release rel;
+        rel.title = title;
+        rel.magnet = makeMagnet(hash, title);
+        rel.indexer = "nyaa";
+        rel.seeders = std::atoi(tag("nyaa:seeders").c_str());
+        rel.size = parseHumanSize(tag("nyaa:size"));
+        out.push_back(std::move(rel));
+    }
+    return out;
+}
+
 void mergeReleases(std::vector<Release>& into, std::vector<Release> add) {
     for (auto& r : add) {
         bool dup = false;
@@ -234,14 +370,31 @@ std::vector<Release> searchReleases(const MediaRequest& req) {
     auto& cfg = StackConfig::get();
     std::string seasonSuffix;
     if (req.mediaType == MediaType::TV && !req.seasons.empty()) {
-        char b[16];
-        std::snprintf(b, sizeof(b), " S%02d", req.seasons[0]);
-        seasonSuffix = b;
+        char b[32];
+        if (req.seasons.size() == 1 && !req.episodes.empty()) {
+            if (req.episodes.size() == 1)
+                std::snprintf(b, sizeof(b), " S%02dE%02d", req.seasons[0], req.episodes[0]);
+            else
+                std::snprintf(b, sizeof(b), " S%02dE%02d", req.seasons[0], req.episodes.front());
+            seasonSuffix = b;
+        } else if (req.seasons.size() == 1) {
+            std::snprintf(b, sizeof(b), " S%02d", req.seasons[0]);
+            seasonSuffix = b;
+        }
+        // multiple seasons → no Sxx (prefer complete / pack releases)
     }
 
     const std::string& orig = !req.originalTitle.empty() ? req.originalTitle : req.title;
     std::vector<Release> all;
     bool fromImdb = false;
+
+    // Query helper: TPB + YTS (movies) + Nyaa in parallel-ish (sequential is fine,
+    // http is no longer globally locked).
+    auto queryAll = [&](const std::string& q) {
+        mergeReleases(all, searchApibay(q));
+        if (req.mediaType != MediaType::TV) mergeReleases(all, searchYts(q));
+        mergeReleases(all, searchNyaa(q));
+    };
 
     // 1) IMDb id — strongest signal (apibay indexes tt…)
     if (!req.imdbId.empty()) {
@@ -250,22 +403,21 @@ std::vector<Release> searchReleases(const MediaRequest& req) {
     }
 
     // 2) originalTitle + year (what Radarr sends to indexers)
-    if (all.empty() || all.size() < 3) {
-        if (!orig.empty()) {
-            std::string q = orig + (req.year.empty() ? "" : " " + req.year) + seasonSuffix;
-            mergeReleases(all, searchApibay(q));
-        }
+    {
+        std::string q = orig + (req.year.empty() ? "" : " " + req.year) + seasonSuffix;
+        if (!orig.empty() && (all.empty() || all.size() < 5))
+            queryAll(q);
     }
 
-    // 3) originalTitle alone
-    if (all.empty() && !orig.empty())
-        mergeReleases(all, searchApibay(orig + seasonSuffix));
+    // 3) originalTitle alone — still nothing solid, cast a wider net
+    if (all.size() < 3 && !orig.empty())
+        queryAll(orig + seasonSuffix);
 
     // 4) localized title fallback (Polish etc.)
     if (all.empty() && !req.title.empty() && req.title != orig) {
         std::string q = req.title + (req.year.empty() ? "" : " " + req.year) + seasonSuffix;
-        mergeReleases(all, searchApibay(q));
-        if (all.empty()) mergeReleases(all, searchApibay(req.title + seasonSuffix));
+        queryAll(q);
+        if (all.empty()) queryAll(req.title + seasonSuffix);
     }
 
     std::vector<Release> filtered;
@@ -384,7 +536,7 @@ std::string importToLibrary(const MediaRequest& req, const std::string& srcPath)
     } else {
         int season = req.seasons.empty() ? 1 : req.seasons[0];
         char sn[32];
-        std::snprintf(sn, sizeof(sn), "Season %02d", season);
+        std::snprintf(sn, sizeof(sn), i18n::tr("stack.season"), season);
         destDir = fs::path(cfg.tvPath) / folderName / sn;
         destFile = destDir / src.filename();
     }
@@ -441,7 +593,7 @@ void processOne(const std::string& id) {
     if (libraryHas(snap)) {
         std::lock_guard<std::recursive_mutex> lk(g_mu);
         if (auto* r = findReqLocked(id)) {
-            setStatus(*r, ReqStatus::Available, "Już w bibliotece");
+            setStatus(*r, ReqStatus::Available, i18n::tr("stack.already_library"));
             r->progress = 1;
             saveRequestsLocked();
         }
@@ -457,7 +609,7 @@ void processOne(const std::string& id) {
         {
             std::lock_guard<std::recursive_mutex> lk(g_mu);
             if (auto* r = findReqLocked(id))
-                setStatus(*r, ReqStatus::Searching, "Szukanie wydań…");
+                setStatus(*r, ReqStatus::Searching, i18n::tr("stack.searching_releases"));
             saveRequestsLocked();
         }
         syncAppStatuses();
@@ -477,7 +629,7 @@ void processOne(const std::string& id) {
         if (releases.empty()) {
             std::string hint = !snap.originalTitle.empty() ? snap.originalTitle : snap.title;
             if (!snap.imdbId.empty()) hint += " (" + snap.imdbId + ")";
-            fail("Nie znaleziono wydań torrent dla: " + hint);
+            fail(std::string(i18n::tr("stack.no_releases")) + hint);
             return;
         }
 
@@ -489,8 +641,8 @@ void processOne(const std::string& id) {
                 r->releaseTitle = best.title;
                 r->magnetOrUrl = best.magnet;
                 setStatus(*r, ReqStatus::Downloading,
-                          "Pobieranie: " + best.title.substr(0, 60) +
-                          " (" + std::to_string(best.seeders) + " seedów)");
+                          std::string(i18n::tr("stack.downloading")) + best.title.substr(0, 60) +
+                          " (" + std::to_string(best.seeders) + i18n::tr("stack.seeders"));
                 saveRequestsLocked();
             }
         }
@@ -499,7 +651,7 @@ void processOne(const std::string& id) {
         if (auto* r = findReqLocked(id)) {
             std::string label = !r->releaseTitle.empty() ? r->releaseTitle : r->title;
             setStatus(*r, ReqStatus::Downloading,
-                      "Wznawianie: " + label.substr(0, 60));
+                      std::string(i18n::tr("stack.resuming")) + label.substr(0, 60));
             saveRequestsLocked();
         }
     }
@@ -549,12 +701,12 @@ void processOne(const std::string& id) {
                         char msg[256];
                         if (p.seeds > 0)
                             std::snprintf(msg, sizeof(msg),
-                                          "%s… %.0f/%.0f MB · %d peerów (%d seed) · %.0f KB/s · ETA %s",
+                                          i18n::tr("stack.progress_seed"),
                                           p.state.c_str(), p.downloadedMb, p.totalMb,
                                           p.peers, p.seeds, p.downloadRateKBs, eta);
                         else
                             std::snprintf(msg, sizeof(msg),
-                                          "%s… %.0f/%.0f MB · %d peerów · %.0f KB/s · ETA %s",
+                                          i18n::tr("stack.progress"),
                                           p.state.c_str(), p.downloadedMb, p.totalMb,
                                           p.peers, p.downloadRateKBs, eta);
                         r->message = msg;
@@ -572,7 +724,7 @@ void processOne(const std::string& id) {
 
             std::string video = findBiggestVideo(jobDir);
             if (!ok || video.empty()) {
-                fail(err.empty() ? "Pobieranie nie powiodło się (brak pliku wideo)" : err);
+                fail(err.empty() ? i18n::tr("stack.download_failed") : err);
                 return;
             }
         }
@@ -582,32 +734,44 @@ void processOne(const std::string& id) {
 
     std::string video = findBiggestVideo(jobDir);
     if (video.empty()) {
-        fail("Pobieranie nie powiodło się (brak pliku wideo)");
+        fail(i18n::tr("stack.download_failed"));
         return;
     }
 
     {
         std::lock_guard<std::recursive_mutex> lk(g_mu);
         if (auto* r = findReqLocked(id))
-            setStatus(*r, ReqStatus::Importing, "Kopiowanie do biblioteki…");
+            setStatus(*r, ReqStatus::Importing, i18n::tr("stack.importing"));
         saveRequestsLocked();
     }
     syncAppStatuses();
 
     std::string dest = importToLibrary(snap, jobDir);
-    std::lock_guard<std::recursive_mutex> lk(g_mu);
-    if (auto* r = findReqLocked(id)) {
-        if (dest.empty()) {
-            r->libraryPath = video;
-            setStatus(*r, ReqStatus::Available, "Pobrano (folder pobierania)");
-        } else {
-            r->libraryPath = dest;
-            setStatus(*r, ReqStatus::Available, "W bibliotece");
+    std::string playable;
+    {
+        std::lock_guard<std::recursive_mutex> lk(g_mu);
+        if (auto* r = findReqLocked(id)) {
+            if (dest.empty()) {
+                r->libraryPath = video;
+                setStatus(*r, ReqStatus::Available, i18n::tr("stack.downloaded_folder"));
+                playable = video;
+            } else {
+                r->libraryPath = dest;
+                // No dedicated key for "In library" after import — use available status label.
+                setStatus(*r, ReqStatus::Available, i18n::tr("status.available"));
+                playable = dest;
+            }
+            r->progress = 1;
+            saveRequestsLocked();
         }
-        r->progress = 1;
-        saveRequestsLocked();
     }
     syncAppStatuses();
+    // Bazarr-style: auto-fetch EN + preferred language subtitles, scoring the
+    // release name (jobDir folder / release title) against OpenSubtitles candidates.
+    if (!playable.empty()) {
+        std::string scene = snap.releaseTitle; // original torrent release name
+        subs::enqueuePath(playable, snap.mediaType, snap.tmdbId, snap.imdbId, snap.title, scene);
+    }
 }
 
 void schedulePump();
@@ -633,7 +797,7 @@ void pumpOnce() {
     } catch (...) {
         std::lock_guard<std::recursive_mutex> lk(g_mu);
         if (auto* r = findReqLocked(id)) {
-            setStatus(*r, ReqStatus::Failed, "Nieznany błąd");
+            setStatus(*r, ReqStatus::Failed, i18n::tr("stack.unknown_error"));
             saveRequestsLocked();
         }
     }
@@ -669,6 +833,12 @@ void StackConfig::load() {
             minSeeders = j.value("minSeeders", minSeeders);
             preferredQuality = j.value("preferredQuality", preferredQuality);
             autoStart = j.value("autoStart", autoStart);
+            uiLanguage = j.value("uiLanguage", j.value("ui_language", uiLanguage));
+            subsAuto = j.value("subsAuto", subsAuto);
+            subsPreferredLang = j.value("subsPreferredLang", subsPreferredLang);
+            subsApiKey = j.value("subsApiKey", subsApiKey);
+            subsUsername = j.value("subsUsername", subsUsername);
+            subsPassword = j.value("subsPassword", subsPassword);
         } catch (...) {}
     }
     std::error_code ec;
@@ -682,13 +852,18 @@ void StackConfig::save() const {
     json j{
         {"moviesPath", moviesPath}, {"tvPath", tvPath}, {"downloadPath", downloadPath},
         {"minSeeders", minSeeders}, {"preferredQuality", preferredQuality},
-        {"autoStart", autoStart}
+        {"autoStart", autoStart},
+        {"uiLanguage", uiLanguage},
+        {"subsAuto", subsAuto}, {"subsPreferredLang", subsPreferredLang},
+        {"subsApiKey", subsApiKey}, {"subsUsername", subsUsername},
+        {"subsPassword", subsPassword}
     };
     util::writeFile(cfgPath(), j.dump(2));
 }
 
 void init() {
     g_cfg.load();
+    i18n::setLanguage(g_cfg.uiLanguage);
     loadRequests();
     g_stop = false;
     syncAppStatuses();
@@ -749,7 +924,8 @@ std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
                          const std::string& year, const std::string& imdbId,
                          const std::vector<int>& seasons,
                          const std::string& originalTitle,
-                         const std::string& preferredQuality) {
+                         const std::string& preferredQuality,
+                         const std::vector<int>& episodes) {
     std::string id;
     std::string q = preferredQuality;
     if (q.empty()) q = StackConfig::get().preferredQuality;
@@ -759,7 +935,7 @@ std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
             if (r.tmdbId == tmdbId && r.mediaType == type) {
                 if (r.status == ReqStatus::Failed || r.status == ReqStatus::Declined) {
                     r.status = ReqStatus::Pending;
-                    r.message = "Ponawianie…";
+                    r.message = i18n::tr("stack.retrying");
                     r.progress = 0;
                     r.magnetOrUrl.clear();
                     r.releaseTitle.clear();
@@ -769,6 +945,7 @@ std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
                     if (!year.empty()) r.year = year;
                     if (!imdbId.empty()) r.imdbId = imdbId;
                     if (!seasons.empty()) r.seasons = seasons;
+                    r.episodes = episodes;
                     r.preferredQuality = q;
                     g_queue.push_back(r.id);
                     id = r.id;
@@ -789,6 +966,7 @@ std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
             r.year = year;
             r.imdbId = imdbId;
             r.seasons = seasons;
+            r.episodes = episodes;
             r.preferredQuality = q;
             r.status = ReqStatus::Pending;
             r.message = "W kolejce (" + q + ")";
@@ -812,9 +990,10 @@ std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
 }
 
 std::string requestMedia(const Details& d, const std::vector<int>& seasons,
-                         const std::string& preferredQuality) {
+                         const std::string& preferredQuality,
+                         const std::vector<int>& episodes) {
     return requestMedia(d.mediaType, d.id, d.title, d.year(), d.imdbId, seasons, d.originalTitle,
-                        preferredQuality);
+                        preferredQuality, episodes);
 }
 
 static std::string qualityLabelOf(const std::string& title) {
@@ -830,7 +1009,8 @@ static std::string qualityLabelOf(const std::string& title) {
 std::vector<ReleaseHit> searchReleasesInteractive(
     MediaType type, int tmdbId, const std::string& title, const std::string& year,
     const std::string& imdbId, const std::vector<int>& seasons,
-    const std::string& originalTitle, const std::string& preferredQuality) {
+    const std::string& originalTitle, const std::string& preferredQuality,
+    const std::vector<int>& episodes) {
     MediaRequest snap;
     snap.mediaType = type;
     snap.tmdbId = tmdbId;
@@ -838,6 +1018,7 @@ std::vector<ReleaseHit> searchReleasesInteractive(
     snap.year = year;
     snap.imdbId = imdbId;
     snap.seasons = seasons;
+    snap.episodes = episodes;
     snap.originalTitle = originalTitle;
     snap.preferredQuality = preferredQuality.empty()
         ? StackConfig::get().preferredQuality : preferredQuality;
@@ -862,7 +1043,8 @@ std::string requestWithRelease(MediaType type, int tmdbId, const std::string& ti
                                const std::string& year, const std::string& imdbId,
                                const std::vector<int>& seasons, const std::string& originalTitle,
                                const std::string& preferredQuality,
-                               const std::string& magnet, const std::string& releaseTitle) {
+                               const std::string& magnet, const std::string& releaseTitle,
+                               const std::vector<int>& episodes) {
     if (magnet.empty()) return {};
     std::string q = preferredQuality.empty() ? StackConfig::get().preferredQuality : preferredQuality;
     std::string id;
@@ -878,12 +1060,13 @@ std::string requestWithRelease(MediaType type, int tmdbId, const std::string& ti
             if (!year.empty()) existing->year = year;
             if (!imdbId.empty()) existing->imdbId = imdbId;
             if (!seasons.empty()) existing->seasons = seasons;
+            existing->episodes = episodes;
             existing->preferredQuality = q;
             existing->magnetOrUrl = magnet;
             existing->releaseTitle = releaseTitle;
             existing->progress = 0;
             existing->libraryPath.clear();
-            setStatus(*existing, ReqStatus::Pending, "Wybrane wydanie — w kolejce");
+            setStatus(*existing, ReqStatus::Pending, i18n::tr("stack.picked_queued"));
             id = existing->id;
             g_queue.erase(std::remove(g_queue.begin(), g_queue.end(), id), g_queue.end());
             g_queue.push_front(id);
@@ -898,11 +1081,12 @@ std::string requestWithRelease(MediaType type, int tmdbId, const std::string& ti
             r.year = year;
             r.imdbId = imdbId;
             r.seasons = seasons;
+            r.episodes = episodes;
             r.preferredQuality = q;
             r.magnetOrUrl = magnet;
             r.releaseTitle = releaseTitle;
             r.status = ReqStatus::Pending;
-            r.message = "Wybrane wydanie — w kolejce";
+            r.message = i18n::tr("stack.picked_queued");
             r.createdAt = r.updatedAt = nowMs();
             id = r.id;
             g_reqs.push_back(std::move(r));
@@ -924,7 +1108,7 @@ bool cancelRequest(const std::string& id) {
     std::lock_guard<std::recursive_mutex> lk(g_mu);
     auto* r = findReqLocked(id);
     if (!r) return false;
-    setStatus(*r, ReqStatus::Declined, "Anulowane");
+    setStatus(*r, ReqStatus::Declined, i18n::tr("stack.cancelled"));
     g_queue.erase(std::remove(g_queue.begin(), g_queue.end(), id), g_queue.end());
     saveRequestsLocked();
     return true;
@@ -941,7 +1125,7 @@ void onLibraryRemoved(const std::string& pathOrFolder) {
             r.libraryPath.find(pathOrFolder) == 0) {
             r.libraryPath.clear();
             r.progress = 0;
-            setStatus(r, ReqStatus::Declined, "Usunięte z biblioteki");
+            setStatus(r, ReqStatus::Declined, i18n::tr("stack.removed_library"));
             changed = true;
         }
     }

@@ -21,6 +21,8 @@
 #include "localdb.hpp"
 #include "platform.hpp"
 #include "player.hpp"
+#include "subs.hpp"
+#include "i18n.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -47,9 +49,20 @@ void setAppMainHwnd(void* hwnd) { g_mainHwnd = hwnd; }
 // ------------------------------------------------------------------ sidebar
 
 enum SideItem { SI_DISCOVER, SI_MOVIES, SI_TV, SI_REQUESTS, SI_LIBRARY, SI_BLOCKLIST, SI_ISSUES, SI_USERS, SI_SETTINGS, SI_COUNT };
-static const char* SIDE_LABELS[SI_COUNT] = {
-    "Odkrywaj", "Filmy", "Seriale", "Żądania", "Biblioteka", "Blokada", "Problemy", "Użytkownicy", "Ustawienia"
-};
+static const char* sideLabel(int i) {
+    switch (i) {
+    case SI_DISCOVER: return i18n::tr("nav.discover");
+    case SI_MOVIES: return i18n::tr("nav.movies");
+    case SI_TV: return i18n::tr("nav.tv");
+    case SI_REQUESTS: return i18n::tr("nav.requests");
+    case SI_LIBRARY: return i18n::tr("nav.library");
+    case SI_BLOCKLIST: return i18n::tr("nav.blocklist");
+    case SI_ISSUES: return i18n::tr("nav.issues");
+    case SI_USERS: return i18n::tr("nav.users");
+    case SI_SETTINGS: return i18n::tr("nav.settings");
+    default: return "";
+    }
+}
 
 static void sidebarIcon(int idx, ImDrawList* dl, ImVec2 c, float s, ImU32 col) {
     switch (idx) {
@@ -150,8 +163,8 @@ static void renderSidebar(App& a) {
         float textA = 0.72f + 0.28f * std::max(ha, aa);
         dl->AddText(G.m16, 15.5f,
                     ImVec2(p0.x + 44.0f + 1.5f * ha,
-                           p0.y + (40 - G.m16->CalcTextSizeA(15.5f, FLT_MAX, 0, SIDE_LABELS[i]).y) / 2),
-                    IM_COL32(255, 255, 255, (int)(textA * 255)), SIDE_LABELS[i]);
+                           p0.y + (40 - G.m16->CalcTextSizeA(15.5f, FLT_MAX, 0, sideLabel(i)).y) / 2),
+                    IM_COL32(255, 255, 255, (int)(textA * 255)), sideLabel(i));
         y += 56;
 
         if (cl) {
@@ -233,7 +246,7 @@ static void renderContentPage(App& a) {
         case Page::Issues: renderIssues(); break;
         case Page::Users: renderUsers(); break;
         case Page::Settings: renderSettings(); break;
-        case Page::Stub: renderStub("Wkrótce"); break;
+        case Page::Stub: renderStub(i18n::tr("nav.coming_soon")); break;
     }
 }
 
@@ -266,10 +279,12 @@ int main() {
     io.IniFilename = nullptr;
 
     initFonts();
+    i18n::init();
     ImageCache::instance().init();
     svgicon::init();
     core::init(3);
     stack::init();
+    subs::init();
     localdb::init();
     localdb::loadWatchlist(app().watchlist);
 
@@ -325,7 +340,7 @@ int main() {
     static std::atomic<bool> quitBgDone{false};
     static std::atomic<bool> quitStarted{false};
     static std::mutex quitStatusMu;
-    static std::string quitStatus = "Zamykanie…";
+    static std::string quitStatus = i18n::tr("quit.closing");
     static std::thread quitThread;
 
     auto setQuitStatus = [](const char* s) {
@@ -356,6 +371,7 @@ int main() {
             ImageCache::instance().pump();
             core::tick();
             stack::tick();
+            subs::tick();
             ytplayer::tick();
             player::tick();
         }
@@ -374,20 +390,22 @@ int main() {
         if (quitting.load()) {
             // Kick off: GL-safe player close on UI thread, then background shutdown
             if (!quitStarted.exchange(true)) {
-                setQuitStatus("Zamykanie odtwarzacza…");
+                setQuitStatus(i18n::tr("quit.torrents"));
                 try { player::close(); } catch (...) {}
-                setQuitStatus("Zatrzymywanie pobierania torrentów…");
+                setQuitStatus(i18n::tr("quit.torrents"));
                 quitThread = std::thread([setQuitStatus]() {
                     try {
-                        setQuitStatus("Zatrzymywanie pobierania torrentów…");
+                        setQuitStatus(i18n::tr("quit.torrents"));
                         stack::shutdown();
-                        setQuitStatus("Zatrzymywanie zadań w tle…");
+                        setQuitStatus(i18n::tr("quit.subs"));
+                        try { subs::shutdown(); } catch (...) {}
+                        setQuitStatus(i18n::tr("quit.jobs"));
                         core::shutdown();
-                        setQuitStatus("Zamykanie cache obrazów i P2P…");
+                        setQuitStatus(i18n::tr("quit.cache"));
                         ImageCache::instance().shutdown();
-                        setQuitStatus("Kończenie…");
+                        setQuitStatus(i18n::tr("quit.finishing"));
                     } catch (...) {
-                        setQuitStatus("Błąd podczas zamykania…");
+                        setQuitStatus(i18n::tr("quit.error"));
                     }
                     quitBgDone.store(true);
                 });
@@ -395,7 +413,7 @@ int main() {
 
             ImDrawList* dl = ImGui::GetForegroundDrawList();
             dl->AddRectFilled(ImVec2(0, 0), io.DisplaySize, IM_COL32(17, 24, 39, 240));
-            const char* title = "Zamykanie Seerr…";
+            const char* title = i18n::tr("quit.title");
             ImVec2 ts = G.sb26 ? G.sb26->CalcTextSizeA(22, FLT_MAX, 0, title)
                                : ImGui::CalcTextSize(title);
             ImVec2 tp((io.DisplaySize.x - ts.x) * 0.5f, io.DisplaySize.y * 0.42f);
@@ -418,7 +436,7 @@ int main() {
 
             if (quitBgDone.load()) {
                 if (quitThread.joinable()) quitThread.join();
-                setQuitStatus("Zwalnianie ikon i interfejsu…");
+                setQuitStatus(i18n::tr("quit.ui"));
                 try { svgicon::shutdown(); } catch (...) {}
                 ImGui_ImplOpenGL3_Shutdown();
                 ImGui_ImplGlfw_Shutdown();
@@ -473,7 +491,7 @@ int main() {
         if (subpage) {
             ImGui::SetCursorPos(ImVec2(left, topPad));
             ImVec2 backMin = ImGui::GetCursorScreenPos();
-            if (w::button(dl, "##back", backMin, ImVec2(backMin.x + 84, backMin.y + 26), "« Wróć",
+            if (w::button(dl, "##back", backMin, ImVec2(backMin.x + 84, backMin.y + 26), i18n::tr("nav.back"),
                           theme::c("#111827/01"), theme::c("#1f2937"), theme::c("#374151"), 0,
                           theme::c("#9ca3af"), G.r14, 13, 12))
                 ap.back();

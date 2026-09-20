@@ -20,10 +20,10 @@
 
 namespace http {
 
-static std::mutex& httpMu() {
-    static std::mutex m;
-    return m;
-}
+// NOTE: no global mutex here — WinHTTP sessions are thread-safe (each request
+// gets its own connect/request handles) and the curl path uses per-call
+// handles. Serializing everything here used to starve the UI while the subs
+// worker retried a slow endpoint (freeze on tab switches).
 
 #ifdef _WIN32
 
@@ -275,7 +275,6 @@ static HttpResponse postOnce(const std::string& url, const std::string& body,
 #endif
 
 HttpResponse get(const std::string& url, const std::string& accept, const std::string& extraHeaders) {
-    std::lock_guard<std::mutex> lk(httpMu());
     HttpResponse r;
     for (int attempt = 0; attempt < 3; attempt++) {
         r = getOnce(url, accept, extraHeaders);
@@ -300,7 +299,6 @@ std::future<HttpResponse> getAsync(const std::string& url, const std::string& ac
 
 HttpResponse post(const std::string& url, const std::string& body,
                   const std::string& contentType, const std::string& extraHeaders) {
-    std::lock_guard<std::mutex> lk(httpMu());
     HttpResponse r;
     for (int attempt = 0; attempt < 3; attempt++) {
         r = postOnce(url, body, contentType, extraHeaders);

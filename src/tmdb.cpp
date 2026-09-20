@@ -16,7 +16,7 @@ static bool g_loaded = false;
 static void load() {
     if (g_loaded) return;
     g_loaded = true;
-    g_lang = "pl-PL";
+    g_lang = "en-US";
     // seerr ships a public TMDB key in server/api/themoviedb/index.ts; use it as fallback
     g_key = "431a8708161bcd1f1fbe7536137e61ed";
     auto tryFile = [&](const std::string& p) {
@@ -409,6 +409,33 @@ AsyncReq<Details> Tmdb::movie(int id) {
 }
 AsyncReq<Details> Tmdb::tv(int id) {
     return detailsReq("/tv/" + std::to_string(id), true);
+}
+
+AsyncReq<std::vector<EpisodeInfo>> Tmdb::tvSeason(int tvId, int seasonNumber) {
+    AsyncReq<std::vector<EpisodeInfo>> req;
+    req.fut = std::async(std::launch::async, [tvId, seasonNumber]() -> std::vector<EpisodeInfo> {
+        std::vector<EpisodeInfo> out;
+        std::string path = "/tv/" + std::to_string(tvId) + "/season/" + std::to_string(seasonNumber);
+        auto r = http::get(withKey(path, {}));
+        if (!r.ok()) return out;
+        try {
+            json j = json::parse(r.body);
+            if (!j.contains("episodes") || !j["episodes"].is_array()) return out;
+            for (auto& e : j["episodes"]) {
+                EpisodeInfo ep;
+                ep.id = (int)jnum(e, "id");
+                ep.episodeNumber = (int)jnum(e, "episode_number");
+                ep.seasonNumber = (int)jnum(e, "season_number", (double)seasonNumber);
+                ep.name = jstr(e, "name");
+                ep.overview = jstr(e, "overview");
+                ep.airDate = jstr(e, "air_date");
+                ep.stillPath = jstr(e, "still_path");
+                out.push_back(std::move(ep));
+            }
+        } catch (...) {}
+        return out;
+    });
+    return req;
 }
 
 AsyncReq<std::vector<Genre>> Tmdb::genres(bool tv) {

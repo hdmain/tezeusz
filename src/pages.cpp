@@ -9,6 +9,8 @@
 #include "library.hpp"
 #include "player.hpp"
 #include "svgicons.hpp"
+#include "subs.hpp"
+#include "i18n.hpp"
 #include "imgui.h"
 #include <algorithm>
 #include <cctype>
@@ -19,6 +21,7 @@
 #include <filesystem>
 #include <future>
 #include <map>
+#include <set>
 #include <vector>
 
 App& app() { static App a; return a; }
@@ -95,7 +98,7 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
     if (!pr.loaded) {
         if (!pr.error.empty()) {
             dl->AddText(G.r16, 14, ImVec2(cur.x, rowY + CARD_H / 2 - 8), theme::c("#ef4444"),
-                        ("Błąd wczytywania: " + pr.error + "  (F5 = ponów)").c_str());
+                        (std::string(i18n::tr("common.load_error")) + ": " + pr.error).c_str());
         } else {
             for (int i = 0; i < 14 && (float)(i * (CARD_W + GAP)) < w + CARD_W * 2; i++) {
                 ImVec2 p(cur.x + i * (CARD_W + GAP), rowY);
@@ -154,8 +157,8 @@ static void renderGrid(PagedResult& pr, std::function<void(int)> setPage) {
 
     if (!pr.loaded) {
         if (!pr.error.empty()) {
-            dl->AddText(G.sb22, 18, ImVec2(origin.x, origin.y + 60), theme::c("#ef4444"), ("Błąd: " + pr.error).c_str());
-            dl->AddText(G.r16, 14, ImVec2(origin.x, origin.y + 86), ATTR, "Naciśnij F5 aby ponowić, lub sprawdź klucz TMDB w config.json.");
+            dl->AddText(G.sb22, 18, ImVec2(origin.x, origin.y + 60), theme::c("#ef4444"), (std::string(i18n::tr("common.error")) + ": " + pr.error).c_str());
+            dl->AddText(G.r16, 14, ImVec2(origin.x, origin.y + 86), ATTR, i18n::tr("common.retry_f5"));
         } else {
             float y = origin.y + 8;
             for (int i = 0; i < cols * 3; i++) {
@@ -193,14 +196,14 @@ static void renderGrid(PagedResult& pr, std::function<void(int)> setPage) {
         ImVec2 ps = G.m16->CalcTextSizeA(14, FLT_MAX, 0, pageLbl.c_str());
         ImVec2 pmin(cx - ps.x / 2 - 110, totalH + 14);
         if (curPage > 1) {
-            if (w::button(dl, "##pgprev", pmin, ImVec2(pmin.x + 96, pmin.y + 32), "« Wstecz",
+            if (w::button(dl, "##pgprev", pmin, ImVec2(pmin.x + 96, pmin.y + 32), i18n::tr("common.prev"),
                           theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), theme::c("#4b5563"),
                           TXT2, G.m16, 14)) setPage(curPage - 1);
         }
         dl->AddText(G.m16, 14, ImVec2(cx - ps.x / 2, pmin.y + 8), TXT2, pageLbl.c_str());
         ImVec2 nmin(cx + ps.x / 2 + 14, pmin.y);
         if (curPage < pr.total_pages) {
-            if (w::button(dl, "##pgnext", nmin, ImVec2(nmin.x + 96, nmin.y + 32), "Dalej »",
+            if (w::button(dl, "##pgnext", nmin, ImVec2(nmin.x + 96, nmin.y + 32), i18n::tr("common.next"),
                           theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), theme::c("#4b5563"),
                           TXT2, G.m16, 14)) setPage(curPage + 1);
         }
@@ -253,7 +256,7 @@ void renderDiscoverGrid(bool tv) {
         };
         pd.request(1);
     }
-    renderPagedPage(tv ? "Seriale" : "Filmy", pd);
+    renderPagedPage(tv ? i18n::tr("nav.tv") : i18n::tr("nav.movies"), pd);
 }
 
 void renderGenrePage() {
@@ -278,7 +281,7 @@ void renderTrendingPage() {
         pd.fetch = [](int p) { return Tmdb::trending("all", "week"); };
         pd.request(1);
     }
-    renderPagedPage("Na czasie", pd);
+    renderPagedPage(i18n::tr("discover.trending"), pd);
 }
 
 void renderSearch() {
@@ -314,7 +317,7 @@ void renderSearch() {
         ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0, 0, 0, 0));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.72f, 0.76f, 0.85f, 1.0f));
-        ImGui::InputTextWithHint("##search_page", "Szukaj filmów, seriali, osób…", buf, sizeof(buf));
+        ImGui::InputTextWithHint("##search_page", i18n::tr("search.hint"), buf, sizeof(buf));
         ImGui::PopStyleColor(5);
         ImGui::PopItemWidth();
         a.searchInput = buf;
@@ -364,11 +367,13 @@ void renderSearch() {
 
     // Header + Seerr-style filter chips
     dl->AddText(G.b36, 26, ImVec2(origin.x, origin.y), WHITE,
-                a.lastQuery.empty() ? "Szukaj" : "Wyniki wyszukiwania");
+                a.lastQuery.empty() ? i18n::tr("search.title") : i18n::tr("search.results_title"));
     float chipY = origin.y + 42;
     ImGui::SetCursorScreenPos(ImVec2(origin.x, chipY));
 
-    static const char* chipLabels[] = { "Wszystkie", "Filmy", "Seriale", "Osoby" };
+    const char* chipLabels[] = {
+        i18n::tr("common.all"), i18n::tr("nav.movies"), i18n::tr("nav.tv"), i18n::tr("search.people")
+    };
     static const SearchFilter chipVals[] = {
         SearchFilter::All, SearchFilter::Movies, SearchFilter::Tv, SearchFilter::People
     };
@@ -399,14 +404,14 @@ void renderSearch() {
     if (a.lastQuery.empty() && a.searchInput.empty()) {
         ImVec2 p = ImGui::GetCursorScreenPos();
         dl->AddText(G.sb22, 18, ImVec2(p.x, p.y + 40), theme::c("#6b7280"),
-                    "Wpisz tytuł filmu, serialu lub imię osoby…");
+                    i18n::tr("search.empty_title"));
         dl->AddText(G.r14, 13, ImVec2(p.x, p.y + 68), theme::c("#4b5563"),
-                    "Wyniki pojawiają się podczas pisania — jak w Seerr / Jellyseerr.");
+                    i18n::tr("search.empty_sub"));
         return;
     }
     if (a.lastQuery.empty() || (req.valid() && !res.loaded)) {
         ImVec2 p = ImGui::GetCursorScreenPos();
-        dl->AddText(G.r16, 14, ImVec2(p.x, p.y + 20), ATTR, "Szukam…");
+        dl->AddText(G.r16, 14, ImVec2(p.x, p.y + 20), ATTR, i18n::tr("search.searching"));
         return;
     }
 
@@ -414,9 +419,9 @@ void renderSearch() {
         ImVec2 p = ImGui::GetCursorScreenPos();
         std::string sub = "\"" + a.lastQuery + "\"";
         if (res.loaded && res.error.empty())
-            sub += "  ·  " + std::to_string(res.total_results) + " wyników";
+            sub += "  ·  " + std::to_string(res.total_results) + " " + i18n::tr("search.results");
         else if (res.loaded && !res.error.empty())
-            sub += "  ·  błąd";
+            sub += std::string("  ·  ") + i18n::tr("search.error");
         dl->AddText(G.r14, 13, ImVec2(p.x, p.y), ATTR, sub.c_str());
         ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + 28));
     }
@@ -430,7 +435,7 @@ void renderSearch() {
     if (res.loaded && res.results.empty()) {
         ImVec2 p = ImGui::GetCursorScreenPos();
         dl->AddText(G.sb18, 16, ImVec2(p.x, p.y + 24), theme::c("#9ca3af"),
-                    "Brak wyników. Spróbuj innego zapytania lub filtra.");
+                    i18n::tr("search.no_results"));
         return;
     }
 
@@ -442,7 +447,7 @@ void renderSearch() {
 
 // ------------------------------------------------------------------ discover home
 
-struct HomeRow { std::string title; AsyncReq<PagedResult> req; PagedResult res; std::function<AsyncReq<PagedResult>()> make; };
+struct HomeRow { const char* titleKey; AsyncReq<PagedResult> req; PagedResult res; std::function<AsyncReq<PagedResult>()> make; };
 static std::vector<HomeRow>& homeRows() { static std::vector<HomeRow> v; return v; }
 
 void renderDiscover() {
@@ -475,7 +480,7 @@ void renderDiscover() {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.72f, 0.76f, 0.85f, 1.0f));
         ImGui::PushFont(G.m18 ? G.m18 : ImGui::GetFont());
-        bool enter = ImGui::InputTextWithHint("##home_search", "Szukaj filmów, seriali, osób…",
+        bool enter = ImGui::InputTextWithHint("##home_search", i18n::tr("search.hint"),
                                               buf, sizeof(buf), ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::PopFont();
         ImGui::PopStyleColor(5);
@@ -504,16 +509,16 @@ void renderDiscover() {
             std::snprintf(b, sizeof(b), "%04d-%02d-%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
             return std::string(b);
         }();
-        rows.push_back({"Na czasie", {}, {}, []{ return Tmdb::trending("all", "week"); }});
-        rows.push_back({"Popularne filmy", {}, {}, []{ return Tmdb::discover(1, {{"sort_by","popularity.desc"}}); }});
-        rows.push_back({"Wkrótce w kinie", {}, {}, [today]{ return Tmdb::discover(1, {{"primary_release_date.gte", today},{"sort_by","popularity.desc"}}); }});
-        rows.push_back({"Popularne seriale", {}, {}, []{ return Tmdb::discover(1, {{"type","tv"},{"sort_by","popularity.desc"}}); }});
-        rows.push_back({"Najlepiej oceniane seriale", {}, {}, []{ return Tmdb::discover(1, {{"type","tv"},{"vote_count.gte","500"},{"sort_by","vote_average.desc"}}); }});
+        rows.push_back({"discover.trending", {}, {}, []{ return Tmdb::trending("all", "week"); }});
+        rows.push_back({"discover.popular_movies", {}, {}, []{ return Tmdb::discover(1, {{"sort_by","popularity.desc"}}); }});
+        rows.push_back({"discover.upcoming", {}, {}, [today]{ return Tmdb::discover(1, {{"primary_release_date.gte", today},{"sort_by","popularity.desc"}}); }});
+        rows.push_back({"discover.popular_tv", {}, {}, []{ return Tmdb::discover(1, {{"type","tv"},{"sort_by","popularity.desc"}}); }});
+        rows.push_back({"discover.top_tv", {}, {}, []{ return Tmdb::discover(1, {{"type","tv"},{"vote_count.gte","500"},{"sort_by","vote_average.desc"}}); }});
     }
     for (auto& r : rows) {
         if (doReload) { r.res = {}; r.req = r.make(); }
         if (r.req.valid() && !r.res.loaded && r.req.ready()) r.res = r.req.take();
-        sliderRow(r.title, r.res);
+        sliderRow(i18n::tr(r.titleKey), r.res);
     }
 }
 
@@ -572,9 +577,9 @@ void renderDetails(MediaType type, int id) {
         dl->AddRectFilled(origin, ImVec2(origin.x + w, origin.y + 300), theme::c("#1f2937"), 16);
         if (h.failedOnce)
             dl->AddText(G.r16, 15, ImVec2(origin.x + 10, origin.y + 320), theme::c("#ef4444"),
-                        "Błąd wczytywania szczegółów (sprawdź klucz TMDB w config.json)  (F5 = ponów)");
+                        i18n::tr("details.load_error"));
         else
-            dl->AddText(G.r16, 15, ImVec2(origin.x + 10, origin.y + 320), ATTR, "Ładowanie…");
+            dl->AddText(G.r16, 15, ImVec2(origin.x + 10, origin.y + 320), ATTR, i18n::tr("common.loading"));
         ImGui::Dummy(ImVec2(w, 360));
         return;
     }
@@ -616,8 +621,8 @@ void renderDetails(MediaType type, int id) {
     float rightW = origin.x + w - tx - 8;
 
     static const std::map<std::string, std::string> statusPl = {
-        {"Released", "Wydano"}, {"Post Production", "Postprodukcja"}, {"In Production", "W produkcji"},
-        {"Planned", "Planowany"}, {"Rumored", "Plotki"}, {"Continuing", "W emisji"}, {"Ended", "Zakończony"}
+        {"Released", i18n::tr("details.status_released")}, {"Post Production", i18n::tr("details.status_post")}, {"In Production", i18n::tr("details.status_in_production")},
+        {"Planned", i18n::tr("details.status_planned")}, {"Rumored", i18n::tr("details.status_rumored")}, {"Continuing", i18n::tr("details.status_continuing")}, {"Ended", i18n::tr("details.status_ended")}
     };
     {
         auto it = statusPl.find(d.status);
@@ -644,29 +649,29 @@ void renderDetails(MediaType type, int id) {
     float btnY = ty + 14;
     int curStatus = a.statusOf(type, id);
     {
-        std::string lbl = "Zażądaj";
+        std::string lbl = i18n::tr("details.request");
         ImU32 c0 = theme::c("#4f46e5"), c1 = theme::c("#6366f1"), c2 = theme::c("#4338ca");
         if (curStatus == 1) {
-            lbl = "W toku…";
+            lbl = i18n::tr("common.in_progress");
             c0 = theme::c("#f59e0b"); c1 = theme::c("#fbbf24"); c2 = theme::c("#d97706");
         } else if (curStatus == 2) {
-            lbl = "Błąd — ponów";
+            lbl = i18n::tr("common.failed_retry");
             c0 = theme::c("#dc2626"); c1 = theme::c("#ef4444"); c2 = theme::c("#b91c1c");
         } else if (curStatus == 3) {
-            lbl = "Dostępne";
+            lbl = i18n::tr("common.available");
             c0 = theme::c("#10b981"); c1 = theme::c("#34d399"); c2 = theme::c("#059669");
         }
         if (w::button(dl, "##dreq", ImVec2(tx, btnY), ImVec2(tx + 170, btnY + 38), lbl,
                       c0, c1, c2, 0, WHITE, G.m18, 15, 14)) {
             if (curStatus == 0 || curStatus == 2) {
-                openRequestQualityDialog(type, id, d.title, d.year(), d.imdbId, d.originalTitle);
+                openRequestQualityDialog(type, id, d.title, d.year(), d.imdbId, d.originalTitle, d.seasons);
             } else if (curStatus == 1) {
                 a.navigate(Page::Requests);
             }
         }
         float bx = tx + 182;
         if (d.bestTrailer()) {
-            if (w::button(dl, "##dtr", ImVec2(bx, btnY), ImVec2(bx + 130, btnY + 38), "Zwiastun",
+            if (w::button(dl, "##dtr", ImVec2(bx, btnY), ImVec2(bx + 130, btnY + 38), i18n::tr("details.trailer"),
                           theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), theme::c("#4b5563"),
                           TXT, G.m18, 15))
                 ytplayer::open(d.bestTrailer()->key, appMainHwnd());
@@ -686,7 +691,7 @@ void renderDetails(MediaType type, int id) {
         bool blocked = localdb::isBlocked(type, id);
         float row2 = btnY + 44;
         if (w::button(dl, "##dwl", ImVec2(tx, row2), ImVec2(tx + 210, row2 + 28),
-                      wl ? "★ Usuń z obserwowanych" : "☆ Dodaj do obserwowanych",
+                      wl ? i18n::tr("details.watchlist_remove") : i18n::tr("details.watchlist_add"),
                       theme::c("#111827/01"), theme::c("#1f2937"), theme::c("#374151"), 0,
                       wl ? theme::c("#fcd34d") : ATTR, G.r14, 13, 12)) {
             if (wl) a.watchlist.erase(k); else a.watchlist.insert(k);
@@ -694,7 +699,7 @@ void renderDetails(MediaType type, int id) {
         }
         float ax = tx + 220;
         if (w::button(dl, "##dblk", ImVec2(ax, row2), ImVec2(ax + 150, row2 + 28),
-                      blocked ? "Odblokuj" : "Zablokuj",
+                      blocked ? i18n::tr("details.unblock") : i18n::tr("details.block"),
                       blocked ? theme::c("#7f1d1d") : theme::c("#111827/01"),
                       blocked ? theme::c("#991b1b") : theme::c("#1f2937"),
                       theme::c("#374151"), 0,
@@ -704,7 +709,7 @@ void renderDetails(MediaType type, int id) {
         }
         ax += 160;
         if (w::button(dl, "##dissue", ImVec2(ax, row2), ImVec2(ax + 150, row2 + 28),
-                      "Zgłoś problem",
+                      i18n::tr("details.report"),
                       theme::c("#111827/01"), theme::c("#1f2937"), theme::c("#374151"), 0,
                       ATTR, G.r14, 13, 12)) {
             ImGui::OpenPopup("##issue_modal");
@@ -712,18 +717,18 @@ void renderDetails(MediaType type, int id) {
 
         if (ImGui::BeginPopupModal("##issue_modal", nullptr,
                                    ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
-            ImGui::TextUnformatted("Zgłoś problem");
+            ImGui::TextUnformatted(i18n::tr("details.report"));
             ImGui::Separator();
             static int issueType = 1;
             static char msgBuf[512] = {};
-            ImGui::TextUnformatted("Typ");
-            ImGui::RadioButton("Wideo", &issueType, 1); ImGui::SameLine();
-            ImGui::RadioButton("Audio", &issueType, 2); ImGui::SameLine();
-            ImGui::RadioButton("Napisy", &issueType, 3); ImGui::SameLine();
-            ImGui::RadioButton("Inne", &issueType, 4);
-            ImGui::TextUnformatted("Opis");
+            ImGui::TextUnformatted(i18n::tr("common.type"));
+            ImGui::RadioButton(i18n::tr("issue.video"), &issueType, 1); ImGui::SameLine();
+            ImGui::RadioButton(i18n::tr("issue.audio"), &issueType, 2); ImGui::SameLine();
+            ImGui::RadioButton(i18n::tr("issue.subtitles"), &issueType, 3); ImGui::SameLine();
+            ImGui::RadioButton(i18n::tr("issue.other"), &issueType, 4);
+            ImGui::TextUnformatted(i18n::tr("common.description"));
             ImGui::InputTextMultiline("##imsg", msgBuf, sizeof(msgBuf), ImVec2(420, 90));
-            if (ImGui::Button("Wyślij", ImVec2(120, 32))) {
+            if (ImGui::Button(i18n::tr("common.submit"), ImVec2(120, 32))) {
                 localdb::addIssue(type, id, d.title, d.year(), d.posterPath,
                                   (localdb::IssueType)issueType, msgBuf);
                 msgBuf[0] = 0;
@@ -731,7 +736,7 @@ void renderDetails(MediaType type, int id) {
                 a.navigate(Page::Issues);
             }
             ImGui::SameLine();
-            if (ImGui::Button("Anuluj", ImVec2(120, 32))) ImGui::CloseCurrentPopup();
+            if (ImGui::Button(i18n::tr("common.cancel"), ImVec2(120, 32))) ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
     }
@@ -741,30 +746,30 @@ void renderDetails(MediaType type, int id) {
     // vote circle
     w::voteCircle(dl, ImVec2(origin.x + w - 52, py + 10), 22, d.voteAverage);
 
-    dl->AddText(G.sb22, 18, ImVec2(origin.x, bodyY), TXT, "Fabuła");
+    dl->AddText(G.sb22, 18, ImVec2(origin.x, bodyY), TXT, i18n::tr("details.overview"));
     bodyY += 26;
-    bodyY += w::textClamped(dl, ImVec2(origin.x, bodyY), w - 8, d.overview.empty() ? "Brak opisu." : d.overview,
+    bodyY += w::textClamped(dl, ImVec2(origin.x, bodyY), w - 8, d.overview.empty() ? i18n::tr("details.no_overview") : d.overview,
                             G.r16, 15.5f, TXT, 0, 22) + 10;
 
     {
         struct Meta { std::string label, val; };
         std::vector<Meta> metas;
         if (type == MediaType::Movie) {
-            if (d.budget) metas.push_back({"Budżet", util::moneyStr((double)d.budget)});
-            if (d.revenue) metas.push_back({"Wpływy", util::moneyStr((double)d.revenue)});
+            if (d.budget) metas.push_back({i18n::tr("details.budget"), util::moneyStr((double)d.budget)});
+            if (d.revenue) metas.push_back({i18n::tr("details.revenue"), util::moneyStr((double)d.revenue)});
         }
         if (!d.productionCompanies.empty()) {
             std::string s;
             for (size_t i = 0; i < std::min<size_t>(3, d.productionCompanies.size()); i++) { if (i) s += ", "; s += d.productionCompanies[i]; }
-            metas.push_back({"Firmy produkcyjne", s});
+            metas.push_back({i18n::tr("details.studios"), s});
         }
         if (!d.spokenLanguages.empty()) {
             std::string s;
             for (size_t i = 0; i < std::min<size_t>(3, d.spokenLanguages.size()); i++) { if (i) s += ", "; s += d.spokenLanguages[i]; }
-            metas.push_back({"Języki", s});
+            metas.push_back({i18n::tr("details.languages"), s});
         }
         if (!d.originalTitle.empty() && d.originalTitle != d.title)
-            metas.push_back({"Tytuł oryginalny", d.originalTitle});
+            metas.push_back({i18n::tr("details.original_title"), d.originalTitle});
         if (!metas.empty()) {
             bodyY += 6;
             float mx = origin.x;
@@ -780,7 +785,7 @@ void renderDetails(MediaType type, int id) {
 
     if (!d.cast.empty()) {
         bodyY += 8;
-        dl->AddText(G.sb22, 18, ImVec2(origin.x, bodyY), TXT, "Obsada");
+        dl->AddText(G.sb22, 18, ImVec2(origin.x, bodyY), TXT, i18n::tr("details.cast"));
         bodyY += 28;
         float cx = origin.x, csize = 100;
         int n = std::min<int>(d.cast.size(), (int)((w + 16) / (csize + 14)));
@@ -794,7 +799,7 @@ void renderDetails(MediaType type, int id) {
 
     if (type == MediaType::TV && !d.seasons.empty()) {
         bodyY += 8;
-        dl->AddText(G.sb22, 18, ImVec2(origin.x, bodyY), TXT, "Sezony");
+        dl->AddText(G.sb22, 18, ImVec2(origin.x, bodyY), TXT, i18n::tr("details.seasons"));
         bodyY += 28;
         float sx = origin.x;
         for (auto& s : d.seasons) {
@@ -805,7 +810,7 @@ void renderDetails(MediaType type, int id) {
             dl->AddRect(ImVec2(sx, bodyY), ImVec2(sx + bw, bodyY + bh), theme::c("#374151"), 14, 0, 1.0f);
             ImVec2 ts = G.sb18->CalcTextSizeA(20, FLT_MAX, 0, b);
             dl->AddText(G.sb18, 20, ImVec2(sx + bw / 2 - ts.x / 2, bodyY + 8), TXT, b);
-            std::string ec = std::to_string(s.episodeCount) + " odc.";
+            std::string ec = std::to_string(s.episodeCount) + i18n::tr("details.episodes_short");
             dl->AddText(G.r14, 11, ImVec2(sx + bw / 2 - G.r14->CalcTextSizeA(11, FLT_MAX, 0, ec.c_str()).x / 2, bodyY + 36),
                         theme::c("#6b7280"), ec.c_str());
             sx += bw + 8;
@@ -814,8 +819,8 @@ void renderDetails(MediaType type, int id) {
     }
 
     ImGui::SetCursorScreenPos(ImVec2(origin.x, bodyY + 4));
-    sliderRow("Rekomendacje", h.recRes);
-    sliderRow("Podobne", h.simRes);
+    sliderRow(i18n::tr("details.recommendations"), h.recRes);
+    sliderRow(i18n::tr("details.similar"), h.simRes);
 }
 
 // ------------------------------------------------------------------ stubs
@@ -827,7 +832,7 @@ void renderStub(const char* what) {
     float w = ImGui::GetContentRegionAvail().x;
     dl->AddText(G.sb26, 24, ImVec2(origin.x + w / 2 - 220, origin.y + 140), ATTR, what);
     dl->AddText(G.r16, 15, ImVec2(origin.x + w / 2 - 280, origin.y + 172), theme::c("#4b5563"),
-                "Ta sekcja nie jest jeszcze podpięta pod lokalny stack.");
+                i18n::tr("stub.not_wired"));
 }
 
 static void pageHeader(ImDrawList* dl, ImVec2 origin, const char* title, const char* sub) {
@@ -840,19 +845,19 @@ void renderBlocklist() {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 origin = ImGui::GetCursorScreenPos();
     float w = ImGui::GetContentRegionAvail().x;
-    pageHeader(dl, origin, "Blokada", "Zarządzaj zablokowanymi tytułami (jak w Seerr).");
+    pageHeader(dl, origin, i18n::tr("blocklist.title"), i18n::tr("blocklist.sub"));
 
     static char search[128] = {};
     ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + 60));
     ImGui::PushItemWidth(std::min(360.0f, w - 20));
-    ImGui::InputTextWithHint("##blsearch", "Szukaj…", search, sizeof(search));
+    ImGui::InputTextWithHint("##blsearch", i18n::tr("common.search_short"), search, sizeof(search));
     ImGui::PopItemWidth();
 
     auto items = localdb::listBlock(search);
     float y = origin.y + 100;
     if (items.empty()) {
         dl->AddText(G.r16, 15, ImVec2(origin.x, y), ATTR2,
-                    "Brak zablokowanych tytułów. Użyj „Zablokuj” na stronie szczegółów.");
+                    i18n::tr("blocklist.empty"));
         ImGui::SetCursorScreenPos(ImVec2(origin.x, y + 40));
         return;
     }
@@ -880,11 +885,11 @@ void renderBlocklist() {
             }
         }
 
-        const char* type = b.mediaType == MediaType::TV ? "SERIAL" : "FILM";
+        const char* type = b.mediaType == MediaType::TV ? i18n::tr("common.tv") : i18n::tr("common.movie");
         dl->AddText(G.r14, 12, ImVec2(p0.x + 74, p0.y + 12), ATTR, type);
         std::string title = b.title + (b.year.empty() ? "" : " (" + b.year + ")");
         dl->AddText(G.sb18, 16, ImVec2(p0.x + 74, p0.y + 30), TXT, title.c_str());
-        w::badge(dl, ImVec2(p0.x + 74, p0.y + 54), "Zablokowane",
+        w::badge(dl, ImVec2(p0.x + 74, p0.y + 54), i18n::tr("blocklist.blocked"),
                  theme::c("#7f1d1d"), theme::c("#991b1b"), G.r14, 12, theme::c("#fecaca"));
 
         ImGui::SetCursorScreenPos(ImVec2(p0.x + 12, p0.y + 10));
@@ -907,13 +912,13 @@ void renderIssues() {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 origin = ImGui::GetCursorScreenPos();
     float w = ImGui::GetContentRegionAvail().x;
-    pageHeader(dl, origin, "Problemy", "Zgłoszenia problemów z mediami (jak w Seerr).");
+    pageHeader(dl, origin, i18n::tr("issues.title"), i18n::tr("issues.sub"));
 
     static int filter = 1; // 0 all, 1 open, 2 resolved
     ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + 60));
-    ImGui::RadioButton("Otwarte", &filter, 1); ImGui::SameLine();
-    ImGui::RadioButton("Rozwiązane", &filter, 2); ImGui::SameLine();
-    ImGui::RadioButton("Wszystkie", &filter, 0);
+    ImGui::RadioButton(i18n::tr("issues.open"), &filter, 1); ImGui::SameLine();
+    ImGui::RadioButton(i18n::tr("issues.resolved"), &filter, 2); ImGui::SameLine();
+    ImGui::RadioButton(i18n::tr("common.all"), &filter, 0);
 
     bool all = filter == 0;
     auto status = filter == 2 ? localdb::IssueStatus::Resolved : localdb::IssueStatus::Open;
@@ -922,7 +927,7 @@ void renderIssues() {
     float y = origin.y + 100;
     if (items.empty()) {
         dl->AddText(G.r16, 15, ImVec2(origin.x, y), ATTR2,
-                    "Brak problemów. Zgłoś je ze strony szczegółów filmu/serialu.");
+                    i18n::tr("issues.empty"));
         ImGui::SetCursorScreenPos(ImVec2(origin.x, y + 40));
         return;
     }
@@ -960,7 +965,7 @@ void renderIssues() {
 
         ImVec2 bpos(p0.x + 74, p0.y + 58);
         auto bs = w::badge(dl, bpos,
-                           iss.status == localdb::IssueStatus::Open ? "Otwarte" : "Rozwiązane",
+                           iss.status == localdb::IssueStatus::Open ? i18n::tr("issues.open") : i18n::tr("issues.resolved"),
                            iss.status == localdb::IssueStatus::Open ? theme::c("#92400e") : theme::c("#065f46"),
                            iss.status == localdb::IssueStatus::Open ? theme::c("#b45309") : theme::c("#047857"),
                            G.r14, 12,
@@ -981,19 +986,19 @@ void renderIssues() {
         if (iss.status == localdb::IssueStatus::Open) {
             if (w::button(dl, ("##issres" + iss.id).c_str(),
                           ImVec2(bx, p0.y + 34), ImVec2(bx + 110, p0.y + 62),
-                          "Rozwiąż", theme::c("#065f46"), theme::c("#047857"), theme::c("#059669"), 0,
+                          i18n::tr("issues.resolve"), theme::c("#065f46"), theme::c("#047857"), theme::c("#059669"), 0,
                           TXT, G.r14, 13, 12))
                 localdb::setIssueStatus(iss.id, localdb::IssueStatus::Resolved);
         } else {
             if (w::button(dl, ("##issre" + iss.id).c_str(),
                           ImVec2(bx, p0.y + 34), ImVec2(bx + 110, p0.y + 62),
-                          "Otwórz", theme::c("#92400e"), theme::c("#b45309"), theme::c("#d97706"), 0,
+                          i18n::tr("issues.reopen"), theme::c("#92400e"), theme::c("#b45309"), theme::c("#d97706"), 0,
                           TXT, G.r14, 13, 12))
                 localdb::setIssueStatus(iss.id, localdb::IssueStatus::Open);
         }
         if (w::button(dl, ("##issdel" + iss.id).c_str(),
                       ImVec2(bx + 120, p0.y + 34), ImVec2(bx + 230, p0.y + 62),
-                      "Usuń", theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), 0,
+                      i18n::tr("common.delete"), theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), 0,
                       TXT, G.r14, 13, 12))
             localdb::removeIssue(iss.id);
 
@@ -1007,8 +1012,8 @@ void renderUsers() {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 origin = ImGui::GetCursorScreenPos();
     float w = ImGui::GetContentRegionAvail().x;
-    pageHeader(dl, origin, "Użytkownicy",
-               "Lokalny właściciel aplikacji (bez importu z Jellyfin — wszystko w jednym programie).");
+    pageHeader(dl, origin, i18n::tr("users.title"),
+               i18n::tr("users.sub"));
 
     auto& usr = localdb::user();
     auto reqs = stack::listRequests();
@@ -1030,7 +1035,7 @@ void renderUsers() {
     ImVec2 isz = G.sb22->CalcTextSizeA(22, FLT_MAX, 0, initial);
     dl->AddText(G.sb22, 22, ImVec2(av.x - isz.x / 2, av.y - isz.y / 2), WHITE, initial);
 
-    dl->AddText(G.sb18, 16, ImVec2(p0.x + 84, p0.y + 22), TXT, "Profil lokalny");
+    dl->AddText(G.sb18, 16, ImVec2(p0.x + 84, p0.y + 22), TXT, i18n::tr("users.local_profile"));
     ImGui::SetCursorScreenPos(ImVec2(p0.x + 84, p0.y + 48));
     static char nameBuf[128] = {};
     static char emailBuf[128] = {};
@@ -1041,13 +1046,13 @@ void renderUsers() {
         loaded = true;
     }
     ImGui::PushItemWidth(std::min(320.0f, w - 120));
-    ImGui::InputTextWithHint("##uname", "Nazwa wyświetlana", nameBuf, sizeof(nameBuf));
+    ImGui::InputTextWithHint("##uname", i18n::tr("users.display_name"), nameBuf, sizeof(nameBuf));
     ImGui::SetCursorScreenPos(ImVec2(p0.x + 84, p0.y + 80));
-    ImGui::InputTextWithHint("##uemail", "E-mail", emailBuf, sizeof(emailBuf));
+    ImGui::InputTextWithHint("##uemail", i18n::tr("users.email"), emailBuf, sizeof(emailBuf));
     ImGui::PopItemWidth();
 
     ImGui::SetCursorScreenPos(ImVec2(p0.x + 84, p0.y + 114));
-    if (ImGui::Button("Zapisz profil", ImVec2(140, 30))) {
+    if (ImGui::Button(i18n::tr("users.save_profile"), ImVec2(140, 30))) {
         usr.displayName = nameBuf;
         usr.email = emailBuf;
         localdb::saveUser();
@@ -1055,13 +1060,13 @@ void renderUsers() {
 
     // table header row (Seerr User List style)
     y = p1.y + 24;
-    dl->AddText(G.sb18, 16, ImVec2(origin.x, y), TXT, "Lista użytkowników");
+    dl->AddText(G.sb18, 16, ImVec2(origin.x, y), TXT, i18n::tr("users.list"));
     y += 28;
 
     ImVec2 th0(origin.x, y), th1(origin.x + w - 8, y + 36);
     dl->AddRectFilled(th0, th1, theme::c("#111827"), 14);
     float cols[5] = {0.32f, 0.14f, 0.18f, 0.14f, 0.22f};
-    const char* headers[] = {"Użytkownik", "Żądania", "Typ", "Rola", ""};
+    const char* headers[] = {i18n::tr("users.col_user"), i18n::tr("users.col_requests"), i18n::tr("users.col_type"), i18n::tr("users.col_role"), ""};
     float hx = th0.x + 16;
     for (int i = 0; i < 5; i++) {
         dl->AddText(G.r14, 12, ImVec2(hx, th0.y + 10), ATTR, headers[i]);
@@ -1086,11 +1091,11 @@ void renderUsers() {
     dl->AddText(G.m16, 14, ImVec2(cx, r0.y + 24), TXT, rc);
 
     cx = r0.x + (w - 24) * (cols[0] + cols[1]) + 16;
-    w::badge(dl, ImVec2(cx, r0.y + 22), "Lokalny", theme::c("#1e3a5f"), theme::c("#2563eb"),
+    w::badge(dl, ImVec2(cx, r0.y + 22), i18n::tr("users.local"), theme::c("#1e3a5f"), theme::c("#2563eb"),
              G.r14, 12, theme::c("#93c5fd"));
 
     cx = r0.x + (w - 24) * (cols[0] + cols[1] + cols[2]) + 16;
-    w::badge(dl, ImVec2(cx, r0.y + 22), "Właściciel", theme::c("#4c1d95"), theme::c("#7c3aed"),
+    w::badge(dl, ImVec2(cx, r0.y + 22), i18n::tr("users.owner"), theme::c("#4c1d95"), theme::c("#7c3aed"),
              G.r14, 12, theme::c("#ddd6fe"));
 
     ImGui::SetCursorScreenPos(ImVec2(origin.x, r1.y + 24));
@@ -1104,14 +1109,14 @@ void renderRequests() {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 origin = ImGui::GetCursorScreenPos();
     float w = ImGui::GetContentRegionAvail().x;
-    dl->AddText(G.sb26, 24, ImVec2(origin.x, origin.y), TXT, "Żądania");
+    dl->AddText(G.sb26, 24, ImVec2(origin.x, origin.y), TXT, i18n::tr("requests.title"));
     dl->AddText(G.r14, 13, ImVec2(origin.x, origin.y + 32), ATTR,
-                "Szukanie → libtorrent → biblioteka (bez zewnętrznych *arr / qBit)");
+                i18n::tr("requests.sub"));
 
     auto reqs = stack::listRequests();
     float y = origin.y + 64;
     if (reqs.empty()) {
-        dl->AddText(G.r16, 15, ImVec2(origin.x, y), ATTR2, "Brak żądań. Kliknij „Zażądaj” na filmie lub serialu.");
+        dl->AddText(G.r16, 15, ImVec2(origin.x, y), ATTR2, i18n::tr("requests.empty"));
         ImGui::SetCursorScreenPos(ImVec2(origin.x, y + 40));
         return;
     }
@@ -1128,7 +1133,7 @@ void renderRequests() {
         else if (r.status == stack::ReqStatus::Downloading || r.status == stack::ReqStatus::Searching)
             stCol = theme::c("#f59e0b");
 
-        std::string type = r.mediaType == MediaType::TV ? "SERIAL" : "FILM";
+        std::string type = r.mediaType == MediaType::TV ? i18n::tr("common.tv") : i18n::tr("common.movie");
         if (!r.preferredQuality.empty()) type += " · " + r.preferredQuality;
         dl->AddText(G.r14, 12, ImVec2(p0.x + 14, p0.y + 10), ATTR, type.c_str());
         dl->AddText(G.sb18, 16, ImVec2(p0.x + 14, p0.y + 28), TXT, r.title.c_str());
@@ -1141,12 +1146,12 @@ void renderRequests() {
         ImGui::SetCursorScreenPos(ImVec2(p1.x - 96, p0.y + 22));
         if (r.status != stack::ReqStatus::Available && r.status != stack::ReqStatus::Declined) {
             if (w::button(dl, ("##can" + r.id).c_str(), ImVec2(p1.x - 96, p0.y + 22), ImVec2(p1.x - 14, p0.y + 50),
-                          "Anuluj", theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), 0,
+                          i18n::tr("common.cancel"), theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), 0,
                           TXT, G.r14, 13, 12))
                 stack::cancelRequest(r.id);
         } else if (r.status == stack::ReqStatus::Available) {
             if (w::button(dl, ("##open" + r.id).c_str(), ImVec2(p1.x - 96, p0.y + 22), ImVec2(p1.x - 14, p0.y + 50),
-                          "Odtwórz", theme::c("#065f46"), theme::c("#047857"), theme::c("#059669"), 0,
+                          i18n::tr("common.play"), theme::c("#065f46"), theme::c("#047857"), theme::c("#059669"), 0,
                           TXT, G.r14, 13, 12)) {
                 std::string path = r.libraryPath.empty() ? stack::StackConfig::get().moviesPath : r.libraryPath;
                 player::open(library::resolvePlayable(path), r.title);
@@ -1163,9 +1168,9 @@ void renderLibrary() {
     ImVec2 origin = ImGui::GetCursorScreenPos();
     float w = ImGui::GetContentRegionAvail().x;
 
-    dl->AddText(G.sb26, 24, ImVec2(origin.x, origin.y), TXT, "Biblioteka");
+    dl->AddText(G.sb26, 24, ImVec2(origin.x, origin.y), TXT, i18n::tr("library.title"));
     dl->AddText(G.r14, 13, ImVec2(origin.x, origin.y + 32), ATTR,
-                "Kliknij, aby oglądać · PPM — opcje (usuń, właściwości…)");
+                i18n::tr("library.sub"));
 
     static std::vector<library::Item> items;
     static double lastScan = 0;
@@ -1183,22 +1188,24 @@ void renderLibrary() {
     }
 
     ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + 56));
-    if (ImGui::Button("Odśwież", ImVec2(100, 28))) {
+    if (ImGui::Button(i18n::tr("common.refresh"), ImVec2(100, 28))) {
         items = library::scan();
         lastScan = now;
     }
     ImGui::SameLine();
     char countBuf[64];
-    std::snprintf(countBuf, sizeof(countBuf), "%d tytułów", (int)items.size());
+    std::snprintf(countBuf, sizeof(countBuf), "%d %s", (int)items.size(), i18n::tr("library.titles"));
     ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", countBuf);
 
     float y = origin.y + 100;
     if (items.empty()) {
         dl->AddText(G.r16, 15, ImVec2(origin.x, y), ATTR2,
-                    "Biblioteka jest pusta. Zażądaj film i poczekaj na pobranie — pojawią się tu.");
+                    i18n::tr("library.empty"));
         auto& cfg = stack::StackConfig::get();
-        dl->AddText(G.r14, 12, ImVec2(origin.x, y + 28), ATTR, ("Filmy: " + cfg.moviesPath).c_str());
-        dl->AddText(G.r14, 12, ImVec2(origin.x, y + 48), ATTR, ("Seriale: " + cfg.tvPath).c_str());
+        dl->AddText(G.r14, 12, ImVec2(origin.x, y + 28), ATTR,
+                    (std::string(i18n::tr("library.movies")) + ": " + cfg.moviesPath).c_str());
+        dl->AddText(G.r14, 12, ImVec2(origin.x, y + 48), ATTR,
+                    (std::string(i18n::tr("library.tv")) + ": " + cfg.tvPath).c_str());
         ImGui::SetCursorScreenPos(ImVec2(origin.x, y + 80));
         return;
     }
@@ -1252,7 +1259,7 @@ void renderLibrary() {
                 svgicon::draw(dl, svgicon::Play,
                               ImVec2((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f - 10),
                               36, theme::c("#00a4dc"));
-                const char* kind = it.mediaType == MediaType::TV ? "SERIAL" : "FILM";
+                const char* kind = it.mediaType == MediaType::TV ? i18n::tr("common.tv") : i18n::tr("common.movie");
                 ImVec2 ks = G.r14->CalcTextSizeA(12, FLT_MAX, 0, kind);
                 dl->AddText(G.r14, 12, ImVec2((p0.x + p1.x - ks.x) * 0.5f, (p0.y + p1.y) * 0.5f + 24), ATTR, kind);
             }
@@ -1267,20 +1274,20 @@ void renderLibrary() {
         bool hov = ImGui::IsItemHovered();
         if (ImGui::BeginPopupContextItem("##libctx")) {
             ctxItem = it;
-            if (ImGui::MenuItem("Odtwórz")) {
+            if (ImGui::MenuItem(i18n::tr("common.play"))) {
                 player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
             }
-            if (ImGui::MenuItem("Otwórz folder")) {
+            if (ImGui::MenuItem(i18n::tr("common.open_folder"))) {
                 std::string folder = it.folder.empty()
                     ? std::filesystem::path(it.path).parent_path().string()
                     : it.folder;
                 platform::openPath(folder);
             }
-            if (ImGui::MenuItem("Właściwości"))
+            if (ImGui::MenuItem(i18n::tr("common.properties")))
                 openProps = true;
             ImGui::Separator();
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.96f, 0.45f, 0.45f, 1));
-            if (ImGui::MenuItem("Usuń…")) {
+            if (ImGui::MenuItem(i18n::tr("common.delete"))) {
                 deleteErr.clear();
                 openDelete = true;
             }
@@ -1315,7 +1322,7 @@ void renderLibrary() {
     if (ImGui::BeginPopupModal("##lib_props", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.91f, 0.93f, 1));
-        ImGui::TextUnformatted("Właściwości");
+        ImGui::TextUnformatted(i18n::tr("common.properties"));
         ImGui::PopStyleColor();
         ImGui::Separator();
         ImGui::Spacing();
@@ -1330,8 +1337,8 @@ void renderLibrary() {
 
         std::string titleLine = ctxItem.title;
         if (!ctxItem.year.empty()) titleLine += " (" + ctxItem.year + ")";
-        row("Tytuł", titleLine);
-        row("Typ", ctxItem.mediaType == MediaType::TV ? "Serial" : "Film");
+        row(i18n::tr("common.title"), titleLine);
+        row(i18n::tr("common.type"), ctxItem.mediaType == MediaType::TV ? i18n::tr("library.type_tv") : i18n::tr("library.type_movie"));
         if (ctxItem.tmdbId > 0)
             row("TMDB ID", std::to_string(ctxItem.tmdbId));
 
@@ -1340,7 +1347,7 @@ void renderLibrary() {
         namespace fs = std::filesystem;
         if (sz <= 0 && !ctxItem.path.empty() && fs::exists(ctxItem.path, ec))
             sz = (int64_t)fs::file_size(ctxItem.path, ec);
-        row("Rozmiar", library::formatSize(sz));
+        row(i18n::tr("library.size"), library::formatSize(sz));
 
         std::string ext;
         if (!ctxItem.path.empty()) {
@@ -1348,7 +1355,7 @@ void renderLibrary() {
             if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
             for (auto& c : ext) c = (char)std::toupper((unsigned char)c);
         }
-        row("Kontener", ext);
+        row(i18n::tr("library.container"), ext);
 
         std::string modified;
         if (!ctxItem.path.empty() && fs::exists(ctxItem.path, ec)) {
@@ -1368,21 +1375,21 @@ void renderLibrary() {
                 modified = tbuf;
             }
         }
-        row("Zmodyfikowano", modified);
-        row("Plik", ctxItem.path);
-        row("Folder", ctxItem.folder);
+        row(i18n::tr("library.modified"), modified);
+        row(i18n::tr("library.file"), ctxItem.path);
+        row(i18n::tr("library.folder"), ctxItem.folder);
 
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
-        if (ImGui::Button("Otwórz folder", ImVec2(140, 32))) {
+        if (ImGui::Button(i18n::tr("common.open_folder"), ImVec2(140, 32))) {
             std::string folder = ctxItem.folder.empty()
                 ? fs::path(ctxItem.path).parent_path().string()
                 : ctxItem.folder;
             platform::openPath(folder);
         }
         ImGui::SameLine();
-        if (ImGui::Button("Zamknij", ImVec2(120, 32)))
+        if (ImGui::Button(i18n::tr("common.close"), ImVec2(120, 32)))
             ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
@@ -1395,11 +1402,11 @@ void renderLibrary() {
     if (ImGui::BeginPopupModal("##lib_delete", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.96f, 0.55f, 0.55f, 1));
-        ImGui::TextUnformatted("Usuń z biblioteki");
+        ImGui::TextUnformatted(i18n::tr("library.delete_title"));
         ImGui::PopStyleColor();
         ImGui::Separator();
         ImGui::Spacing();
-        ImGui::TextWrapped("Usunąć „%s” z dysku? Tej operacji nie można cofnąć.",
+        ImGui::TextWrapped(i18n::tr("library.delete_confirm"),
                            ctxItem.title.c_str());
         if (!ctxItem.folder.empty())
             ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", ctxItem.folder.c_str());
@@ -1412,7 +1419,7 @@ void renderLibrary() {
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
-        if (ImGui::Button("Usuń", ImVec2(120, 32))) {
+        if (ImGui::Button(i18n::tr("common.delete"), ImVec2(120, 32))) {
             std::string err;
             if (library::removeItem(ctxItem, &err)) {
                 items = library::scan();
@@ -1421,11 +1428,11 @@ void renderLibrary() {
                 posterReqs.erase(ctxItem.id);
                 ImGui::CloseCurrentPopup();
             } else {
-                deleteErr = err.empty() ? "Nie udało się usunąć" : err;
+                deleteErr = err.empty() ? i18n::tr("library.delete_failed") : err;
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Anuluj", ImVec2(120, 32)))
+        if (ImGui::Button(i18n::tr("common.cancel"), ImVec2(120, 32)))
             ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
@@ -1436,9 +1443,9 @@ void renderSettings() {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 origin = ImGui::GetCursorScreenPos();
     float w = ImGui::GetContentRegionAvail().x;
-    dl->AddText(G.sb26, 24, ImVec2(origin.x, origin.y), TXT, "Ustawienia");
+    dl->AddText(G.sb26, 24, ImVec2(origin.x, origin.y), TXT, i18n::tr("settings.title"));
     dl->AddText(G.r14, 13, ImVec2(origin.x, origin.y + 32), ATTR,
-                "Wszystko działa w jednej apce — wyszukiwanie torrentów + libtorrent + biblioteka");
+                i18n::tr("settings.sub"));
 
     auto& cfg = stack::StackConfig::get();
     static char movies[512], tv[512], dlpath[512];
@@ -1452,27 +1459,93 @@ void renderSettings() {
 
     ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + 64));
     ImGui::PushItemWidth(std::min(560.0f, w - 20));
-    ImGui::TextUnformatted("Filmy (biblioteka)");
+    {
+        const char* uiCodes[] = { "en", "pl" };
+        const char* uiLabels[] = { "English", "Polski" };
+        int ui = 0;
+        for (int i = 0; i < 2; i++)
+            if (cfg.uiLanguage == uiCodes[i]) ui = i;
+        ImGui::TextUnformatted(i18n::tr("settings.ui_language"));
+        if (ImGui::Combo("##uilang", &ui, uiLabels, 2)) {
+            cfg.uiLanguage = uiCodes[ui];
+            i18n::setLanguage(cfg.uiLanguage);
+            cfg.save();
+        }
+    }
+    ImGui::TextUnformatted(i18n::tr("settings.movies_path"));
     ImGui::InputText("##movies", movies, sizeof(movies));
-    ImGui::TextUnformatted("Seriale (biblioteka)");
+    ImGui::TextUnformatted(i18n::tr("settings.tv_path"));
     ImGui::InputText("##tv", tv, sizeof(tv));
-    ImGui::TextUnformatted("Folder pobierania");
+    ImGui::TextUnformatted(i18n::tr("settings.download_path"));
     ImGui::InputText("##dl", dlpath, sizeof(dlpath));
-    ImGui::Checkbox("Auto-start pobierania", &cfg.autoStart);
-    ImGui::SliderInt("Min. seeders", &cfg.minSeeders, 0, 50);
+    ImGui::Checkbox(i18n::tr("settings.auto_start"), &cfg.autoStart);
+    ImGui::SliderInt(i18n::tr("settings.min_seeders"), &cfg.minSeeders, 0, 50);
     {
         const char* quals[] = { "any", "720p", "1080p", "2160p" };
-        const char* labels[] = { "Dowolna", "720p", "1080p", "2160p (4K)" };
+        const char* labels[] = { i18n::tr("settings.quality_any"), "720p", "1080p", "2160p (4K)" };
         int qi = 2;
         for (int i = 0; i < 4; i++) if (cfg.preferredQuality == quals[i]) qi = i;
-        ImGui::TextUnformatted("Domyślna jakość (przy żądaniu)");
+        ImGui::TextUnformatted(i18n::tr("settings.default_quality"));
         if (ImGui::Combo("##defq", &qi, labels, 4))
             cfg.preferredQuality = quals[qi];
     }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::TextUnformatted(i18n::tr("settings.subs"));
+    ImGui::TextDisabled("%s", i18n::tr("settings.subs_hint1"));
+    ImGui::TextDisabled("%s", i18n::tr("settings.subs_hint2"));
+    ImGui::Checkbox(i18n::tr("settings.subs_auto"), &cfg.subsAuto);
+    {
+        static const char* langs[] = {
+            "pl", "en", "de", "fr", "es", "it", "pt", "ru", "uk", "cs", "sk",
+            "hu", "nl", "sv", "no", "da", "fi", "ja", "ko", "zh", "ar", "tr"
+        };
+        static const char* labels[] = {
+            "Polski", "English", "Deutsch", "Français", "Español", "Italiano", "Português",
+            "Русский", "Українська", "Čeština", "Slovenčina", "Magyar", "Nederlands",
+            "Svenska", "Norsk", "Dansk", "Suomi", "日本語", "한국어", "中文", "العربية", "Türkçe"
+        };
+        int li = 0;
+        for (int i = 0; i < (int)(sizeof(langs) / sizeof(langs[0])); i++)
+            if (cfg.subsPreferredLang == langs[i]) li = i;
+        ImGui::TextUnformatted(i18n::tr("settings.subs_lang"));
+        if (ImGui::Combo("##sublang", &li, labels, (int)(sizeof(labels) / sizeof(labels[0]))))
+            cfg.subsPreferredLang = langs[li];
+    }
+    {
+        static char apiKey[128], user[128], pass[128];
+        static bool subLoaded = false;
+        if (!subLoaded) {
+            std::snprintf(apiKey, sizeof(apiKey), "%s", cfg.subsApiKey.c_str());
+            std::snprintf(user, sizeof(user), "%s", cfg.subsUsername.c_str());
+            std::snprintf(pass, sizeof(pass), "%s", cfg.subsPassword.c_str());
+            subLoaded = true;
+        }
+        ImGui::TextUnformatted("OpenSubtitles API key (opcjonalnie)");
+        ImGui::InputText("##osapikey", apiKey, sizeof(apiKey));
+        ImGui::TextUnformatted("OpenSubtitles login");
+        ImGui::InputText("##osuser", user, sizeof(user));
+        ImGui::TextUnformatted(i18n::tr("settings.subs_password"));
+        ImGui::InputText("##ospass", pass, sizeof(pass), ImGuiInputTextFlags_Password);
+        ImGui::TextDisabled("Klucz: opensubtitles.com/consumers  ·  darmowe konto wystarczy");
+        if (ImGui::Button(i18n::tr("settings.subs_save"), ImVec2(140, 28))) {
+            cfg.subsApiKey = apiKey;
+            cfg.subsUsername = user;
+            cfg.subsPassword = pass;
+            cfg.save();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(i18n::tr("settings.scan_library"), ImVec2(160, 28)))
+            subs::scanLibrary();
+        ImGui::TextUnformatted(subs::statusMessage().c_str());
+    }
+
     ImGui::PopItemWidth();
 
     ImGui::Spacing();
-    if (ImGui::Button("Zapisz", ImVec2(140, 36))) {
+    if (ImGui::Button(i18n::tr("common.save"), ImVec2(140, 36))) {
         cfg.moviesPath = movies;
         cfg.tvPath = tv;
         cfg.downloadPath = dlpath;
@@ -1491,8 +1564,19 @@ struct RequestDlg {
     MediaType type = MediaType::Movie;
     int id = 0;
     std::string title, year, imdbId, originalTitle;
-    std::vector<int> seasons;
     int qualityIdx = 2; // 1080p
+
+    // TV seasons / episodes
+    std::vector<SeasonInfo> availableSeasons;
+    std::set<int> selectedSeasons;
+    bool seasonsLoading = false;
+    AsyncReq<Details> seasonsReq;
+    bool pickEpisodes = false;
+    int episodeSeason = -1;
+    std::vector<EpisodeInfo> availableEpisodes;
+    std::set<int> selectedEpisodes;
+    bool episodesLoading = false;
+    AsyncReq<std::vector<EpisodeInfo>> episodesReq;
 
     AsyncReq<std::vector<stack::ReleaseHit>> searchReq;
     std::vector<stack::ReleaseHit> hits;
@@ -1500,15 +1584,89 @@ struct RequestDlg {
     bool searchDone = false;
     std::string searchErr;
     int selected = -1;
+
+    std::vector<int> seasonsVec() const {
+        std::vector<int> v(selectedSeasons.begin(), selectedSeasons.end());
+        std::sort(v.begin(), v.end());
+        return v;
+    }
+    std::vector<int> episodesVec() const {
+        if (!pickEpisodes || selectedSeasons.size() != 1) return {};
+        std::vector<int> v(selectedEpisodes.begin(), selectedEpisodes.end());
+        std::sort(v.begin(), v.end());
+        return v;
+    }
+    bool canSubmit() const {
+        if (type != MediaType::TV) return true;
+        if (seasonsLoading || availableSeasons.empty()) return false;
+        if (selectedSeasons.empty()) return false;
+        if (pickEpisodes && selectedSeasons.size() == 1) {
+            if (episodesLoading) return false;
+            if (selectedEpisodes.empty()) return false;
+        }
+        return true;
+    }
 };
 RequestDlg& reqDlg() { static RequestDlg d; return d; }
 
 const char* kQualValues[] = { "any", "720p", "1080p", "2160p" };
-const char* kQualLabels[] = { "Dowolna", "720p", "1080p", "2160p (4K)" };
+
+const char* qualLabel(int i) {
+    static const char* fixed[] = { nullptr, "720p", "1080p", "2160p (4K)" };
+    if (i == 0) return i18n::tr("settings.quality_any");
+    if (i >= 1 && i < 4) return fixed[i];
+    return "?";
+}
+
+void applyAvailableSeasons(RequestDlg& d, const std::vector<SeasonInfo>& seasons) {
+    d.availableSeasons.clear();
+    for (auto& s : seasons) {
+        if (s.seasonNumber <= 0) continue; // skip specials
+        d.availableSeasons.push_back(s);
+    }
+    d.selectedSeasons.clear();
+    d.pickEpisodes = false;
+    d.episodeSeason = -1;
+    d.availableEpisodes.clear();
+    d.selectedEpisodes.clear();
+    // default: select all regular seasons
+    for (auto& s : d.availableSeasons)
+        d.selectedSeasons.insert(s.seasonNumber);
+}
+
+void pollSeasonFetch(RequestDlg& d) {
+    if (!d.seasonsLoading || !d.seasonsReq.valid()) return;
+    if (!d.seasonsReq.ready()) return;
+    try {
+        Details det = d.seasonsReq.take();
+        if (d.imdbId.empty() && !det.imdbId.empty()) d.imdbId = det.imdbId;
+        if (d.year.empty() && !det.year().empty()) d.year = det.year();
+        if (d.originalTitle.empty() && !det.originalTitle.empty()) d.originalTitle = det.originalTitle;
+        applyAvailableSeasons(d, det.seasons);
+    } catch (...) {
+        d.availableSeasons.clear();
+    }
+    d.seasonsLoading = false;
+}
+
+void pollEpisodeFetch(RequestDlg& d) {
+    if (!d.episodesLoading || !d.episodesReq.valid()) return;
+    if (!d.episodesReq.ready()) return;
+    try {
+        d.availableEpisodes = d.episodesReq.take();
+        d.selectedEpisodes.clear();
+        for (auto& e : d.availableEpisodes)
+            d.selectedEpisodes.insert(e.episodeNumber);
+    } catch (...) {
+        d.availableEpisodes.clear();
+        d.selectedEpisodes.clear();
+    }
+    d.episodesLoading = false;
+}
 
 void startInteractiveSearch(RequestDlg& d) {
     if (d.searching && d.searchReq.valid() && !d.searchReq.ready())
-        return; // already in flight
+        return;
     d.hits.clear();
     d.searchErr.clear();
     d.selected = -1;
@@ -1518,12 +1676,13 @@ void startInteractiveSearch(RequestDlg& d) {
     MediaType type = d.type;
     int id = d.id;
     std::string title = d.title, year = d.year, imdb = d.imdbId, orig = d.originalTitle;
-    std::vector<int> seasons = d.seasons;
+    std::vector<int> seasons = d.seasonsVec();
+    std::vector<int> episodes = d.episodesVec();
     std::string prefQ = q;
     d.searchReq.fut = std::async(std::launch::async,
-        [type, id, title, year, imdb, seasons, orig, prefQ]() {
+        [type, id, title, year, imdb, seasons, orig, prefQ, episodes]() {
             return stack::searchReleasesInteractive(
-                type, id, title, year, imdb, seasons, orig, prefQ);
+                type, id, title, year, imdb, seasons, orig, prefQ, episodes);
         });
 }
 
@@ -1538,7 +1697,7 @@ void pollInteractiveSearch(RequestDlg& d) {
         d.searchErr = e.what();
     } catch (...) {
         d.hits.clear();
-        d.searchErr = "Błąd wyszukiwania";
+        d.searchErr = i18n::tr("req.search_error");
     }
     d.searching = false;
     d.searchDone = true;
@@ -1548,15 +1707,15 @@ void grabSelectedRelease(RequestDlg& d) {
     if (d.selected < 0 || d.selected >= (int)d.hits.size()) return;
     const auto& h = d.hits[d.selected];
     const char* q = kQualValues[std::clamp(d.qualityIdx, 0, 3)];
-    stack::requestWithRelease(d.type, d.id, d.title, d.year, d.imdbId, d.seasons,
-                              d.originalTitle, q, h.magnet, h.title);
+    stack::requestWithRelease(d.type, d.id, d.title, d.year, d.imdbId, d.seasonsVec(),
+                              d.originalTitle, q, h.magnet, h.title, d.episodesVec());
 }
 } // namespace
 
 void openRequestQualityDialog(MediaType type, int id, const std::string& title,
                               const std::string& year, const std::string& imdbId,
                               const std::string& originalTitle,
-                              const std::vector<int>& seasons) {
+                              const std::vector<SeasonInfo>& availableSeasons) {
     auto& d = reqDlg();
     d.wantOpen = true;
     d.type = type;
@@ -1565,14 +1724,35 @@ void openRequestQualityDialog(MediaType type, int id, const std::string& title,
     d.year = year;
     d.imdbId = imdbId;
     d.originalTitle = originalTitle;
-    d.seasons = seasons;
     d.qualityIdx = 2;
+    d.pickEpisodes = false;
+    d.episodeSeason = -1;
+    d.availableEpisodes.clear();
+    d.selectedEpisodes.clear();
+    d.episodesLoading = false;
+    d.seasonsLoading = false;
     auto& def = stack::StackConfig::get().preferredQuality;
     for (int i = 0; i < 4; i++) if (def == kQualValues[i]) d.qualityIdx = i;
+
+    if (type == MediaType::TV) {
+        if (!availableSeasons.empty()) {
+            applyAvailableSeasons(d, availableSeasons);
+        } else {
+            d.availableSeasons.clear();
+            d.selectedSeasons.clear();
+            d.seasonsLoading = true;
+            d.seasonsReq = Tmdb::tv(id);
+        }
+    } else {
+        d.availableSeasons.clear();
+        d.selectedSeasons.clear();
+    }
 }
 
 void renderRequestQualityDialog() {
     auto& d = reqDlg();
+    pollSeasonFetch(d);
+    pollEpisodeFetch(d);
     pollInteractiveSearch(d);
 
     if (d.wantOpen) {
@@ -1586,9 +1766,9 @@ void renderRequestQualityDialog() {
 
     ImGuiViewport* vp = ImGui::GetMainViewport();
 
-    // ── Quality / mode picker ─────────────────────────────────────────
+    // ── Quality / seasons / mode picker ───────────────────────────────
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(460, 0), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(d.type == MediaType::TV ? 520.f : 460.f, 0), ImGuiCond_Appearing);
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 16.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24, 22));
@@ -1600,12 +1780,15 @@ void renderRequestQualityDialog() {
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.31f, 0.27f, 0.90f, 1));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.39f, 0.40f, 0.95f, 1));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.26f, 0.22f, 0.79f, 1));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.99f, 0.99f, 1.f, 1));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.12f, 0.16f, 0.22f, 1));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.18f, 0.22f, 0.30f, 1));
 
     if (ImGui::BeginPopupModal("##req_quality", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
                                ImGuiWindowFlags_NoMove)) {
         ImGui::PushFont(G.sb22 ? G.sb22 : ImGui::GetFont());
-        ImGui::TextUnformatted("Zażądaj");
+        ImGui::TextUnformatted(i18n::tr("req.dialog_title"));
         ImGui::PopFont();
         ImGui::Spacing();
 
@@ -1616,13 +1799,13 @@ void renderRequestQualityDialog() {
         ImGui::PopFont();
         if (!d.originalTitle.empty() && d.originalTitle != d.title) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.61f, 0.64f, 0.69f, 1));
-            ImGui::TextWrapped("Oryginalny: %s", d.originalTitle.c_str());
+            ImGui::TextWrapped(i18n::tr("req.original"), d.originalTitle.c_str());
             ImGui::PopStyleColor();
         }
 
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.61f, 0.64f, 0.69f, 1));
-        ImGui::TextUnformatted("Preferowana jakość");
+        ImGui::TextUnformatted(i18n::tr("req.preferred_quality"));
         ImGui::PopStyleColor();
 
         for (int i = 0; i < 4; i++) {
@@ -1639,18 +1822,137 @@ void renderRequestQualityDialog() {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.80f, 0.83f, 0.88f, 1));
             }
             char qid[32];
-            std::snprintf(qid, sizeof(qid), "%s##q%d", kQualLabels[i], i);
+            std::snprintf(qid, sizeof(qid), "%s##q%d", qualLabel(i), i);
             if (ImGui::Button(qid, ImVec2(i == 0 ? 92.f : (i == 3 ? 110.f : 78.f), 34)))
                 d.qualityIdx = i;
             ImGui::PopStyleColor(4);
             if (i < 3) ImGui::SameLine();
         }
 
+        // ── Seasons / episodes (TV) ───────────────────────────────────
+        if (d.type == MediaType::TV) {
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.61f, 0.64f, 0.69f, 1));
+            ImGui::TextUnformatted(i18n::tr("details.seasons"));
+            ImGui::PopStyleColor();
+
+            if (d.seasonsLoading) {
+                ImGui::TextUnformatted(i18n::tr("req.loading_seasons"));
+            } else if (d.availableSeasons.empty()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.97f, 0.44f, 0.44f, 1));
+                ImGui::TextWrapped("%s", i18n::tr("req.no_seasons"));
+                ImGui::PopStyleColor();
+            } else {
+                if (ImGui::SmallButton(i18n::tr("req.all_seasons"))) {
+                    for (auto& s : d.availableSeasons)
+                        d.selectedSeasons.insert(s.seasonNumber);
+                    d.pickEpisodes = false;
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton(i18n::tr("req.none_seasons"))) {
+                    d.selectedSeasons.clear();
+                    d.pickEpisodes = false;
+                    d.selectedEpisodes.clear();
+                }
+
+                float chipW = 0;
+                float maxW = ImGui::GetContentRegionAvail().x;
+                for (auto& s : d.availableSeasons) {
+                    bool on = d.selectedSeasons.count(s.seasonNumber) > 0;
+                    char label[48];
+                    std::snprintf(label, sizeof(label), "S%d (%d)##ss%d",
+                                  s.seasonNumber, s.episodeCount, s.seasonNumber);
+                    if (on) {
+                        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.31f, 0.27f, 0.90f, 1));
+                        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.39f, 0.40f, 0.95f, 1));
+                        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.26f, 0.22f, 0.79f, 1));
+                    } else {
+                        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.16f, 0.22f, 1));
+                        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.22f, 0.26f, 0.32f, 1));
+                        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.18f, 0.22f, 0.28f, 1));
+                    }
+                    ImVec2 ts = ImGui::CalcTextSize(label);
+                    float bw = ts.x + 18.f;
+                    if (chipW > 0 && chipW + bw + 8 > maxW) {
+                        chipW = 0;
+                    } else if (chipW > 0) {
+                        ImGui::SameLine(0, 8);
+                    }
+                    if (ImGui::Button(label, ImVec2(bw, 30))) {
+                        if (on) d.selectedSeasons.erase(s.seasonNumber);
+                        else d.selectedSeasons.insert(s.seasonNumber);
+                        if (d.selectedSeasons.size() != 1) {
+                            d.pickEpisodes = false;
+                            d.selectedEpisodes.clear();
+                            d.availableEpisodes.clear();
+                        }
+                    }
+                    ImGui::PopStyleColor(3);
+                    chipW += (chipW > 0 ? 8.f : 0.f) + bw;
+                }
+
+                if (d.selectedSeasons.size() == 1) {
+                    ImGui::Spacing();
+                    bool prevPick = d.pickEpisodes;
+                    ImGui::Checkbox(i18n::tr("req.pick_episodes"), &d.pickEpisodes);
+                    if (d.pickEpisodes && (!prevPick || d.episodeSeason != *d.selectedSeasons.begin())) {
+                        d.episodeSeason = *d.selectedSeasons.begin();
+                        d.episodesLoading = true;
+                        d.availableEpisodes.clear();
+                        d.selectedEpisodes.clear();
+                        d.episodesReq = Tmdb::tvSeason(d.id, d.episodeSeason);
+                    }
+                    if (!d.pickEpisodes) {
+                        d.availableEpisodes.clear();
+                        d.selectedEpisodes.clear();
+                        d.episodeSeason = -1;
+                    }
+
+                    if (d.pickEpisodes) {
+                        if (d.episodesLoading) {
+                            ImGui::TextUnformatted(i18n::tr("req.loading_episodes"));
+                        } else if (d.availableEpisodes.empty()) {
+                            ImGui::TextUnformatted(i18n::tr("req.no_episodes"));
+                        } else {
+                            if (ImGui::SmallButton(i18n::tr("req.all_episodes"))) {
+                                for (auto& e : d.availableEpisodes)
+                                    d.selectedEpisodes.insert(e.episodeNumber);
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton(i18n::tr("req.none_episodes")))
+                                d.selectedEpisodes.clear();
+
+                            ImGui::BeginChild("##ep_list", ImVec2(0, 160), ImGuiChildFlags_Borders);
+                            for (auto& e : d.availableEpisodes) {
+                                bool on = d.selectedEpisodes.count(e.episodeNumber) > 0;
+                                char lbl[160];
+                                std::snprintf(lbl, sizeof(lbl), "E%02d  %s", e.episodeNumber,
+                                              e.name.empty() ? i18n::tr("common.untitled") : e.name.c_str());
+                                if (ImGui::Checkbox(lbl, &on)) {
+                                    if (on) d.selectedEpisodes.insert(e.episodeNumber);
+                                    else d.selectedEpisodes.erase(e.episodeNumber);
+                                }
+                            }
+                            ImGui::EndChild();
+                        }
+                    }
+                } else if (d.selectedSeasons.size() > 1) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.58f, 0.64f, 1));
+                    ImGui::TextWrapped("%s", i18n::tr("req.multi_season"));
+                    ImGui::PopStyleColor();
+                } else {
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.97f, 0.55f, 0.35f, 1));
+                    ImGui::TextWrapped("%s", i18n::tr("req.need_season"));
+                    ImGui::PopStyleColor();
+                }
+            }
+        }
+
         ImGui::Spacing();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.58f, 0.64f, 1));
-        ImGui::TextWrapped(
-            "Automatycznie — jak Radarr Automatic Search. "
-            "Interactive Search — lista wydań, Ty wybierasz.");
+        ImGui::TextWrapped("%s", i18n::tr("req.interactive"));
         ImGui::PopStyleColor();
 
         ImGui::Spacing();
@@ -1666,33 +1968,38 @@ void renderRequestQualityDialog() {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.26f, 0.32f, 1));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.34f, 0.40f, 1));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.18f, 0.22f, 0.28f, 1));
-        if (ImGui::Button("Anuluj", ImVec2(btnW, 38)))
+        if (ImGui::Button(i18n::tr("common.cancel"), ImVec2(btnW, 38)))
             ImGui::CloseCurrentPopup();
         ImGui::PopStyleColor(3);
 
+        bool ok = d.canSubmit() && !d.searching;
         ImGui::SameLine(0, gap);
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.35f, 0.48f, 1));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.14f, 0.45f, 0.60f, 1));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.10f, 0.30f, 0.42f, 1));
-        if (ImGui::Button("Interactive", ImVec2(btnW, 38))) {
+        ImGui::BeginDisabled(!ok);
+        if (ImGui::Button(i18n::tr("req.interactive_btn"), ImVec2(btnW, 38))) {
             ImGui::CloseCurrentPopup();
             d.pendingOpenInteractive = true;
             startInteractiveSearch(d);
         }
+        ImGui::EndDisabled();
         ImGui::PopStyleColor(3);
 
         ImGui::SameLine(0, gap);
-        if (ImGui::Button("Automatycznie", ImVec2(btnW, 38))) {
+        ImGui::BeginDisabled(!ok);
+        if (ImGui::Button(i18n::tr("req.auto"), ImVec2(btnW, 38))) {
             const char* q = kQualValues[std::clamp(d.qualityIdx, 0, 3)];
-            stack::requestMedia(d.type, d.id, d.title, d.year, d.imdbId, d.seasons,
-                                d.originalTitle, q);
+            stack::requestMedia(d.type, d.id, d.title, d.year, d.imdbId, d.seasonsVec(),
+                                d.originalTitle, q, d.episodesVec());
             ImGui::CloseCurrentPopup();
             app().navigate(Page::Requests);
         }
+        ImGui::EndDisabled();
 
         ImGui::EndPopup();
     }
-    ImGui::PopStyleColor(6);
+    ImGui::PopStyleColor(9);
     ImGui::PopStyleVar(4);
 
     // ── Interactive Search (Radarr-style) ─────────────────────────────
@@ -1720,7 +2027,7 @@ void renderRequestQualityDialog() {
     if (ImGui::BeginPopupModal("##req_interactive", nullptr,
                                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove)) {
         ImGui::PushFont(G.sb22 ? G.sb22 : ImGui::GetFont());
-        ImGui::TextUnformatted("Interactive Search");
+        ImGui::TextUnformatted(i18n::tr("req.interactive_title"));
         ImGui::PopFont();
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.61f, 0.64f, 0.69f, 1));
@@ -1731,8 +2038,9 @@ void renderRequestQualityDialog() {
 
         if (d.searchDone && d.searchErr.empty()) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.58f, 0.64f, 1));
-            ImGui::Text("%d wydań  ·  jakość: %s", (int)d.hits.size(),
-                        kQualLabels[std::clamp(d.qualityIdx, 0, 3)]);
+            ImGui::Text("%d %s  ·  %s: %s", (int)d.hits.size(), i18n::tr("req.releases_count"),
+                        i18n::tr("common.quality"),
+                        qualLabel(std::clamp(d.qualityIdx, 0, 3)));
             ImGui::PopStyleColor();
         }
 
@@ -1746,20 +2054,20 @@ void renderRequestQualityDialog() {
 
         if (d.searching) {
             ImGui::Spacing();
-            ImGui::TextUnformatted("Szukam wydań…");
+            ImGui::TextUnformatted(i18n::tr("req.searching"));
         } else if (!d.searchErr.empty()) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.97f, 0.44f, 0.44f, 1));
             ImGui::TextWrapped("%s", d.searchErr.c_str());
             ImGui::PopStyleColor();
         } else if (d.hits.empty() && d.searchDone) {
-            ImGui::TextUnformatted("Brak wyników. Zmień jakość i odśwież.");
+            ImGui::TextUnformatted(i18n::tr("req.no_hits"));
         } else if (ImGui::BeginTable("##is_tbl", 5,
                                      ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                                      ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable |
                                      ImGuiTableFlags_SizingStretchProp)) {
-            ImGui::TableSetupColumn("Tytuł", ImGuiTableColumnFlags_WidthStretch, 3.5f);
-            ImGui::TableSetupColumn("Jakość", ImGuiTableColumnFlags_WidthFixed, 70.f);
-            ImGui::TableSetupColumn("Rozmiar", ImGuiTableColumnFlags_WidthFixed, 80.f);
+            ImGui::TableSetupColumn(i18n::tr("req.col_title"), ImGuiTableColumnFlags_WidthStretch, 3.5f);
+            ImGui::TableSetupColumn(i18n::tr("req.col_quality"), ImGuiTableColumnFlags_WidthFixed, 70.f);
+            ImGui::TableSetupColumn(i18n::tr("req.col_size"), ImGuiTableColumnFlags_WidthFixed, 80.f);
             ImGui::TableSetupColumn("Seeders", ImGuiTableColumnFlags_WidthFixed, 70.f);
             ImGui::TableSetupColumn("Score", ImGuiTableColumnFlags_WidthFixed, 55.f);
             ImGui::TableHeadersRow();
@@ -1796,21 +2104,21 @@ void renderRequestQualityDialog() {
 
         float btnW = 140.f;
         float gap = 10.f;
-        if (ImGui::Button("Zamknij", ImVec2(btnW, 38)))
+        if (ImGui::Button(i18n::tr("common.close"), ImVec2(btnW, 38)))
             ImGui::CloseCurrentPopup();
         ImGui::SameLine(0, gap);
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.26f, 0.32f, 1));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.34f, 0.40f, 1));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.18f, 0.22f, 0.28f, 1));
         ImGui::BeginDisabled(d.searching);
-        if (ImGui::Button("Odśwież", ImVec2(btnW, 38)))
+        if (ImGui::Button(i18n::tr("common.refresh"), ImVec2(btnW, 38)))
             startInteractiveSearch(d);
         ImGui::EndDisabled();
         ImGui::PopStyleColor(3);
         ImGui::SameLine(0, gap);
         bool canGrab = d.selected >= 0 && d.selected < (int)d.hits.size() && !d.searching;
         ImGui::BeginDisabled(!canGrab);
-        if (ImGui::Button("Pobierz", ImVec2(btnW, 38))) {
+        if (ImGui::Button(i18n::tr("req.download"), ImVec2(btnW, 38))) {
             grabSelectedRelease(d);
             ImGui::CloseCurrentPopup();
             app().navigate(Page::Requests);

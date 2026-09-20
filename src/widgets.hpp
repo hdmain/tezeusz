@@ -57,7 +57,7 @@ ImVec2 textSize(const std::string& text, ImFont* font, float fontSize);
 
 void imageCover(ImDrawList* dl, GLuint tex, int imgW, int imgH, ImVec2 pos, ImVec2 size, ImU32 tint = IM_COL32(255,255,255,255));
 void imageCoverRounded(ImDrawList* dl, GLuint tex, int imgW, int imgH, ImVec2 pos, ImVec2 size, float rounding, ImU32 tint = IM_COL32(255,255,255,255));
-void gradientRect(ImDrawList* dl, ImVec2 min, ImVec2 max, ImU32 topCol, ImU32 botCol);
+void gradientRect(ImDrawList* dl, ImVec2 min, ImVec2 max, ImU32 topCol, ImU32 botCol, float rounding = 0.0f);
 
 // pill badge; returns size used
 ImVec2 badge(ImDrawList* dl, ImVec2 pos, const std::string& text, ImU32 bg, ImU32 border, ImFont* font, float fs, ImU32 textCol);

@@ -1,4 +1,5 @@
 #include "ytplayer.hpp"
+#include "i18n.hpp"
 
 #ifdef _WIN32
 
@@ -77,7 +78,7 @@ std::atomic<bool> g_playing{false};
 std::atomic<bool> g_playFailed{false};
 HWND g_hwnd = nullptr;
 std::mutex g_mu;
-std::wstring g_status = L"Ładowanie zwiastunu…";
+std::wstring g_status;
 std::string g_videoId;
 std::thread g_worker;
 
@@ -250,7 +251,7 @@ HWND createPlayerWindow(HWND parent) {
     }
     HWND hwnd = CreateWindowExW(
         WS_EX_TOOLWINDOW | WS_EX_APPWINDOW,
-        L"SeerrTrailerPlayer", L"Zwiastun — Seerr",
+        L"SeerrTrailerPlayer", widen(i18n::tr("yt.window_title")).c_str(),
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_THICKFRAME | WS_VISIBLE,
         CW_USEDEFAULT, CW_USEDEFAULT, 960, 540,
         parent, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -320,7 +321,7 @@ bool tryNativePlay(const std::string& videoId, std::string* err) {
 
     g_playFailed = false;
     g_playing = false;
-    setStatus(L"Łączenie z YouTube…");
+    setStatus(widen(i18n::tr("yt.connecting")));
     if (p_libvlc_media_player_play(g_mp) != 0) {
         if (err) *err = "libvlc_media_player_play failed";
         return false;
@@ -329,7 +330,7 @@ bool tryNativePlay(const std::string& videoId, std::string* err) {
     for (int i = 0; i < 200 && !g_closing.load(); ++i) {
         if (g_playing.load()) return true;
         if (g_playFailed.load()) {
-            if (err) *err = "VLC nie odtworzył zwiastunu";
+            if (err) *err = i18n::tr("yt.vlc_fail");
             return false;
         }
         Sleep(100);
@@ -343,7 +344,7 @@ bool tryNativePlay(const std::string& videoId, std::string* err) {
     }
 
     if (g_playing.load()) return true;
-    if (err) *err = "timeout ładowania zwiastunu";
+    if (err) *err = i18n::tr("yt.timeout");
     return false;
 }
 
@@ -353,7 +354,7 @@ void workerMain(std::string videoId, HWND parent) {
         std::lock_guard<std::mutex> lk(g_mu);
         g_hwnd = hwnd;
     }
-    setStatus(L"Ładowanie zwiastunu…");
+    setStatus(widen(i18n::tr("yt.loading")));
 
     std::string err;
     if (!tryNativePlay(videoId, &err)) {

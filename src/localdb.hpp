@@ -1,5 +1,6 @@
 #pragma once
 #include "tmdb.hpp"
+#include "i18n.hpp"
 #include <cstdint>
 #include <set>
 #include <string>
@@ -13,16 +14,16 @@ enum class IssueStatus { Open = 1, Resolved = 2 };
 
 inline const char* issueTypeLabel(IssueType t) {
     switch (t) {
-    case IssueType::Video: return "Wideo";
-    case IssueType::Audio: return "Audio";
-    case IssueType::Subtitles: return "Napisy";
-    case IssueType::Other: return "Inne";
+    case IssueType::Video: return i18n::tr("issue.video");
+    case IssueType::Audio: return i18n::tr("issue.audio");
+    case IssueType::Subtitles: return i18n::tr("issue.subtitles");
+    case IssueType::Other: return i18n::tr("issue.other");
     }
     return "?";
 }
 
 inline const char* issueStatusLabel(IssueStatus s) {
-    return s == IssueStatus::Open ? "Otwarte" : "Rozwiązane";
+    return s == IssueStatus::Open ? i18n::tr("issues.open") : i18n::tr("issues.resolved");
 }
 
 struct BlockItem {

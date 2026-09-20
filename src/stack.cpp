@@ -864,6 +864,7 @@ void StackConfig::save() const {
 void init() {
     g_cfg.load();
     i18n::setLanguage(g_cfg.uiLanguage);
+    cfg::syncFromUi(g_cfg.uiLanguage);
     loadRequests();
     g_stop = false;
     syncAppStatuses();

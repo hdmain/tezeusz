@@ -11,13 +11,18 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   windows:
-    name: Windows (MSYS2 MinGW)
+    name: Windows portable
     runs-on: windows-latest
     defaults:
       run:
         shell: msys2 {0}
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,26 +37,50 @@ jobs:
             mingw-w64-x86_64-boost
             mingw-w64-x86_64-libtorrent-rasterbar
             mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-ntldd
+            zip
+
+      - name: Version
+        id: ver
+        run: |
+          VER="0.1.0+$(git rev-parse --short HEAD)"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "Portable version: $VER"
 
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DSEERR_BUNDLED_DEPS=OFF
+            -DSEERR_BUNDLED_DEPS=OFF \
+            -DSEERR_VERSION="${{ steps.ver.outputs.version }}"
 
       - name: Build
         run: cmake --build build --config Release
 
-      - name: Upload artifact
+      - name: Package portable
+        run: |
+          set -euo pipefail
+          VER="${{ steps.ver.outputs.version }}"
+          bash packaging/make-windows-portable.sh build/seerr.exe "build/seerr-portable" "$VER"
+          (
+            cd build
+            rm -f "seerr-windows-portable-${VER}.zip"
+            zip -r "seerr-windows-portable-${VER}.zip" seerr-portable
+            ls -lah "seerr-windows-portable-${VER}.zip"
+          )
+
+      - name: Upload portable zip
         uses: actions/upload-artifact@v4
         with:
-          name: seerr-windows
-          path: build/seerr.exe
+          name: seerr-windows-portable
+          path: build/seerr-windows-portable-*.zip
           if-no-files-found: error
 
   linux:
     name: Linux (Ubuntu) + .deb
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -122,12 +151,86 @@ jobs:
           # Headless runners often lack a usable GL stack; don't fail the job if
           # the GUI process dies under xvfb — packaging itself is already verified.
           set +e
-          xvfb-run -a timeout 5s seerr
+          SEERR_DISABLE_IMGSWARM=1 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a timeout 8s seerr 2>seerr-xvfb.log
           rc=$?
           set -e
           echo "xvfb seerr exit code: $rc"
+          sed -n '1,40p' seerr-xvfb.log || true
           if [ "$rc" -eq 124 ] || [ "$rc" -eq 0 ]; then
             echo "GUI smoke OK"
           else
             echo "GUI smoke skipped/non-fatal under xvfb (rc=$rc)"
+          fi
+
+  release:
+    name: Publish GitHub Release
+    needs: [windows, linux]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Prepare release files
+        id: prep
+        run: |
+          set -euo pipefail
+          VER="${{ needs.linux.outputs.version }}"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          mkdir -p release
+          find dist -type f \( -name '*.zip' -o -name '*.deb' -o -name 'seerr' \) -print
+          # Portable Windows zip
+          cp -f dist/seerr-windows-portable/*.zip release/ || true
+          # Debian package
+          cp -f dist/seerr-deb/*.deb release/ || true
+          # Linux ELF binary (rename with version)
+          if [[ -f dist/seerr-linux/seerr ]]; then
+            cp -f dist/seerr-linux/seerr "release/seerr-linux-amd64-${VER}"
+            chmod +x "release/seerr-linux-amd64-${VER}"
+          fi
+          ls -lah release
+          test -n "$(ls -A release)"
+
+      - name: Publish continuous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.prep.outputs.version }}
+        run: |
+          set -euo pipefail
+          NOTES="$(cat <<EOF
+          ## Seerr ${VER}
+
+          Automated build from \`main\` (\`$(git rev-parse --short HEAD)\`).
+
+          ### Downloads
+          - **Windows portable** — unzip and run \`seerr.exe\` (fonts/locales bundled)
+          - **Linux .deb** — \`sudo apt install ./seerr_*.deb\`
+          - **Linux binary** — raw ELF (needs system GLFW/CURL/libtorrent)
+
+          Linux GUI note: if \`seerr\` segfaults, run from a terminal and check stderr lines starting with \`seerr:\`.
+          EOF
+          )"
+          if gh release view continuous >/dev/null 2>&1; then
+            gh release edit continuous --title "Continuous build (${VER})" --notes "$NOTES"
+            gh release upload continuous release/* --clobber
+          else
+            gh release create continuous release/* \
+              --title "Continuous build (${VER})" \
+              --notes "$NOTES" \
+              --latest=false
+          fi
+
+          # Also keep a versioned release tag for this commit
+          TAG="v${VER}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/* --clobber
+          else
+            gh release create "$TAG" release/* \
+              --title "Seerr ${VER}" \
+              --notes "$NOTES" \
+              --latest=true
           fi

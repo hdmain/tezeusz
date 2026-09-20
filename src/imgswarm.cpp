@@ -18,6 +18,7 @@
 #include <condition_variable>
 #include <cstring>
 #include <cstdio>
+#include <cstdlib>
 #include <deque>
 #include <filesystem>
 #include <mutex>
@@ -188,32 +189,45 @@ void alertLoop() {
 } // namespace
 
 void init() {
+    if (const char* dis = std::getenv("SEERR_DISABLE_IMGSWARM"); dis && dis[0] && dis[0] != '0')
+        return;
     std::lock_guard<std::mutex> lk(g_mu);
     if (g_ses) return;
     g_stop = false;
 
-    lt::settings_pack pack;
-    pack.set_int(lt::settings_pack::alert_mask,
-                 lt::alert_category::error |
-                 lt::alert_category::status |
-                 lt::alert_category::dht |
-                 lt::alert_category::storage);
-    pack.set_bool(lt::settings_pack::enable_dht, true);
-    pack.set_bool(lt::settings_pack::enable_lsd, true);
-    pack.set_bool(lt::settings_pack::enable_upnp, true);
-    pack.set_bool(lt::settings_pack::enable_natpmp, true);
-    pack.set_bool(lt::settings_pack::announce_to_all_trackers, true);
-    pack.set_bool(lt::settings_pack::announce_to_all_tiers, true);
-    pack.set_int(lt::settings_pack::connections_limit, 200);
-    pack.set_int(lt::settings_pack::active_seeds, 40);
-    pack.set_int(lt::settings_pack::active_downloads, 8);
-    pack.set_int(lt::settings_pack::active_limit, 60);
-    pack.set_str(lt::settings_pack::dht_bootstrap_nodes,
-                 "router.bittorrent.com:6881,router.utorrent.com:6881,"
-                 "dht.transmissionbt.com:6881,dht.libtorrent.org:25401");
-    pack.set_str(lt::settings_pack::listen_interfaces, "0.0.0.0:6889");
-    g_ses = std::make_unique<lt::session>(pack);
-    g_alertThread = std::thread(alertLoop);
+    try {
+        lt::settings_pack pack;
+        pack.set_int(lt::settings_pack::alert_mask,
+                     lt::alert_category::error |
+                     lt::alert_category::status |
+                     lt::alert_category::dht |
+                     lt::alert_category::storage);
+        pack.set_bool(lt::settings_pack::enable_dht, true);
+        pack.set_bool(lt::settings_pack::enable_lsd, true);
+        pack.set_bool(lt::settings_pack::enable_upnp, true);
+        pack.set_bool(lt::settings_pack::enable_natpmp, true);
+        pack.set_bool(lt::settings_pack::announce_to_all_trackers, true);
+        pack.set_bool(lt::settings_pack::announce_to_all_tiers, true);
+        pack.set_int(lt::settings_pack::connections_limit, 200);
+        pack.set_int(lt::settings_pack::active_seeds, 40);
+        pack.set_int(lt::settings_pack::active_downloads, 8);
+        pack.set_int(lt::settings_pack::active_limit, 60);
+        pack.set_str(lt::settings_pack::dht_bootstrap_nodes,
+                     "router.bittorrent.com:6881,router.utorrent.com:6881,"
+                     "dht.transmissionbt.com:6881,dht.libtorrent.org:25401");
+        // Ephemeral port — fixed 6889 can fail/conflict on multi-user machines.
+        pack.set_str(lt::settings_pack::listen_interfaces, "0.0.0.0:0");
+        g_ses = std::make_unique<lt::session>(pack);
+        g_alertThread = std::thread(alertLoop);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "seerr: imgswarm disabled (%s)\n", e.what());
+        g_ses.reset();
+        g_stop = true;
+    } catch (...) {
+        std::fprintf(stderr, "seerr: imgswarm disabled (unknown error)\n");
+        g_ses.reset();
+        g_stop = true;
+    }
 }
 
 void abortFetches() { g_stop = true; g_cv.notify_all(); }
@@ -230,6 +244,8 @@ void shutdown() {
 
 void offer(const std::string& url, const std::string& filePath) {
     if (url.empty() || filePath.empty() || !isImageCdnUrl(url)) return;
+    if (g_stop.load()) return;
+    init();
     if (g_stop.load()) return;
 
     std::shared_ptr<lt::torrent_info> ti = makeTorrentInfo(url, filePath);
@@ -260,7 +276,9 @@ void offer(const std::string& url, const std::string& filePath) {
 
 bool tryFetch(const std::string& url, const std::string& destPath, int timeoutMs) {
     if (url.empty() || destPath.empty() || !isImageCdnUrl(url)) return false;
-    if (g_stop.load() || timeoutMs < 200) return false;
+    if (timeoutMs < 200) return false;
+    init();
+    if (g_stop.load()) return false;
 
     auto keys = keypairForUrl(url);
     auto const& pub = std::get<0>(keys);

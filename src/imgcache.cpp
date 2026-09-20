@@ -78,7 +78,8 @@ static bool writeBinaryFile(const std::string& path, const std::vector<uint8_t>&
 
 void ImageCache::init() {
     cacheRoot();
-    imgswarm::init();
+    // Defer imgswarm (libtorrent session) — starting DHT/listen during GUI bring-up
+    // has caused hard crashes on some Linux installs. Workers init it on first use.
     nextStart_ = std::chrono::steady_clock::now();
     for (int i = 0; i < 2; i++) workers_.emplace_back([this] { workerLoop(); });
     missingPosterTex = loadLocal(util::assetDir() + "/poster_missing.png");

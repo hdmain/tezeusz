@@ -57,9 +57,14 @@ struct App {
 App& app();
 
 // TMDB api key config (config.json next to exe / in %APPDATA%\SeerrCpp, field "tmdb_api_key";
-// env var TMDB_API_KEY also honored). UI language is stack.json "uiLanguage" (default en).
-// Falls back to the public key seerr itself ships.
-namespace cfg { const char* apiKey(); const char* language(); }
+// env var TMDB_API_KEY also honored). Content language follows UI (stack.json uiLanguage);
+// missing localized fields fall back to English.
+namespace cfg {
+const char* apiKey();
+const char* language();
+void setLanguage(const std::string& tmdbLang); // e.g. "pl-PL", "en-US"
+void syncFromUi(const std::string& uiCode);    // "pl" → pl-PL, else en-US
+}
 
 // page render entry points (pages.cpp)
 void renderDiscover();

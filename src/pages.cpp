@@ -1469,6 +1469,8 @@ void renderSettings() {
         if (ImGui::Combo("##uilang", &ui, uiLabels, 2)) {
             cfg.uiLanguage = uiCodes[ui];
             i18n::setLanguage(cfg.uiLanguage);
+            cfg::syncFromUi(cfg.uiLanguage);
+            app().reloadSeq++;
             cfg.save();
         }
     }

@@ -27,6 +27,7 @@ static void load() {
             if (j.contains("tmdb_api_key") && j["tmdb_api_key"].is_string() &&
                 !j["tmdb_api_key"].get<std::string>().empty())
                 g_key = j["tmdb_api_key"].get<std::string>();
+            // Optional override; stack::init / UI language normally wins via syncFromUi.
             if (j.contains("language") && j["language"].is_string())
                 g_lang = j["language"].get<std::string>();
         } catch (...) {}
@@ -39,6 +40,14 @@ static void load() {
 }
 const char* apiKey() { load(); return g_key.c_str(); }
 const char* language() { load(); return g_lang.c_str(); }
+void setLanguage(const std::string& tmdbLang) {
+    load();
+    if (!tmdbLang.empty()) g_lang = tmdbLang;
+}
+void syncFromUi(const std::string& uiCode) {
+    if (uiCode == "pl") setLanguage("pl-PL");
+    else setLanguage("en-US");
+}
 } // namespace cfg
 
 const std::string& Tmdb::key() { static std::string s; s = cfg::apiKey(); return s; }
@@ -285,7 +294,8 @@ Details parseTv(const json& j) {
 
 static std::string withKey(const std::string& path, std::map<std::string, std::string> params) {
     params["api_key"] = cfg::apiKey();
-    params["language"] = cfg::language();
+    if (!params.count("language"))
+        params["language"] = cfg::language();
     return std::string(Tmdb::BASE) + path + "?" + util::buildQuery(params);
 }
 
@@ -361,6 +371,19 @@ AsyncReq<PagedResult> Tmdb::recommendations(MediaType t, int id) {
     return pagedReq(withKey(base + std::to_string(id) + "/recommendations", {}), t);
 }
 
+// Fill empty localized text fields from an English payload (TMDB leaves them blank when
+// no translation exists for the requested language).
+static void mergeEnText(Details& d, const Details& en) {
+    if (d.title.empty()) d.title = en.title;
+    if (d.tagline.empty()) d.tagline = en.tagline;
+    if (d.overview.empty()) d.overview = en.overview;
+    if (d.genres.empty() && !en.genres.empty()) d.genres = en.genres;
+    for (size_t i = 0; i < d.seasons.size() && i < en.seasons.size(); i++) {
+        if (d.seasons[i].name.empty()) d.seasons[i].name = en.seasons[i].name;
+        if (d.seasons[i].overview.empty()) d.seasons[i].overview = en.seasons[i].overview;
+    }
+}
+
 static AsyncReq<Details> detailsReq(const std::string& path, bool tv) {
     AsyncReq<Details> req;
     req.fut = std::async(std::launch::async, [path, tv]() -> Details {
@@ -377,24 +400,48 @@ static AsyncReq<Details> detailsReq(const std::string& path, bool tv) {
             d = tv ? parseTv(j) : parseMovie(j);
         } catch (...) { return d; }
 
-        // Fallback: if still no Trailer and UI language isn't English, merge EN trailers (seerr behavior)
+        const bool nonEn = lang.rfind("en", 0) != 0;
+        bool needText = nonEn && (d.overview.empty() || d.title.empty() || d.tagline.empty());
+        if (!needText && nonEn) {
+            for (auto& s : d.seasons)
+                if (s.overview.empty() || s.name.empty()) { needText = true; break; }
+        }
+
+        // Fallback: missing localized text + trailers from English
         bool hasTrailer = false;
         for (auto& v : d.videos) if (v.isTrailer() && v.isYouTube()) { hasTrailer = true; break; }
-        if (!hasTrailer && lang.rfind("en", 0) != 0) {
+        if (nonEn && (needText || !hasTrailer)) {
             auto r2 = http::get(withKey(path, {
-                {"append_to_response", "videos"},
+                {"language", "en-US"},
+                {"append_to_response", needText ? "credits,videos,external_ids" : "videos"},
                 {"include_video_language", "en"}
             }));
             if (r2.ok()) {
                 try {
                     json j2 = json::parse(r2.body);
-                    std::set<std::string> have;
-                    for (auto& v : d.videos) have.insert(v.key);
-                    Details tmp;
-                    parseVideosInto(tmp, j2);
-                    for (auto& v : tmp.videos) {
-                        if (v.isYouTube() && (v.isTrailer() || v.isTeaser()) && !have.count(v.key))
-                            d.videos.push_back(std::move(v));
+                    if (needText) {
+                        Details en = tv ? parseTv(j2) : parseMovie(j2);
+                        mergeEnText(d, en);
+                        if (!hasTrailer) {
+                            std::set<std::string> have;
+                            for (auto& v : d.videos) have.insert(v.key);
+                            for (auto& v : en.videos) {
+                                if (v.isYouTube() && (v.isTrailer() || v.isTeaser()) && !have.count(v.key))
+                                    d.videos.push_back(std::move(v));
+                            }
+                            for (auto& v : d.videos)
+                                if (v.isTrailer() && v.isYouTube()) { hasTrailer = true; break; }
+                        }
+                    }
+                    if (!hasTrailer) {
+                        std::set<std::string> have;
+                        for (auto& v : d.videos) have.insert(v.key);
+                        Details tmp;
+                        parseVideosInto(tmp, j2);
+                        for (auto& v : tmp.videos) {
+                            if (v.isYouTube() && (v.isTrailer() || v.isTeaser()) && !have.count(v.key))
+                                d.videos.push_back(std::move(v));
+                        }
                     }
                 } catch (...) {}
             }
@@ -431,6 +478,28 @@ AsyncReq<std::vector<EpisodeInfo>> Tmdb::tvSeason(int tvId, int seasonNumber) {
                 ep.airDate = jstr(e, "air_date");
                 ep.stillPath = jstr(e, "still_path");
                 out.push_back(std::move(ep));
+            }
+        } catch (...) { return out; }
+
+        // EN backup for missing episode names/overviews when UI isn't English
+        std::string lang = cfg::language();
+        if (lang.rfind("en", 0) == 0) return out;
+        bool need = false;
+        for (auto& ep : out) if (ep.name.empty() || ep.overview.empty()) { need = true; break; }
+        if (!need) return out;
+        auto r2 = http::get(withKey(path, {{"language", "en-US"}}));
+        if (!r2.ok()) return out;
+        try {
+            json j2 = json::parse(r2.body);
+            if (!j2.contains("episodes") || !j2["episodes"].is_array()) return out;
+            for (auto& e : j2["episodes"]) {
+                int num = (int)jnum(e, "episode_number");
+                for (auto& ep : out) {
+                    if (ep.episodeNumber != num) continue;
+                    if (ep.name.empty()) ep.name = jstr(e, "name");
+                    if (ep.overview.empty()) ep.overview = jstr(e, "overview");
+                    break;
+                }
             }
         } catch (...) {}
         return out;

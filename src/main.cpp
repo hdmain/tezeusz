@@ -253,13 +253,37 @@ static void renderContentPage(App& a) {
 
 // ------------------------------------------------------------------ main
 
+static void glfwErr(int code, const char* desc) {
+    std::fprintf(stderr, "seerr glfw: %d %s\n", code, desc ? desc : "");
+}
+
 int main() {
-    if (!glfwInit()) return 1;
+    std::fprintf(stderr, "seerr: starting\n");
+    std::fflush(stderr);
+
+    glfwSetErrorCallback(glfwErr);
+
+#if !defined(_WIN32) && !defined(__APPLE__)
+    // Prefer X11 when available — Wayland + distro GLFW/GL stacks are a common
+    // source of immediate segfaults on Pop!_OS / Ubuntu.
+#  if defined(GLFW_PLATFORM) && defined(GLFW_PLATFORM_X11)
+    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+#  endif
+#endif
+
+    if (!glfwInit()) {
+#if !defined(_WIN32) && !defined(__APPLE__) && defined(GLFW_PLATFORM) && defined(GLFW_ANY_PLATFORM)
+        glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
+        if (!glfwInit()) return 1;
+#else
+        return 1;
+#endif
+    }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1);
 #endif
     glfwWindowHint(GLFW_SAMPLES, 0); // UI doesn't need MSAA — saves GPU fillrate
 
@@ -280,24 +304,27 @@ int main() {
 #endif
     platform::applyDarkTitlebar(win);
 
-    if (!seerrLoadGL()) {
-        fprintf(stderr, "seerr: failed to load OpenGL functions\n");
-        glfwDestroyWindow(win);
-        glfwTerminate();
-        return 1;
-    }
-
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;
 
-    // ImGui's own GL loader (separate from seerrLoadGL) must init before first frame.
+    // ImGui's embedded GLVND/EGL loader must run before we resolve our own entry points.
     ImGui_ImplGlfw_InitForOpenGL(win, true);
     if (!ImGui_ImplOpenGL3_Init("#version 330")) {
-        fprintf(stderr, "seerr: OpenGL 3.3 renderer init failed\n");
+        std::fprintf(stderr, "seerr: OpenGL renderer init failed\n");
         return 1;
     }
+    std::fprintf(stderr, "seerr: imgui GL ok\n");
+
+    if (!seerrLoadGL()) {
+        std::fprintf(stderr, "seerr: failed to load OpenGL functions\n");
+        glfwDestroyWindow(win);
+        glfwTerminate();
+        return 1;
+    }
+    std::fprintf(stderr, "seerr: GL entry points ok\n");
+    std::fflush(stderr);
 
     initFonts();
     i18n::init();

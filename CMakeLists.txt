@@ -174,9 +174,10 @@ if (WIN32)
     target_include_directories(imgui PUBLIC ${GLFW_DIR}/include)
     target_link_libraries(imgui PUBLIC ${GLFW_DIR}/lib-mingw-w64/libglfw3.a opengl32 gdi32)
 else()
-    find_package(OpenGL REQUIRED)
+    # Do not link OpenGL::GL — GLVND stubs segfault if called without a loader.
+    # GLFW pulls in GLX/EGL; ImGui + seerrLoadGL resolve entry points at runtime.
     find_package(glfw3 REQUIRED)
-    target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
+    target_link_libraries(imgui PUBLIC glfw ${CMAKE_DL_LIBS})
 endif()
 
 # ---------- app ----------

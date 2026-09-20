@@ -43,7 +43,7 @@ jobs:
       - name: Version
         id: ver
         run: |
-          VER="0.1.0+$(git rev-parse --short HEAD)"
+          VER="0.1.0+${GITHUB_SHA:0:7}"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "Portable version: $VER"
 
@@ -100,7 +100,7 @@ jobs:
       - name: Version
         id: ver
         run: |
-          VER="0.1.0+$(git rev-parse --short HEAD)"
+          VER="0.1.0+${GITHUB_SHA:0:7}"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
 
       - name: Configure
@@ -204,7 +204,7 @@ jobs:
           NOTES="$(cat <<EOF
           ## Seerr ${VER}
 
-          Automated build from \`main\` (\`$(git rev-parse --short HEAD)\`).
+          Automated build from \`main\` (\`${GITHUB_SHA:0:7}\`).
 
           ### Downloads
           - **Windows portable** — unzip and run \`seerr.exe\` (fonts/locales bundled)

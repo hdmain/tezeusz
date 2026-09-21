@@ -47,7 +47,7 @@ std::set<std::string> g_queued; // video|lang keys currently queued/done this se
 std::atomic<bool> g_stop{false};
 std::atomic<bool> g_busy{false};
 std::thread g_worker;
-std::string g_status = i18n::tr("subs.idle");
+std::string g_status = "Idle";
 std::string g_token;
 int64_t g_tokenAt = 0;
 

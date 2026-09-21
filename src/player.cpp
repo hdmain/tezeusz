@@ -177,15 +177,32 @@ bool loadVlc(std::string* err) {
     SetEnvironmentVariableA("VLC_PLUGIN_PATH", (root + "\\plugins").c_str());
     g_mod = loadLib(widen(root + "\\libvlc.dll").c_str());
 #else
-    // System packages: libvlc5 / vlc
-    for (auto* c : {
-             "libvlc.so.5",
-             "libvlc.so",
-             "/usr/lib/x86_64-linux-gnu/libvlc.so.5",
-             "/usr/lib/libvlc.so.5",
-         }) {
+    // System packages: libvlc5 / vlc (multi-arch paths)
+    const char* cand[] = {
+        "libvlc.so.5",
+        "libvlc.so",
+        "/usr/lib/x86_64-linux-gnu/libvlc.so.5",
+        "/usr/lib/aarch64-linux-gnu/libvlc.so.5",
+        "/usr/lib/libvlc.so.5",
+        "/usr/local/lib/libvlc.so.5",
+    };
+    for (auto* c : cand) {
         g_mod = loadLib(c);
         if (g_mod) break;
+    }
+    // Prefer distro plugin dir when present (same as Windows VLC_PLUGIN_PATH).
+    if (g_mod) {
+        const char* plugs[] = {
+            "/usr/lib/x86_64-linux-gnu/vlc/plugins",
+            "/usr/lib/aarch64-linux-gnu/vlc/plugins",
+            "/usr/lib/vlc/plugins",
+        };
+        for (auto* p : plugs) {
+            if (fs::exists(p)) {
+                setenv("VLC_PLUGIN_PATH", p, 0);
+                break;
+            }
+        }
     }
 #endif
     if (!g_mod) { if (err) *err = i18n::tr("player.vlc_load_failed"); return false; }

@@ -9,13 +9,31 @@ using json = nlohmann::json;
 namespace i18n {
 namespace {
 
-std::mutex g_mu;
-std::string g_lang = "en";
-std::map<std::string, std::string> g_en;
-std::map<std::string, std::string> g_cur;
-std::string g_fallback; // last miss — returned as c_str
+// Function-local statics avoid static-initialization-order fiasco when another
+// TU calls i18n::tr() from a global constructor (e.g. old subs g_status).
+std::mutex& mu() {
+    static std::mutex m;
+    return m;
+}
+std::string& lang() {
+    static std::string s = "en";
+    return s;
+}
+std::map<std::string, std::string>& enDict() {
+    static std::map<std::string, std::string> m;
+    return m;
+}
+std::map<std::string, std::string>& curDict() {
+    static std::map<std::string, std::string> m;
+    return m;
+}
+std::string& fallbackBuf() {
+    static std::string s;
+    return s;
+}
 
 void seedEnglish() {
+    auto& g_en = enDict();
     if (!g_en.empty()) return;
     // Nav
     g_en["nav.discover"] = "Discover";
@@ -353,7 +371,8 @@ std::string tryReadLocale(const std::string& code) {
 }
 
 void loadOverlay(const std::string& code) {
-    g_cur = g_en;
+    auto& g_cur = curDict();
+    g_cur = enDict();
     if (code.empty() || code == "en") return;
     std::string raw = tryReadLocale(code);
     if (raw.empty()) return;
@@ -390,24 +409,24 @@ std::string readUiLangFromConfig() {
 } // namespace
 
 void init() {
-    std::lock_guard<std::mutex> lk(g_mu);
+    std::lock_guard<std::mutex> lk(mu());
     seedEnglish();
     std::string code = readUiLangFromConfig();
     if (code.empty()) code = "en";
-    g_lang = code;
-    loadOverlay(g_lang);
+    lang() = code;
+    loadOverlay(lang());
 }
 
 void setLanguage(const std::string& code) {
-    std::lock_guard<std::mutex> lk(g_mu);
+    std::lock_guard<std::mutex> lk(mu());
     seedEnglish();
-    g_lang = code.empty() ? "en" : code;
-    loadOverlay(g_lang);
+    lang() = code.empty() ? "en" : code;
+    loadOverlay(lang());
 }
 
 const std::string& language() {
-    std::lock_guard<std::mutex> lk(g_mu);
-    return g_lang;
+    std::lock_guard<std::mutex> lk(mu());
+    return lang();
 }
 
 std::vector<std::string> availableLanguages() {
@@ -416,14 +435,16 @@ std::vector<std::string> availableLanguages() {
 
 const char* tr(const char* key) {
     if (!key) return "";
-    std::lock_guard<std::mutex> lk(g_mu);
+    std::lock_guard<std::mutex> lk(mu());
     seedEnglish();
+    auto& g_cur = curDict();
+    auto& g_en = enDict();
     auto it = g_cur.find(key);
     if (it != g_cur.end()) return it->second.c_str();
     auto en = g_en.find(key);
     if (en != g_en.end()) return en->second.c_str();
-    g_fallback = key;
-    return g_fallback.c_str();
+    fallbackBuf() = key;
+    return fallbackBuf().c_str();
 }
 
 } // namespace i18n

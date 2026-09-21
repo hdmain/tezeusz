@@ -1,0 +1,3 @@
+*.sh text eol=lf
+scripts/** text eol=lf
+packaging/*.sh text eol=lf

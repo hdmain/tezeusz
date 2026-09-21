@@ -31,6 +31,7 @@
 #include <cmath>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 #include <string>
@@ -264,8 +265,12 @@ int main() {
     glfwSetErrorCallback(glfwErr);
 
 #if !defined(_WIN32) && !defined(__APPLE__)
-    // Prefer X11 when available — Wayland + distro GLFW/GL stacks are a common
-    // source of immediate segfaults on Pop!_OS / Ubuntu.
+    // Prefer X11 whenever DISPLAY is set. WSLg / Ubuntu often export both
+    // DISPLAY and WAYLAND_DISPLAY; GLFW 3.3 then picks Wayland and commonly
+    // segfaults on GL context creation. GLFW 3.4+ can take GLFW_PLATFORM_X11.
+    if (const char* dpy = std::getenv("DISPLAY"); dpy && dpy[0]) {
+        unsetenv("WAYLAND_DISPLAY");
+    }
 #  if defined(GLFW_PLATFORM) && defined(GLFW_PLATFORM_X11)
     glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
 #  endif
@@ -386,7 +391,8 @@ int main() {
     static std::atomic<bool> quitBgDone{false};
     static std::atomic<bool> quitStarted{false};
     static std::mutex quitStatusMu;
-    static std::string quitStatus = i18n::tr("quit.closing");
+    static std::string quitStatus;
+    if (quitStatus.empty()) quitStatus = i18n::tr("quit.closing");
     static std::thread quitThread;
 
     auto setQuitStatus = [](const char* s) {

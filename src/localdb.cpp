@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <filesystem>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -290,6 +292,114 @@ void saveWatchlist(const std::set<std::string>& wl) {
     json arr = json::array();
     for (auto& k : wl) arr.push_back(k);
     util::writeFile(util::appDataPath("watchlist.json"), arr.dump(2));
+}
+
+namespace {
+
+std::string playbackKey(const std::string& path) {
+    std::string k = path;
+#ifdef _WIN32
+    for (auto& c : k) {
+        if (c == '/') c = '\\';
+        else c = (char)std::tolower((unsigned char)c);
+    }
+#else
+    // Keep as-is on case-sensitive filesystems
+#endif
+    return k;
+}
+
+bool writeAtomic(const std::string& path, const std::string& data) {
+    std::string tmp = path + ".tmp";
+    if (!util::writeFile(tmp, data)) return false;
+    std::error_code ec;
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        std::filesystem::remove(path, ec);
+        std::filesystem::rename(tmp, path, ec);
+    }
+    return !ec;
+}
+
+json loadPlaybackMap() {
+    std::string raw = util::readFile(util::appDataPath("playback.json"));
+    if (raw.empty()) return json::object();
+    try {
+        auto j = json::parse(raw);
+        if (j.is_object()) return j;
+    } catch (...) {}
+    return json::object();
+}
+
+void savePlaybackMap(const json& j) {
+    writeAtomic(util::appDataPath("playback.json"), j.dump(2));
+}
+
+} // namespace
+
+bool getPlaybackProgress(const std::string& path, PlaybackProgress* out) {
+    if (path.empty() || !out) return false;
+    json m = loadPlaybackMap();
+    auto it = m.find(playbackKey(path));
+    if (it == m.end() || !it->is_object()) return false;
+    PlaybackProgress p;
+    p.position = it->value("position", 0.0);
+    p.timeMs = it->value("timeMs", (int64_t)0);
+    p.durationMs = it->value("durationMs", (int64_t)0);
+    p.updatedAt = it->value("updatedAt", (int64_t)0);
+    // Ignore tiny / finished entries
+    if (p.timeMs < 30'000) return false;
+    if (p.position >= 0.95 || (p.durationMs > 0 && p.durationMs - p.timeMs < 60'000))
+        return false;
+    *out = p;
+    return true;
+}
+
+void clearPlaybackProgress(const std::string& path) {
+    if (path.empty()) return;
+    json m = loadPlaybackMap();
+    std::string k = playbackKey(path);
+    if (!m.contains(k)) return;
+    m.erase(k);
+    savePlaybackMap(m);
+}
+
+void savePlaybackProgress(const std::string& path, double position, int64_t timeMs, int64_t durationMs) {
+    if (path.empty()) return;
+    position = std::clamp(position, 0.0, 1.0);
+
+    // Near start → drop resume marker
+    if (timeMs < 30'000 || position < 0.01) {
+        clearPlaybackProgress(path);
+        return;
+    }
+    // Near end → finished, clear
+    if (position >= 0.95 || (durationMs > 0 && durationMs - timeMs < 60'000)) {
+        clearPlaybackProgress(path);
+        return;
+    }
+
+    json m = loadPlaybackMap();
+    m[playbackKey(path)] = {
+        {"position", position},
+        {"timeMs", timeMs},
+        {"durationMs", durationMs},
+        {"updatedAt", nowMs()}
+    };
+    // Cap map size — keep newest 200 entries
+    if (m.size() > 200) {
+        std::vector<std::pair<int64_t, std::string>> order;
+        for (auto it = m.begin(); it != m.end(); ++it) {
+            int64_t t = it.value().is_object() ? it.value().value("updatedAt", (int64_t)0) : 0;
+            order.push_back({t, it.key()});
+        }
+        std::sort(order.begin(), order.end());
+        while (order.size() > 200) {
+            m.erase(order.front().second);
+            order.erase(order.begin());
+        }
+    }
+    savePlaybackMap(m);
 }
 
 } // namespace localdb

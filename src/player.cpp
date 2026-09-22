@@ -7,6 +7,7 @@
 #include "platform.hpp"
 #include "svgicons.hpp"
 #include "i18n.hpp"
+#include "localdb.hpp"
 #include <GLFW/glfw3.h>
 #include "imgui.h"
 #include <atomic>
@@ -156,6 +157,10 @@ unsigned g_srcW = 0, g_srcH = 0;
 VlcMediaStats g_vlcStats{};
 int g_statsDecodedVideo0 = -1;
 int g_statsDisplayed0 = -1;
+double g_resumePos = -1;       // fraction to seek once playback is ready
+bool g_didResume = false;
+double g_lastSavedPos = -1;
+double g_lastSaveAt = 0;       // ImGui::GetTime() of last disk write
 
 struct PendingOpen {
     bool ready = false;
@@ -402,6 +407,20 @@ std::string fmtTime(int64_t ms) {
     return b;
 }
 
+void persistProgress(bool force) {
+    if (g_st.path.empty() || g_st.durationMs <= 0) return;
+    const double pos = g_st.position;
+    const int64_t t = g_st.timeMs;
+    const double now = ImGui::GetTime();
+    if (!force) {
+        if (now - g_lastSaveAt < 2.0) return;
+        if (g_lastSavedPos >= 0 && std::abs(pos - g_lastSavedPos) < 0.002) return;
+    }
+    localdb::savePlaybackProgress(g_st.path, pos, t, g_st.durationMs);
+    g_lastSavedPos = pos;
+    g_lastSaveAt = now;
+}
+
 void applyPendingOpen() {
     PendingOpen p;
     {
@@ -542,6 +561,15 @@ bool open(const std::string& path, const std::string& title) {
     g_vlcStats = {};
     g_statsDecodedVideo0 = -1;
     g_statsDisplayed0 = -1;
+    g_resumePos = -1;
+    g_didResume = false;
+    g_lastSavedPos = -1;
+    g_lastSaveAt = 0;
+    {
+        localdb::PlaybackProgress pp;
+        if (localdb::getPlaybackProgress(path, &pp))
+            g_resumePos = pp.position;
+    }
     {
         std::lock_guard<std::mutex> lk(g_pendingMu);
         g_pending = PendingOpen{};
@@ -551,6 +579,10 @@ bool open(const std::string& path, const std::string& title) {
 }
 
 void close() {
+    // Save progress before tearing down (also saved continuously in tick).
+    if (g_st.open && !g_st.path.empty() && g_st.durationMs > 0)
+        persistProgress(true);
+
     // Invalidate generation first so in-flight open jobs discard their players
     g_openGen.fetch_add(1);
     g_cbEnabled.store(false, std::memory_order_release);
@@ -626,13 +658,17 @@ void togglePause() {
     g_st.paused = now; g_st.playing = !now;
     g_userPaused = now; // paused when we were playing
     g_showControls = true; g_idleTimer = 0; g_controlsAlpha = 1.f;
+    if (now) persistProgress(true); // saving on pause is a natural checkpoint
 }
 void setPosition(double f) {
     if (!g_mp || g_st.loading) return;
     f = std::clamp(f, 0.0, 1.0);
     p_libvlc_media_player_set_position(g_mp, (float)f);
     g_st.position = f;
+    if (g_st.durationMs > 0)
+        g_st.timeMs = (int64_t)(f * (double)g_st.durationMs);
     g_showControls = true; g_idleTimer = 0;
+    persistProgress(true);
 }
 void seekRelative(double seconds) {
     if (!g_mp || g_st.loading || g_st.durationMs <= 0) return;
@@ -719,6 +755,18 @@ void tick() {
         g_st.durationMs = p_libvlc_media_player_get_length(g_mp);
         g_st.playing = p_libvlc_media_player_is_playing(g_mp) != 0;
         g_st.paused = !g_st.playing;
+
+        // Resume from last saved position once (after duration is known).
+        if (!g_didResume && g_resumePos > 0.01 && g_st.durationMs > 0 && g_st.timeMs >= 0) {
+            g_didResume = true;
+            const double frac = std::clamp(g_resumePos, 0.0, 0.94);
+            p_libvlc_media_player_set_position(g_mp, (float)frac);
+            g_st.position = frac;
+            g_st.timeMs = (int64_t)(frac * (double)g_st.durationMs);
+        }
+
+        persistProgress(false);
+
         if (g_tracksDirty.exchange(false) || (g_st.ready && g_st.subtitles.empty() && g_st.timeMs > 1500))
             refreshTracks();
         if (p_libvlc_video_get_size) {

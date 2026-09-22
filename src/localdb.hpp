@@ -78,4 +78,18 @@ void saveUser();
 void loadWatchlist(std::set<std::string>& out);
 void saveWatchlist(const std::set<std::string>& wl);
 
+// Crash-safe resume positions for in-app playback (keyed by video file path).
+// Saved continuously while watching — not only on close.
+struct PlaybackProgress {
+    double position = 0;   // 0..1
+    int64_t timeMs = 0;
+    int64_t durationMs = 0;
+    int64_t updatedAt = 0;
+};
+// Returns true if a usable resume point exists (~>30s and <~95%).
+bool getPlaybackProgress(const std::string& path, PlaybackProgress* out);
+// Persist current position (throttled by caller). Clears entry near start/end.
+void savePlaybackProgress(const std::string& path, double position, int64_t timeMs, int64_t durationMs);
+void clearPlaybackProgress(const std::string& path);
+
 } // namespace localdb

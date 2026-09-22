@@ -301,7 +301,10 @@ unsigned vlcFormat(void**, char* chroma, unsigned* width, unsigned* height, unsi
     return 1;
 }
 void vlcCleanup(void*) {
+    // Only wipe buffers while playback owns them — close() clears under the same lock.
+    if (!g_cbEnabled.load(std::memory_order_acquire)) return;
     std::lock_guard<std::mutex> lk(g_frameMu);
+    if (!g_cbEnabled.load(std::memory_order_relaxed)) return;
     g_pixels.clear();
     g_pixelsUpload.clear();
     g_pixW = g_pixH = 0;
@@ -408,7 +411,7 @@ void applyPendingOpen() {
         g_pending = PendingOpen{};
     }
     if (p.gen != g_openGen.load()) {
-        core::enqueue([mp = p.mp, vlc = p.vlc]() { releaseVlcObjects(mp, vlc); });
+        releaseVlcObjects(p.mp, p.vlc);
         return;
     }
     if (!p.ok) {
@@ -416,7 +419,7 @@ void applyPendingOpen() {
         g_st.loading = false;
         g_st.error = p.error.empty() ? i18n::tr("player.open_failed") : p.error;
         if (p.mp || p.vlc)
-            core::enqueue([mp = p.mp, vlc = p.vlc]() { releaseVlcObjects(mp, vlc); });
+            releaseVlcObjects(p.mp, p.vlc);
         return;
     }
     g_vlc = p.vlc;
@@ -493,7 +496,8 @@ void startOpenJob(uint64_t gen, std::string path, int volume) {
             return;
         }
 
-        g_cbEnabled.store(true, std::memory_order_release);
+        // Enable callbacks only after the UI thread takes ownership in applyPendingOpen.
+        // Enabling here raced with close() and left the decoder writing freed buffers.
         p_libvlc_media_player_play(mp);
         out.ok = true;
         out.error.clear();
@@ -563,7 +567,6 @@ void close() {
     g_vlc = nullptr;
 
     // Stop on the UI thread so decoder callbacks finish before we free frame buffers.
-    // Async release without stop was racing vlcLock/display → intermittent crashes.
     if (mp && p_libvlc_media_player_stop) {
         try { p_libvlc_media_player_stop(mp); } catch (...) {}
     }
@@ -589,13 +592,17 @@ void close() {
         if (g_pending.ready) {
             auto stale = g_pending;
             g_pending = PendingOpen{};
+            // Drop stale open on this thread — no decoder left running after stop above
+            // for the active player; pending one was never handed to UI.
             if (stale.mp || stale.vlc)
-                core::enqueue([mp = stale.mp, vlc = stale.vlc]() { releaseVlcObjects(mp, vlc); });
+                releaseVlcObjects(stale.mp, stale.vlc);
         }
     }
 
+    // Release synchronously after stop. Async release raced with late VLC callbacks
+    // and caused intermittent crashes when leaving a movie.
     if (mp || vlc)
-        core::enqueue([mp, vlc]() { releaseVlcObjects(mp, vlc); });
+        releaseVlcObjects(mp, vlc);
 
     if (wasFs && g_host) {
         glfwSetWindowMonitor(g_host, nullptr, g_prevX, g_prevY,
@@ -640,15 +647,41 @@ void toggleMute() {
     g_st.muted = !g_st.muted;
     if (g_mp) p_libvlc_audio_set_mute(g_mp, g_st.muted ? 1 : 0);
 }
+
+// Monitor that currently contains the window center (not always the primary).
+static GLFWmonitor* monitorForWindow(GLFWwindow* win) {
+    if (!win) return glfwGetPrimaryMonitor();
+    int wx = 0, wy = 0, ww = 0, wh = 0;
+    glfwGetWindowPos(win, &wx, &wy);
+    glfwGetWindowSize(win, &ww, &wh);
+    const int cx = wx + ww / 2;
+    const int cy = wy + wh / 2;
+
+    int n = 0;
+    GLFWmonitor** mons = glfwGetMonitors(&n);
+    GLFWmonitor* best = glfwGetPrimaryMonitor();
+    for (int i = 0; i < n; i++) {
+        int mx = 0, my = 0;
+        glfwGetMonitorPos(mons[i], &mx, &my);
+        const GLFWvidmode* mode = glfwGetVideoMode(mons[i]);
+        if (!mode) continue;
+        if (cx >= mx && cy >= my && cx < mx + mode->width && cy < my + mode->height)
+            return mons[i];
+    }
+    return best ? best : (n > 0 ? mons[0] : nullptr);
+}
+
 void toggleFullscreen() {
     if (!g_host) return;
     if (!g_st.fullscreen) {
         glfwGetWindowPos(g_host, &g_prevX, &g_prevY);
         glfwGetWindowSize(g_host, &g_prevW, &g_prevH);
-        GLFWmonitor* mon = glfwGetPrimaryMonitor();
-        const GLFWvidmode* mode = glfwGetVideoMode(mon);
+        GLFWmonitor* mon = monitorForWindow(g_host);
+        if (!mon) mon = glfwGetPrimaryMonitor();
+        const GLFWvidmode* mode = mon ? glfwGetVideoMode(mon) : nullptr;
+        if (!mon || !mode) return;
         glfwSetWindowMonitor(g_host, mon, 0, 0, mode->width, mode->height, mode->refreshRate);
-    g_st.fullscreen = true;
+        g_st.fullscreen = true;
     } else {
         glfwSetWindowMonitor(g_host, nullptr, g_prevX, g_prevY,
                              g_prevW > 0 ? g_prevW : 1500, g_prevH > 0 ? g_prevH : 900, 0);

@@ -27,6 +27,7 @@ set(SEERR_SOURCES
     src/torrent.cpp
     src/localdb.cpp
     src/platform.cpp
+    src/tray.cpp
     src/library.cpp
     src/player.cpp
     src/subs.cpp

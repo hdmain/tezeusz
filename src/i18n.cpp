@@ -333,6 +333,9 @@ void seedEnglish() {
     g_en["quit.cache"] = "Closing image cache and P2P…";
     g_en["quit.finishing"] = "Finishing…";
     g_en["quit.error"] = "Error while shutting down…";
+    g_en["tray.show"] = "Show Seerr";
+    g_en["tray.quit"] = "Quit";
+    g_en["tray.tip"] = "Seerr";
 
     // Torrent
     g_en["torrent.empty_magnet"] = "Empty magnet";

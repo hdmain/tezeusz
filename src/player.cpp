@@ -579,6 +579,7 @@ bool open(const std::string& path, const std::string& title) {
 }
 
 void close() {
+    platform::setIdleInhibit(false);
     // Save progress before tearing down (also saved continuously in tick).
     if (g_st.open && !g_st.path.empty() && g_st.durationMs > 0)
         persistProgress(true);
@@ -745,7 +746,10 @@ void toggleStats() { g_showStats = !g_showStats; g_showControls = true; }
 bool statsVisible() { return g_showStats; }
 
 void tick() {
-    if (!g_st.open) return;
+    if (!g_st.open) {
+        platform::setIdleInhibit(false);
+        return;
+    }
     applyPendingOpen();
     if (!g_st.open) return; // closed while applying / discarded
     uploadFrame();
@@ -755,6 +759,11 @@ void tick() {
         g_st.durationMs = p_libvlc_media_player_get_length(g_mp);
         g_st.playing = p_libvlc_media_player_is_playing(g_mp) != 0;
         g_st.paused = !g_st.playing;
+
+        // Keep screen awake while actively watching (not paused / loading / failed).
+        platform::setIdleInhibit(
+            !g_userPaused && !g_st.paused && !g_st.failed && g_st.ready,
+            "Playing video");
 
         // Resume from last saved position once (after duration is known).
         if (!g_didResume && g_resumePos > 0.01 && g_st.durationMs > 0 && g_st.timeMs >= 0) {

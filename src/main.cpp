@@ -24,6 +24,7 @@
 #include "subs.hpp"
 #include "i18n.hpp"
 #include "gl_compat.hpp"
+#include "tray.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -258,6 +259,14 @@ static void glfwErr(int code, const char* desc) {
     std::fprintf(stderr, "seerr glfw: %d %s\n", code, desc ? desc : "");
 }
 
+#ifdef _WIN32
+static void winFatal(const char* title, const char* msg) {
+    MessageBoxA(nullptr, msg, title, MB_OK | MB_ICONERROR);
+}
+#else
+static void winFatal(const char*, const char*) {}
+#endif
+
 int main() {
     std::fprintf(stderr, "seerr: starting\n");
     std::fflush(stderr);
@@ -279,8 +288,13 @@ int main() {
     if (!glfwInit()) {
 #if !defined(_WIN32) && !defined(__APPLE__) && defined(GLFW_PLATFORM) && defined(GLFW_ANY_PLATFORM)
         glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
-        if (!glfwInit()) return 1;
+        if (!glfwInit()) {
+            winFatal("Seerr", "Failed to initialize GLFW / OpenGL.");
+            return 1;
+        }
 #else
+        winFatal("Seerr", "Failed to initialize GLFW / OpenGL.\n\n"
+                          "Install or update your GPU drivers, then try again.");
         return 1;
 #endif
     }
@@ -299,7 +313,12 @@ int main() {
         glfwWindowHint(GLFW_SAMPLES, 0);
         win = glfwCreateWindow(1500, 900, "Seerr C++ - Media Discovery", nullptr, nullptr);
     }
-    if (!win) { glfwTerminate(); return 1; }
+    if (!win) {
+        glfwTerminate();
+        winFatal("Seerr", "Could not create the OpenGL window.\n\n"
+                          "Update GPU drivers or try another GPU.");
+        return 1;
+    }
     glfwMakeContextCurrent(win);
     glfwSwapInterval(1);
 #ifdef _WIN32
@@ -318,12 +337,14 @@ int main() {
     ImGui_ImplGlfw_InitForOpenGL(win, true);
     if (!ImGui_ImplOpenGL3_Init("#version 330")) {
         std::fprintf(stderr, "seerr: OpenGL renderer init failed\n");
+        winFatal("Seerr", "OpenGL renderer init failed.");
         return 1;
     }
     std::fprintf(stderr, "seerr: imgui GL ok\n");
 
     if (!seerrLoadGL()) {
         std::fprintf(stderr, "seerr: failed to load OpenGL functions\n");
+        winFatal("Seerr", "Failed to load OpenGL functions.");
         glfwDestroyWindow(win);
         glfwTerminate();
         return 1;
@@ -345,6 +366,7 @@ int main() {
     {
         std::string dir = util::assetDir() + "/";
         g_logoTex = ImageCache::instance().loadLocal(dir + "logo_full.png", &g_logoW, &g_logoH);
+        tray::init(win, dir + "icon.png");
 #ifdef _WIN32
         int iw = 0, ih = 0;
         GLuint icon = ImageCache::instance().loadLocal(dir + "icon.png", &iw, &ih);
@@ -405,19 +427,29 @@ int main() {
     };
 
     glfwSetWindowCloseCallback(win, [](GLFWwindow* w) {
-        if (!quitting.load()) {
-            glfwSetWindowShouldClose(w, GLFW_FALSE);
-            quitting.store(true);
-        }
+        // Close → tray (downloads keep running). Quit from the tray menu.
+        glfwSetWindowShouldClose(w, GLFW_FALSE);
+        tray::hideToTray();
     });
 
     while (true) {
+        tray::tick();
+        if (tray::consumeQuitRequest() && !quitting.load())
+            quitting.store(true);
+        if (tray::consumeShowRequest())
+            tray::showFromTray();
+
         if (quitting.load())
             glfwWaitEventsTimeout(1.0 / 60.0);
+        else if (tray::isHidden())
+            glfwWaitEventsTimeout(0.25);
         else if (ImageCache::instance().busy() || player::isOpen())
             glfwWaitEventsTimeout(1.0 / 30.0);
         else
             glfwWaitEventsTimeout(0.05);
+
+        if (quitting.load() && tray::isHidden())
+            tray::showFromTray();
 
         if (!quitting.load()) {
             ImageCache::instance().pump();
@@ -489,6 +521,7 @@ int main() {
             if (quitBgDone.load()) {
                 if (quitThread.joinable()) quitThread.join();
                 setQuitStatus(i18n::tr("quit.ui"));
+                try { tray::shutdown(); } catch (...) {}
                 try { svgicon::shutdown(); } catch (...) {}
                 ImGui_ImplOpenGL3_Shutdown();
                 ImGui_ImplGlfw_Shutdown();
@@ -505,6 +538,9 @@ int main() {
             ImageCache::instance().purgeFailed();
             a.reloadSeq++;
         }
+        // Ctrl+Q = quit (window X only hides to tray)
+        if (ImGui::IsKeyPressed(ImGuiKey_Q) && (io.KeyCtrl || io.KeySuper) && !player::isOpen())
+            quitting.store(true);
 
         if (player::isOpen()) {
             player::render();

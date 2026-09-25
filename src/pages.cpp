@@ -97,7 +97,6 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
     if (hovering) {
         ImGuiIO& io = ImGui::GetIO();
         // Horizontal: trackpad / tilt-wheel, or Shift + normal wheel.
-        // Leave plain vertical wheel alone so the Discover page still scrolls.
         float delta = io.MouseWheelH;
         if (delta == 0.0f && io.KeyShift && io.MouseWheel != 0.0f)
             delta = io.MouseWheel;
@@ -112,9 +111,27 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
                 ImGui::SetScrollY(ImGui::GetScrollY() + io.MouseWheel * step);
             }
         }
-        // Click-drag sideways (when not interacting with a card button)
         if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 4.0f) && !ImGui::IsAnyItemActive())
             sc = std::min(std::max(0.0f, sc - io.MouseDelta.x), maxScroll);
+
+        // Auto-scroll when the cursor approaches the side arrows.
+        if (maxScroll > 0.0f && !ImGui::IsAnyItemActive()) {
+            const float zone = 72.0f;
+            float mx = io.MousePos.x;
+            float leftEdge = cur.x;
+            float rightEdge = wpos.x + w;
+            float dt = io.DeltaTime > 0.0f ? io.DeltaTime : (1.0f / 60.0f);
+            float speed = 520.0f; // px/s at the arrow edge
+            if (sc > 0.0f && mx < leftEdge + zone) {
+                float t = 1.0f - (mx - leftEdge) / zone; // 0 at zone start, 1 at edge
+                t = ImClamp(t, 0.0f, 1.0f);
+                sc = std::max(0.0f, sc - speed * (t * t) * dt);
+            } else if (sc < maxScroll && mx > rightEdge - zone) {
+                float t = 1.0f - (rightEdge - mx) / zone;
+                t = ImClamp(t, 0.0f, 1.0f);
+                sc = std::min(maxScroll, sc + speed * (t * t) * dt);
+            }
+        }
     }
 
     if (!pr.loaded) {

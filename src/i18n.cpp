@@ -92,9 +92,14 @@ void seedEnglish() {
     g_en["search.searching"] = "Searching…";
     g_en["search.people"] = "People";
     g_en["discover.trending"] = "Trending";
+    g_en["discover.trending_day"] = "Trending today";
     g_en["discover.upcoming"] = "Coming soon to theaters";
     g_en["discover.popular_movies"] = "Popular movies";
+    g_en["discover.now_playing"] = "Now playing";
+    g_en["discover.top_movies"] = "Top rated movies";
     g_en["discover.popular_tv"] = "Popular TV shows";
+    g_en["discover.on_the_air"] = "On the air";
+    g_en["discover.airing_today"] = "Airing today";
     g_en["discover.top_tv"] = "Top rated TV shows";
     g_en["discover.load_failed"] = "Failed to load";
 

@@ -13,6 +13,7 @@
 #include "i18n.hpp"
 #include "updater.hpp"
 #include "imgui.h"
+#include "imgui_internal.h"
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -93,8 +94,28 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
     float totalW = pr.results.size() * (CARD_W + GAP);
     float maxScroll = std::max(0.0f, totalW - (w - (cur.x - wpos.x)) - 16);
     bool hovering = ImGui::IsMouseHoveringRect(ImVec2(cur.x, rowY), ImVec2(wpos.x + w, rowY + rowH));
-    if (hovering && ImGui::GetIO().MouseWheelH != 0)
-        sc = std::min(std::max(0.0f, sc - ImGui::GetIO().MouseWheelH * 160.0f), maxScroll);
+    if (hovering) {
+        // Claim the wheel so the parent page doesn't scroll vertically over this row.
+        ImGuiID wheelId = ImGui::GetID(("##slwheel" + title).c_str());
+        ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, wheelId);
+        ImGui::SetKeyOwner(ImGuiKey_MouseWheelX, wheelId);
+
+        ImGuiIO& io = ImGui::GetIO();
+        float delta = io.MouseWheelH;
+        if (delta == 0.0f && io.MouseWheel != 0.0f)
+            delta = io.MouseWheel; // normal mouse wheel → horizontal when over the row
+        if (delta != 0.0f) {
+            sc = std::min(std::max(0.0f, sc - delta * 100.0f), maxScroll);
+            // Undo same-frame vertical scroll (ownership applies from the next frame)
+            if (io.MouseWheel != 0.0f && io.MouseWheelH == 0.0f) {
+                float step = ImTrunc(ImMin(5.0f * ImGui::GetFontSize(), ImGui::GetWindowHeight() * 0.7f));
+                ImGui::SetScrollY(ImGui::GetScrollY() + io.MouseWheel * step);
+            }
+        }
+        // Click-drag sideways (when not interacting with a card button)
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 4.0f) && !ImGui::IsAnyItemActive())
+            sc = std::min(std::max(0.0f, sc - io.MouseDelta.x), maxScroll);
+    }
 
     if (!pr.loaded) {
         if (!pr.error.empty()) {
@@ -535,11 +556,39 @@ void renderDiscover() {
             std::snprintf(b, sizeof(b), "%04d-%02d-%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
             return std::string(b);
         }();
+        // ~30 days ahead window for "upcoming"
+        std::string inMonth = [] {
+            using namespace std::chrono;
+            auto t = system_clock::to_time_t(system_clock::now() + hours(24 * 45));
+            std::tm tm{};
+#ifdef _WIN32
+            localtime_s(&tm, &t);
+#else
+            localtime_r(&t, &tm);
+#endif
+            char b[16];
+            std::snprintf(b, sizeof(b), "%04d-%02d-%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+            return std::string(b);
+        }();
+
         rows.push_back({"discover.trending", {}, {}, []{ return Tmdb::trending("all", "week"); }});
+        rows.push_back({"discover.trending_day", {}, {}, []{ return Tmdb::trending("all", "day"); }});
         rows.push_back({"discover.popular_movies", {}, {}, []{ return Tmdb::discover(1, {{"sort_by","popularity.desc"}}); }});
-        rows.push_back({"discover.upcoming", {}, {}, [today]{ return Tmdb::discover(1, {{"primary_release_date.gte", today},{"sort_by","popularity.desc"}}); }});
+        rows.push_back({"discover.now_playing", {}, {}, []{ return Tmdb::movieList("now_playing"); }});
+        rows.push_back({"discover.upcoming", {}, {}, [today, inMonth]{
+            return Tmdb::discover(1, {{"primary_release_date.gte", today},
+                                      {"primary_release_date.lte", inMonth},
+                                      {"sort_by","popularity.desc"}});
+        }});
+        rows.push_back({"discover.top_movies", {}, {}, []{
+            return Tmdb::discover(1, {{"vote_count.gte","1000"},{"sort_by","vote_average.desc"}});
+        }});
         rows.push_back({"discover.popular_tv", {}, {}, []{ return Tmdb::discover(1, {{"type","tv"},{"sort_by","popularity.desc"}}); }});
-        rows.push_back({"discover.top_tv", {}, {}, []{ return Tmdb::discover(1, {{"type","tv"},{"vote_count.gte","500"},{"sort_by","vote_average.desc"}}); }});
+        rows.push_back({"discover.on_the_air", {}, {}, []{ return Tmdb::tvList("on_the_air"); }});
+        rows.push_back({"discover.top_tv", {}, {}, []{
+            return Tmdb::discover(1, {{"type","tv"},{"vote_count.gte","500"},{"sort_by","vote_average.desc"}});
+        }});
+        rows.push_back({"discover.airing_today", {}, {}, []{ return Tmdb::tvList("airing_today"); }});
     }
     for (auto& r : rows) {
         if (doReload) { r.res = {}; r.req = r.make(); }

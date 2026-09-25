@@ -95,19 +95,19 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
     float maxScroll = std::max(0.0f, totalW - (w - (cur.x - wpos.x)) - 16);
     bool hovering = ImGui::IsMouseHoveringRect(ImVec2(cur.x, rowY), ImVec2(wpos.x + w, rowY + rowH));
     if (hovering) {
-        // Claim the wheel so the parent page doesn't scroll vertically over this row.
-        ImGuiID wheelId = ImGui::GetID(("##slwheel" + title).c_str());
-        ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, wheelId);
-        ImGui::SetKeyOwner(ImGuiKey_MouseWheelX, wheelId);
-
         ImGuiIO& io = ImGui::GetIO();
+        // Horizontal: trackpad / tilt-wheel, or Shift + normal wheel.
+        // Leave plain vertical wheel alone so the Discover page still scrolls.
         float delta = io.MouseWheelH;
-        if (delta == 0.0f && io.MouseWheel != 0.0f)
-            delta = io.MouseWheel; // normal mouse wheel → horizontal when over the row
+        if (delta == 0.0f && io.KeyShift && io.MouseWheel != 0.0f)
+            delta = io.MouseWheel;
         if (delta != 0.0f) {
+            ImGuiID wheelId = ImGui::GetID(("##slwheel" + title).c_str());
+            ImGui::SetKeyOwner(ImGuiKey_MouseWheelX, wheelId);
+            if (io.KeyShift)
+                ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, wheelId);
             sc = std::min(std::max(0.0f, sc - delta * 100.0f), maxScroll);
-            // Undo same-frame vertical scroll (ownership applies from the next frame)
-            if (io.MouseWheel != 0.0f && io.MouseWheelH == 0.0f) {
+            if (io.KeyShift && io.MouseWheel != 0.0f) {
                 float step = ImTrunc(ImMin(5.0f * ImGui::GetFontSize(), ImGui::GetWindowHeight() * 0.7f));
                 ImGui::SetScrollY(ImGui::GetScrollY() + io.MouseWheel * step);
             }

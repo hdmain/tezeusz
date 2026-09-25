@@ -1443,143 +1443,292 @@ void renderSettings() {
     initColors();
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 origin = ImGui::GetCursorScreenPos();
-    float w = ImGui::GetContentRegionAvail().x;
-    dl->AddText(G.sb26, 24, ImVec2(origin.x, origin.y), TXT, i18n::tr("settings.title"));
-    dl->AddText(G.r14, 13, ImVec2(origin.x, origin.y + 32), ATTR,
-                i18n::tr("settings.sub"));
+    float availW = ImGui::GetContentRegionAvail().x;
+    float availH = ImGui::GetContentRegionAvail().y;
+
+    dl->AddText(G.sb26, 26, ImVec2(origin.x, origin.y), TXT, i18n::tr("settings.title"));
+    dl->AddText(G.r14, 13, ImVec2(origin.x, origin.y + 34), ATTR, i18n::tr("settings.sub"));
 
     auto& cfg = stack::StackConfig::get();
     static char movies[512], tv[512], dlpath[512];
+    static char apiKey[128], osUser[128], osPass[128];
     static bool loaded = false;
     if (!loaded) {
         std::snprintf(movies, sizeof(movies), "%s", cfg.moviesPath.c_str());
         std::snprintf(tv, sizeof(tv), "%s", cfg.tvPath.c_str());
         std::snprintf(dlpath, sizeof(dlpath), "%s", cfg.downloadPath.c_str());
+        std::snprintf(apiKey, sizeof(apiKey), "%s", cfg.subsApiKey.c_str());
+        std::snprintf(osUser, sizeof(osUser), "%s", cfg.subsUsername.c_str());
+        std::snprintf(osPass, sizeof(osPass), "%s", cfg.subsPassword.c_str());
         loaded = true;
     }
 
-    ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + 64));
-    ImGui::PushItemWidth(std::min(560.0f, w - 20));
-    {
-        const char* uiCodes[] = { "en", "pl" };
-        const char* uiLabels[] = { "English", "Polski" };
-        int ui = 0;
-        for (int i = 0; i < 2; i++)
-            if (cfg.uiLanguage == uiCodes[i]) ui = i;
-        ImGui::TextUnformatted(i18n::tr("settings.ui_language"));
-        if (ImGui::Combo("##uilang", &ui, uiLabels, 2)) {
-            cfg.uiLanguage = uiCodes[ui];
-            i18n::setLanguage(cfg.uiLanguage);
-            cfg::syncFromUi(cfg.uiLanguage);
-            app().reloadSeq++;
-            cfg.save();
-        }
-    }
-    ImGui::TextUnformatted(i18n::tr("settings.movies_path"));
-    ImGui::InputText("##movies", movies, sizeof(movies));
-    ImGui::TextUnformatted(i18n::tr("settings.tv_path"));
-    ImGui::InputText("##tv", tv, sizeof(tv));
-    ImGui::TextUnformatted(i18n::tr("settings.download_path"));
-    ImGui::InputText("##dl", dlpath, sizeof(dlpath));
-    ImGui::Checkbox(i18n::tr("settings.auto_start"), &cfg.autoStart);
-    ImGui::SliderInt(i18n::tr("settings.min_seeders"), &cfg.minSeeders, 0, 50);
-    {
-        const char* quals[] = { "any", "720p", "1080p", "2160p" };
-        const char* labels[] = { i18n::tr("settings.quality_any"), "720p", "1080p", "2160p (4K)" };
-        int qi = 2;
-        for (int i = 0; i < 4; i++) if (cfg.preferredQuality == quals[i]) qi = i;
-        ImGui::TextUnformatted(i18n::tr("settings.default_quality"));
-        if (ImGui::Combo("##defq", &qi, labels, 4))
-            cfg.preferredQuality = quals[qi];
-    }
+    enum Tab { TabGeneral = 0, TabLibrary, TabDownloads, TabSubs, TabUpdates, TabCount };
+    static int tab = TabGeneral;
+    static const char* tabKeys[] = {
+        "settings.tab_general", "settings.tab_library", "settings.tab_downloads",
+        "settings.tab_subs", "settings.tab_updates"
+    };
 
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-    ImGui::TextUnformatted(i18n::tr("settings.subs"));
-    ImGui::TextDisabled("%s", i18n::tr("settings.subs_hint1"));
-    ImGui::TextDisabled("%s", i18n::tr("settings.subs_hint2"));
-    ImGui::Checkbox(i18n::tr("settings.subs_auto"), &cfg.subsAuto);
+    const float navW = 168.f;
+    const float gap = 20.f;
+    const float top = 72.f;
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + top));
+
+    // ---- left nav ----
+    ImGui::BeginChild("##settings_nav", ImVec2(navW, availH - top - 8), false,
+                      ImGuiWindowFlags_NoScrollbar);
     {
-        static const char* langs[] = {
-            "pl", "en", "de", "fr", "es", "it", "pt", "ru", "uk", "cs", "sk",
-            "hu", "nl", "sv", "no", "da", "fi", "ja", "ko", "zh", "ar", "tr"
-        };
-        static const char* labels[] = {
-            "Polski", "English", "Deutsch", "Français", "Español", "Italiano", "Português",
-            "Русский", "Українська", "Čeština", "Slovenčina", "Magyar", "Nederlands",
-            "Svenska", "Norsk", "Dansk", "Suomi", "日本語", "한국어", "中文", "العربية", "Türkçe"
-        };
-        int li = 0;
-        for (int i = 0; i < (int)(sizeof(langs) / sizeof(langs[0])); i++)
-            if (cfg.subsPreferredLang == langs[i]) li = i;
-        ImGui::TextUnformatted(i18n::tr("settings.subs_lang"));
-        if (ImGui::Combo("##sublang", &li, labels, (int)(sizeof(labels) / sizeof(labels[0]))))
-            cfg.subsPreferredLang = langs[li];
+        ImDrawList* ndl = ImGui::GetWindowDrawList();
+        ImVec2 np = ImGui::GetCursorScreenPos();
+        float y = np.y;
+        for (int i = 0; i < TabCount; i++) {
+            ImVec2 a(np.x, y), b(np.x + navW - 8, y + 40);
+            bool hov = ImGui::IsMouseHoveringRect(a, b);
+            bool sel = (tab == i);
+            ImU32 bg = sel ? theme::c("#4f46e5") : (hov ? theme::c("#1f2937") : 0);
+            if (bg) ndl->AddRectFilled(a, b, bg, 10.f);
+            if (sel) ndl->AddRectFilled(ImVec2(a.x, a.y + 8), ImVec2(a.x + 3, b.y - 8), theme::c("#a5b4fc"), 2.f);
+            ndl->AddText(G.m16, 14, ImVec2(a.x + 16, a.y + 12),
+                         sel ? WHITE : (hov ? TXT : ATTR), i18n::tr(tabKeys[i]));
+            ImGui::SetCursorScreenPos(a);
+            ImGui::InvisibleButton(("##stab" + std::to_string(i)).c_str(), ImVec2(navW - 8, 40));
+            if (ImGui::IsItemClicked()) tab = i;
+            y += 44;
+        }
     }
+    ImGui::EndChild();
+
+    ImGui::SameLine(0, gap);
+
+    // ---- content card ----
+    float contentW = std::max(280.f, availW - navW - gap - 8);
+    ImGui::BeginChild("##settings_body", ImVec2(contentW, availH - top - 8), false);
+
+    ImDrawList* bdl = ImGui::GetWindowDrawList();
+    float innerW = ImGui::GetContentRegionAvail().x;
+    float fieldW = std::min(520.f, innerW - 48);
+
+    auto sectionTitle = [&](const char* title, const char* hint) {
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        bdl->AddText(G.sb22, 18, p, TXT, title);
+        ImGui::Dummy(ImVec2(1, 26));
+        if (hint && hint[0]) {
+            ImVec2 hp = ImGui::GetCursorScreenPos();
+            float hw = innerW - 8;
+            // wrap hint manually via TextWrapped in muted style
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+            ImGui::PushTextWrapPos(hp.x + hw);
+            ImGui::TextUnformatted(hint);
+            ImGui::PopTextWrapPos();
+            ImGui::PopStyleColor();
+            ImGui::Dummy(ImVec2(1, 10));
+        }
+        ImGui::Dummy(ImVec2(1, 4));
+    };
+
+    auto fieldLabel = [&](const char* label) {
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        bdl->AddText(G.m16, 13, p, ATTR2, label);
+        ImGui::Dummy(ImVec2(1, 20));
+    };
+
+    auto styledInputs = []() {
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::ColorConvertU32ToFloat4(theme::c("#111827")));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImGui::ColorConvertU32ToFloat4(theme::c("#1f2937")));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImGui::ColorConvertU32ToFloat4(theme::c("#1f2937")));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImGui::ColorConvertU32ToFloat4(theme::c("#374151")));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImGui::ColorConvertU32ToFloat4(theme::c("#374151")));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImGui::ColorConvertU32ToFloat4(theme::c("#4b5563")));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImGui::ColorConvertU32ToFloat4(theme::c("#4f46e5")));
+        ImGui::PushStyleColor(ImGuiCol_Header, ImGui::ColorConvertU32ToFloat4(theme::c("#4f46e5")));
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImGui::ColorConvertU32ToFloat4(theme::c("#6366f1")));
+        ImGui::PushStyleColor(ImGuiCol_CheckMark, ImGui::ColorConvertU32ToFloat4(theme::c("#a5b4fc")));
+        ImGui::PushStyleColor(ImGuiCol_SliderGrab, ImGui::ColorConvertU32ToFloat4(theme::c("#6366f1")));
+        ImGui::PushStyleColor(ImGuiCol_SliderGrabActive, ImGui::ColorConvertU32ToFloat4(theme::c("#818cf8")));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12, 10));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10, 14));
+    };
+    auto popStyled = []() {
+        ImGui::PopStyleVar(4);
+        ImGui::PopStyleColor(12);
+    };
+
+    // Card background
     {
-        static char apiKey[128], user[128], pass[128];
-        static bool subLoaded = false;
-        if (!subLoaded) {
-            std::snprintf(apiKey, sizeof(apiKey), "%s", cfg.subsApiKey.c_str());
-            std::snprintf(user, sizeof(user), "%s", cfg.subsUsername.c_str());
-            std::snprintf(pass, sizeof(pass), "%s", cfg.subsPassword.c_str());
-            subLoaded = true;
+        ImVec2 c0 = ImGui::GetWindowPos();
+        ImVec2 c1(c0.x + ImGui::GetWindowSize().x, c0.y + ImGui::GetWindowSize().y);
+        bdl->AddRectFilled(c0, c1, theme::c("#1f2937"), 14.f);
+        bdl->AddRect(c0, c1, theme::c("#374151"), 14.f, 0, 1.f);
+    }
+    ImGui::Dummy(ImVec2(1, 8));
+    ImGui::Indent(20);
+    ImGui::PushItemWidth(fieldW);
+    styledInputs();
+
+    if (tab == TabGeneral) {
+        sectionTitle(i18n::tr("settings.tab_general"), i18n::tr("settings.general_hint"));
+        fieldLabel(i18n::tr("settings.ui_language"));
+        {
+            const char* uiCodes[] = { "en", "pl" };
+            const char* uiLabels[] = { "English", "Polski" };
+            int ui = 0;
+            for (int i = 0; i < 2; i++)
+                if (cfg.uiLanguage == uiCodes[i]) ui = i;
+            if (ImGui::Combo("##uilang", &ui, uiLabels, 2)) {
+                cfg.uiLanguage = uiCodes[ui];
+                i18n::setLanguage(cfg.uiLanguage);
+                cfg::syncFromUi(cfg.uiLanguage);
+                app().reloadSeq++;
+                cfg.save();
+            }
         }
-        ImGui::TextUnformatted("OpenSubtitles API key (opcjonalnie)");
-        ImGui::InputText("##osapikey", apiKey, sizeof(apiKey));
-        ImGui::TextUnformatted("OpenSubtitles login");
-        ImGui::InputText("##osuser", user, sizeof(user));
-        ImGui::TextUnformatted(i18n::tr("settings.subs_password"));
-        ImGui::InputText("##ospass", pass, sizeof(pass), ImGuiInputTextFlags_Password);
-        ImGui::TextDisabled("Klucz: opensubtitles.com/consumers  ·  darmowe konto wystarczy");
-        if (ImGui::Button(i18n::tr("settings.subs_save"), ImVec2(140, 28))) {
-            cfg.subsApiKey = apiKey;
-            cfg.subsUsername = user;
-            cfg.subsPassword = pass;
-            cfg.save();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button(i18n::tr("settings.scan_library"), ImVec2(160, 28)))
+        ImGui::Dummy(ImVec2(1, 8));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::TextWrapped("%s", i18n::tr("settings.save_hint"));
+        ImGui::PopStyleColor();
+    } else if (tab == TabLibrary) {
+        sectionTitle(i18n::tr("settings.tab_library"), i18n::tr("settings.library_hint"));
+        fieldLabel(i18n::tr("settings.movies_path"));
+        ImGui::InputText("##movies", movies, sizeof(movies));
+        fieldLabel(i18n::tr("settings.tv_path"));
+        ImGui::InputText("##tv", tv, sizeof(tv));
+        ImGui::Dummy(ImVec2(1, 6));
+        if (ImGui::Button(i18n::tr("settings.scan_library"), ImVec2(180, 36)))
             subs::scanLibrary();
-        ImGui::TextUnformatted(subs::statusMessage().c_str());
-    }
+        if (!subs::statusMessage().empty()) {
+            ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+            ImGui::TextUnformatted(subs::statusMessage().c_str());
+            ImGui::PopStyleColor();
+        }
+    } else if (tab == TabDownloads) {
+        sectionTitle(i18n::tr("settings.tab_downloads"), i18n::tr("settings.downloads_hint"));
+        fieldLabel(i18n::tr("settings.download_path"));
+        ImGui::InputText("##dl", dlpath, sizeof(dlpath));
+        ImGui::Dummy(ImVec2(1, 4));
+        ImGui::Checkbox(i18n::tr("settings.auto_start"), &cfg.autoStart);
+        fieldLabel(i18n::tr("settings.min_seeders"));
+        ImGui::SliderInt("##seeders", &cfg.minSeeders, 0, 50);
+        fieldLabel(i18n::tr("settings.default_quality"));
+        {
+            const char* quals[] = { "any", "720p", "1080p", "2160p" };
+            const char* labels[] = { i18n::tr("settings.quality_any"), "720p", "1080p", "2160p (4K)" };
+            int qi = 2;
+            for (int i = 0; i < 4; i++) if (cfg.preferredQuality == quals[i]) qi = i;
+            if (ImGui::Combo("##defq", &qi, labels, 4))
+                cfg.preferredQuality = quals[qi];
+        }
+    } else if (tab == TabSubs) {
+        sectionTitle(i18n::tr("settings.tab_subs"), i18n::tr("settings.subs_hint1"));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::TextWrapped("%s", i18n::tr("settings.subs_hint2"));
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(1, 8));
+        ImGui::Checkbox(i18n::tr("settings.subs_auto"), &cfg.subsAuto);
+        fieldLabel(i18n::tr("settings.subs_lang"));
+        {
+            static const char* langs[] = {
+                "pl", "en", "de", "fr", "es", "it", "pt", "ru", "uk", "cs", "sk",
+                "hu", "nl", "sv", "no", "da", "fi", "ja", "ko", "zh", "ar", "tr"
+            };
+            static const char* labels[] = {
+                "Polski", "English", "Deutsch", "Français", "Español", "Italiano", "Português",
+                "Русский", "Українська", "Čeština", "Slovenčina", "Magyar", "Nederlands",
+                "Svenska", "Norsk", "Dansk", "Suomi", "日本語", "한국어", "中文", "العربية", "Türkçe"
+            };
+            int li = 0;
+            for (int i = 0; i < (int)(sizeof(langs) / sizeof(langs[0])); i++)
+                if (cfg.subsPreferredLang == langs[i]) li = i;
+            if (ImGui::Combo("##sublang", &li, labels, (int)(sizeof(labels) / sizeof(labels[0]))))
+                cfg.subsPreferredLang = langs[li];
+        }
+        ImGui::Dummy(ImVec2(1, 10));
+        {
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            bdl->AddText(G.sb18, 15, p, TXT, i18n::tr("settings.subs_os_section"));
+            ImGui::Dummy(ImVec2(1, 24));
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::TextWrapped("%s", i18n::tr("settings.subs_os_hint"));
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(1, 6));
+        fieldLabel(i18n::tr("settings.subs_api_key"));
+        ImGui::InputText("##osapikey", apiKey, sizeof(apiKey));
+        fieldLabel(i18n::tr("settings.subs_login"));
+        ImGui::InputText("##osuser", osUser, sizeof(osUser));
+        fieldLabel(i18n::tr("settings.subs_password"));
+        ImGui::InputText("##ospass", osPass, sizeof(osPass), ImGuiInputTextFlags_Password);
+        ImGui::Dummy(ImVec2(1, 4));
+        if (ImGui::Button(i18n::tr("settings.subs_save"), ImVec2(180, 36))) {
+            cfg.subsApiKey = apiKey;
+            cfg.subsUsername = osUser;
+            cfg.subsPassword = osPass;
+            cfg.save();
+        }
+    } else if (tab == TabUpdates) {
+        sectionTitle(i18n::tr("settings.tab_updates"), i18n::tr("update.settings_hint"));
+        {
+            auto st = updater::state();
+            ImU32 badgeBg = theme::c("#374151");
+            if (st == updater::State::UpToDate) badgeBg = theme::c("#065f46");
+            else if (st == updater::State::Downloading || st == updater::State::Ready) badgeBg = theme::c("#1e3a8a");
+            else if (st == updater::State::Error) badgeBg = theme::c("#7f1d1d");
+            else if (st == updater::State::Disabled) badgeBg = theme::c("#374151");
 
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::Spacing();
-    ImGui::TextUnformatted(i18n::tr("update.settings_title"));
-    ImGui::TextDisabled("%s", i18n::tr("update.settings_hint"));
-    {
-        auto st = updater::state();
-        std::string line = updater::statusText();
-        if (!updater::remoteVersion().empty())
-            line += std::string("  ·  ") + updater::remoteVersion();
-        if (st == updater::State::Downloading)
-            line += "  " + std::to_string(updater::downloadPercent()) + "%";
-        ImGui::TextWrapped("%s", line.c_str());
-        ImGui::TextDisabled("%s %s", i18n::tr("update.current"),
+            std::string line = updater::statusText();
+            if (st == updater::State::Downloading)
+                line += "  ·  " + std::to_string(updater::downloadPercent()) + "%";
+
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            ImVec2 ts = G.m16 ? G.m16->CalcTextSizeA(14, FLT_MAX, 0, line.c_str())
+                              : ImGui::CalcTextSize(line.c_str());
+            ImVec2 br(p.x + ts.x + 24, p.y + ts.y + 16);
+            bdl->AddRectFilled(p, br, badgeBg, 10.f);
+            bdl->AddText(G.m16, 14, ImVec2(p.x + 12, p.y + 8), WHITE, line.c_str());
+            ImGui::Dummy(ImVec2(1, br.y - p.y + 12));
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::Text("%s %s", i18n::tr("update.current"),
 #ifndef SEERR_VERSION
-                            "dev"
+                    "dev"
 #else
-                            SEERR_VERSION
+                    SEERR_VERSION
 #endif
         );
-        if (ImGui::Button(i18n::tr("update.check_now"), ImVec2(160, 28)))
+        if (!updater::remoteVersion().empty())
+            ImGui::Text("%s %s", i18n::tr("update.remote"), updater::remoteVersion().c_str());
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(1, 8));
+        if (ImGui::Button(i18n::tr("update.check_now"), ImVec2(200, 36)))
             updater::checkNow();
     }
 
-    ImGui::PopItemWidth();
+    ImGui::Dummy(ImVec2(1, 16));
+    ImGui::Separator();
+    ImGui::Dummy(ImVec2(1, 10));
 
-    ImGui::Spacing();
-    if (ImGui::Button(i18n::tr("common.save"), ImVec2(140, 36))) {
-        cfg.moviesPath = movies;
-        cfg.tvPath = tv;
-        cfg.downloadPath = dlpath;
-        cfg.save();
+    // Save footer (paths + download prefs)
+    if (tab == TabLibrary || tab == TabDownloads || tab == TabGeneral) {
+        if (ImGui::Button(i18n::tr("common.save"), ImVec2(160, 38))) {
+            cfg.moviesPath = movies;
+            cfg.tvPath = tv;
+            cfg.downloadPath = dlpath;
+            cfg.save();
+        }
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::TextUnformatted(i18n::tr("settings.saved_toast"));
+        ImGui::PopStyleColor();
     }
-    ImGui::SameLine();
-    ImGui::TextUnformatted("Zapis: %APPDATA%\\SeerrCpp\\stack.json");
+
+    popStyled();
+    ImGui::PopItemWidth();
+    ImGui::Unindent(20);
+    ImGui::Dummy(ImVec2(1, 16));
+    ImGui::EndChild();
 }
 
 // ------------------------------------------------------------------ request quality + interactive search

@@ -187,29 +187,45 @@ void seedEnglish() {
     g_en["settings.title"] = "Settings";
     g_en["settings.sub"] =
         "Everything runs in one app — torrent search + libtorrent + library";
+    g_en["settings.tab_general"] = "General";
+    g_en["settings.tab_library"] = "Library";
+    g_en["settings.tab_downloads"] = "Downloads";
+    g_en["settings.tab_subs"] = "Subtitles";
+    g_en["settings.tab_updates"] = "Updates";
+    g_en["settings.general_hint"] = "Language and app preferences.";
+    g_en["settings.library_hint"] = "Folders where finished movies and TV shows are stored.";
+    g_en["settings.downloads_hint"] = "Where torrents download before import into the library.";
+    g_en["settings.save_hint"] = "Config file: %APPDATA%\\SeerrCpp\\stack.json (Linux: ~/.local/share/SeerrCpp).";
+    g_en["settings.saved_toast"] = "Saved to disk";
     g_en["settings.ui_language"] = "UI language";
-    g_en["settings.movies_path"] = "Movies (library)";
-    g_en["settings.tv_path"] = "TV Shows (library)";
+    g_en["settings.movies_path"] = "Movies folder";
+    g_en["settings.tv_path"] = "TV shows folder";
     g_en["settings.download_path"] = "Download folder";
-    g_en["settings.auto_start"] = "Auto-start downloads";
-    g_en["settings.min_seeders"] = "Min. seeders";
-    g_en["settings.default_quality"] = "Default quality (on request)";
+    g_en["settings.auto_start"] = "Start downloads automatically";
+    g_en["settings.min_seeders"] = "Minimum seeders";
+    g_en["settings.default_quality"] = "Default quality";
     g_en["settings.quality_any"] = "Any";
-    g_en["settings.subs"] = "Subtitles (Bazarr-like)";
+    g_en["settings.subs"] = "Subtitles";
     g_en["settings.subs_hint1"] =
-        "Works without a key: TheSubDB (EN) and NapiProjekt (PL) via video hash.";
+        "Works without a key via TheSubDB (EN) and NapiProjekt (PL) using the video hash.";
     g_en["settings.subs_hint2"] =
-        "OpenSubtitles key = more languages and TV shows (optional).";
-    g_en["settings.subs_auto"] = "Auto-download subtitles";
-    g_en["settings.subs_lang"] = "Preferred subtitle language";
-    g_en["settings.subs_password"] = "OpenSubtitles password";
-    g_en["settings.subs_save"] = "Save subtitles";
+        "An OpenSubtitles key unlocks more languages and TV episodes (optional).";
+    g_en["settings.subs_os_section"] = "OpenSubtitles (optional)";
+    g_en["settings.subs_os_hint"] =
+        "Get a free API key at opensubtitles.com/consumers — a free account is enough.";
+    g_en["settings.subs_api_key"] = "API key";
+    g_en["settings.subs_login"] = "Username";
+    g_en["settings.subs_auto"] = "Download subtitles automatically";
+    g_en["settings.subs_lang"] = "Preferred language";
+    g_en["settings.subs_password"] = "Password";
+    g_en["settings.subs_save"] = "Save subtitle login";
     g_en["settings.scan_library"] = "Scan library";
     g_en["update.settings_title"] = "Updates";
     g_en["update.settings_hint"] =
         "Checks GitHub in the background and downloads only changed files (SHA-256).";
     g_en["update.check_now"] = "Check for updates";
     g_en["update.current"] = "Installed:";
+    g_en["update.remote"] = "Available:";
     g_en["update.idle"] = "Automatic updates enabled";
     g_en["update.checking"] = "Checking for updates…";
     g_en["update.up_to_date"] = "You are up to date";

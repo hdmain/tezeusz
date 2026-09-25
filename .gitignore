@@ -36,7 +36,7 @@ config.json
 .DS_Store
 Thumbs.db
 
-# Screenshots / scratch (keep mainpage + details)
+# Screenshots / scratch
 /live*.png
 /hover*.png
 /t_movies*.png
@@ -48,6 +48,11 @@ Thumbs.db
 /d8.png
 /d9.png
 /d10.png
+/shot*.png
+/mainpage.png
+/detalispage.png
+/details*.png
+/shoot.ps1
 /build_log.txt
 /check_img*.py
 /rate.py

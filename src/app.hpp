@@ -26,6 +26,7 @@ struct App {
     std::string lastQuery;
     SearchFilter searchFilter = SearchFilter::All;
     AsyncReq<PagedResult> searchReq;
+    bool focusSearchInput = false; // set when navigating home→search mid-typing
 
     // watchlist (tmdb id set per type), requests status (0 unknown..3 available)
     std::set<std::string> watchlist;              // key "movie:123"

@@ -310,7 +310,9 @@ void renderSearch() {
         icons::search(dl, ImVec2(bp.x + 22, (bp.y + be.y) * 0.5f), 16, theme::c("#c7d2fe"));
 
         ImGui::SetCursorScreenPos(ImVec2(bp.x + 46, bp.y + 7));
-        ImGui::PushItemWidth(availW - (a.searchInput.empty() ? 60.f : 88.f));
+        // Always reserve room for the clear button so the field width doesn't jump
+        // (and steal focus) on the first typed character.
+        ImGui::PushItemWidth(availW - 88.f);
         char buf[256] = {};
         strncpy(buf, a.searchInput.c_str(), sizeof(buf) - 1);
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 0));
@@ -318,6 +320,10 @@ void renderSearch() {
         ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0, 0, 0, 0));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.72f, 0.76f, 0.85f, 1.0f));
+        if (a.focusSearchInput) {
+            ImGui::SetKeyboardFocusHere();
+            a.focusSearchInput = false;
+        }
         ImGui::InputTextWithHint("##search_page", i18n::tr("search.hint"), buf, sizeof(buf));
         ImGui::PopStyleColor(5);
         ImGui::PopItemWidth();
@@ -489,8 +495,11 @@ void renderDiscover() {
 
         std::string prev = a.searchInput;
         a.searchInput = buf;
-        if (!a.searchInput.empty() && (a.searchInput != prev || enter))
+        // Typing on home jumps to Search — reclaim keyboard focus on the next page's field.
+        if (!a.searchInput.empty() && (a.searchInput != prev || enter)) {
+            a.focusSearchInput = true;
             a.navigate(Page::Search);
+        }
 
         ImGui::SetCursorScreenPos(ImVec2(origin.x, be.y + 18));
         ImGui::Dummy(ImVec2(availW, 0));

@@ -100,6 +100,18 @@ if(SEERR_COPY_ASSETS_TO_BUILD)
     )
 endif()
 
+# Windows: copy MinGW runtime DLLs beside the exe so PowerShell/CMD can launch
+# without MinGW on PATH (otherwise the process exits silently with 0xC0000135).
+if(WIN32)
+    add_custom_command(TARGET seerr POST_BUILD
+        COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+            -File "${CMAKE_SOURCE_DIR}/scripts/stage-mingw-dlls.ps1"
+            -Exe "$<TARGET_FILE:seerr>"
+        COMMENT "Staging MinGW DLLs next to seerr.exe"
+        VERBATIM
+    )
+endif()
+
 include(SeerrPackaging)
 
 message(STATUS "Seerr ${SEERR_VERSION} — build type: ${CMAKE_BUILD_TYPE}")

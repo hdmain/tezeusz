@@ -1,36 +1,52 @@
-# Stage MinGW runtime DLLs next to seerr.exe so .\build\seerr.exe starts
-# without requiring MinGW on PATH (avoids silent 0xC0000135 exit).
+# Stage MinGW runtime DLLs next to seerr.exe (local convenience).
+# Always exits 0 so CI/link is never blocked — portable packaging uses bash.
 param(
     [Parameter(Mandatory = $true)][string]$Exe,
     [string]$MingwBin = $env:MINGW_BIN
 )
 
-$ErrorActionPreference = "Stop"
-if (-not (Test-Path $Exe)) { throw "missing exe: $Exe" }
+$ErrorActionPreference = "Continue"
 
-$outDir = Split-Path -Parent (Resolve-Path $Exe)
+if (-not (Test-Path -LiteralPath $Exe)) {
+    Write-Host "stage-mingw-dlls: missing exe - skip"
+    exit 0
+}
+
+$outDir = Split-Path -Parent (Resolve-Path -LiteralPath $Exe)
+
+if (-not $MingwBin -and $env:MINGW_PREFIX) {
+    $cand = Join-Path $env:MINGW_PREFIX "bin"
+    if (Test-Path -LiteralPath $cand) { $MingwBin = $cand }
+}
+
 if (-not $MingwBin) {
     foreach ($c in @(
         "C:\msys64\mingw64\bin",
         "C:\msys64\ucrt64\bin",
-        "C:\msys64\clang64\bin"
+        "C:\msys64\clang64\bin",
+        "D:\a\_temp\msys64\mingw64\bin"
     )) {
-        if (Test-Path $c) { $MingwBin = $c; break }
+        if (Test-Path -LiteralPath $c) { $MingwBin = $c; break }
     }
 }
-if (-not $MingwBin -or -not (Test-Path $MingwBin)) {
-    Write-Host "stage-mingw-dlls: MinGW bin not found — skip"
+
+if (-not $MingwBin) {
+    $cmd = Get-Command objdump.exe -ErrorAction SilentlyContinue
+    if ($cmd) { $MingwBin = Split-Path -Parent $cmd.Source }
+}
+
+if (-not $MingwBin -or -not (Test-Path -LiteralPath $MingwBin)) {
+    Write-Host "stage-mingw-dlls: MinGW bin not found - skip"
     exit 0
 }
 
 $objdump = Join-Path $MingwBin "objdump.exe"
-if (-not (Test-Path $objdump)) {
-    Write-Host "stage-mingw-dlls: objdump missing — skip"
+if (-not (Test-Path -LiteralPath $objdump)) {
+    Write-Host "stage-mingw-dlls: objdump missing - skip"
     exit 0
 }
 
-$skip = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-@(
+$skipNames = @(
     'kernel32.dll','user32.dll','gdi32.dll','shell32.dll','ole32.dll','oleaut32.dll','advapi32.dll',
     'winmm.dll','ws2_32.dll','wsock32.dll','iphlpapi.dll','dwmapi.dll','shlwapi.dll','psapi.dll',
     'version.dll','imm32.dll','oleacc.dll','comdlg32.dll','comctl32.dll','setupapi.dll','crypt32.dll',
@@ -40,40 +56,43 @@ $skip = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordi
     'sechost.dll','gdi32full.dll','win32u.dll','msvcp_win.dll','cryptbase.dll','cfgmgr32.dll',
     'powrprof.dll','umpdc.dll','profapi.dll','wintrust.dll','imagehlp.dll','dxgi.dll','d3d11.dll',
     'd3d9.dll','d2d1.dll','dwrite.dll','hid.dll','devobj.dll','mpr.dll','nsi.dll','dhcpcsvc.dll'
-) | ForEach-Object { [void]$skip.Add($_) }
+)
+$skip = @{}
+foreach ($n in $skipNames) { $skip[$n.ToLowerInvariant()] = $true }
 
-$queue = [System.Collections.Generic.Queue[string]]::new()
-$seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-$queue.Enqueue((Resolve-Path $Exe).Path)
-
-function Get-Imports([string]$file) {
-    & $objdump -p $file 2>$null |
-        Select-String -Pattern 'DLL Name:\s+(\S+)' |
-        ForEach-Object { $_.Matches[0].Groups[1].Value }
-}
+$queue = New-Object System.Collections.Generic.Queue[string]
+$seen = @{}
+$queue.Enqueue((Resolve-Path -LiteralPath $Exe).Path)
 
 $copied = 0
 while ($queue.Count -gt 0) {
     $cur = $queue.Dequeue()
-    foreach ($name in (Get-Imports $cur)) {
-        if ($skip.Contains($name)) { continue }
-        if ($name -like 'api-ms-win-*' -or $name -like 'ext-ms-*') { continue }
-        if (-not $seen.Add($name)) { continue }
+    $raw = & cmd.exe /c "`"$objdump`" -p `"$cur`" 2>nul"
+    if (-not $raw) { continue }
+    foreach ($line in $raw) {
+        if ($line -notmatch 'DLL Name:\s+(\S+)') { continue }
+        $name = $Matches[1]
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        $key = $name.ToLowerInvariant()
+        if ($skip.ContainsKey($key)) { continue }
+        if ($key.StartsWith('api-ms-win-') -or $key.StartsWith('ext-ms-')) { continue }
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
         $src = Join-Path $MingwBin $name
-        if (-not (Test-Path $src)) { continue }
+        if (-not (Test-Path -LiteralPath $src)) { continue }
         $dst = Join-Path $outDir $name
-        Copy-Item -Force $src $dst
+        Copy-Item -Force -LiteralPath $src -Destination $dst -ErrorAction SilentlyContinue
         $copied++
         $queue.Enqueue($dst)
     }
 }
 
-# OpenSSL 3 modules (libcrypto may need them)
 $osslSrc = Join-Path (Split-Path $MingwBin -Parent) "lib\ossl-modules"
 $osslDst = Join-Path $outDir "ossl-modules"
-if (Test-Path $osslSrc) {
+if (Test-Path -LiteralPath $osslSrc) {
     New-Item -ItemType Directory -Force -Path $osslDst | Out-Null
-    Copy-Item -Force (Join-Path $osslSrc "*") $osslDst
+    Copy-Item -Force (Join-Path $osslSrc "*") $osslDst -ErrorAction SilentlyContinue
 }
 
 Write-Host "stage-mingw-dlls: copied $copied DLL(s) -> $outDir"
+exit 0

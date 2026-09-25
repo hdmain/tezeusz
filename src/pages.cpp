@@ -213,6 +213,8 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
 
     auto& a = app();
     dl->PushClipRect(ImVec2(cur.x - 2, rowY - 4), ImVec2(wpos.x + w - 2, rowY + rowH + 10), true);
+    const bool rowBusy = fabsf(ss.vel) > 20.0f || ss.animTo >= 0.0f;
+    const int rowSeed = (int)ImGui::GetID(title.c_str());
     int idx = 0;
     for (auto& it : pr.results) {
         if (localdb::isBlocked(it.mediaType, it.id)) continue;
@@ -222,7 +224,8 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
         if (x + CARD_W < cur.x - 4) continue;
         ImGui::SetCursorScreenPos(ImVec2(x, rowY));
             int r = w::titleCard(it, ImVec2(x, rowY), CARD_W, rowH,
-                                 a.isWatchlisted(it.mediaType, it.id), a.statusOf(it.mediaType, it.id));
+                                 a.isWatchlisted(it.mediaType, it.id), a.statusOf(it.mediaType, it.id),
+                                 rowSeed, !rowBusy);
             if (r) handleCardClick(it, r);
     }
     dl->PopClipRect();

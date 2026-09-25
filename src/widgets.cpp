@@ -509,7 +509,8 @@ bool w::iconButton(ImDrawList* dl, const char* id, ImVec2 min, ImVec2 max, void 
 // --------------------------------------------------------------------- title card
 // Mirrors ref/seerr/src/components/TitleCard/index.tsx
 
-int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool watchlisted, int mediaStatus) {
+int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool watchlisted, int mediaStatus,
+                 int instanceSeed, bool allowHover) {
     int result = 0;
     ImDrawList* dl = ImGui::GetWindowDrawList();
     ImVec2 min = pos, max(pos.x + cw, pos.y + ch);
@@ -549,13 +550,14 @@ int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool wat
         }
     }
 
-    // Unique ID per on-screen instance (same title can appear in multiple Discover rows)
+    // Stable IDs only — never include pixel position (scrolling would change the ID
+    // every few px and make hover/buttons "jump" between cards).
     ImGui::SetCursorScreenPos(min);
+    ImGui::PushID(instanceSeed);
     ImGui::PushID((int)item.mediaType);
     ImGui::PushID(item.id);
-    ImGui::PushID((int)(pos.x * 10.0f) ^ ((int)(pos.y * 10.0f) << 16));
     bool clicked = ImGui::InvisibleButton("##card", ImVec2(cw, ch));
-    bool hov = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenOverlapped);
+    bool hov = allowHover && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenOverlapped);
     float* hoverAnim = ImGui::GetStateStorage()->GetFloatRef(ImGui::GetID("cardHov"), 0.0f);
     {
         float dt = ImGui::GetIO().DeltaTime;

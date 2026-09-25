@@ -77,7 +77,8 @@ bool iconButton(ImDrawList* dl, const char* id, ImVec2 min, ImVec2 max, void (*i
 // full title card as in Seerr (w x h poster, hover overlay, request button).
 // mediaStatus: 0 unknown, 1 pending, 2 processing, 3 available (for badge colors)
 // Returns: 0 none, 1 card clicked (open details), 2 request clicked, 3 watchlist toggled
-int titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool watchlisted, int mediaStatus);
+int titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool watchlisted, int mediaStatus,
+              int instanceSeed = 0, bool allowHover = true);
 
 // circular cast card; returns clicked
 bool castCard(const CastMember& m, ImVec2 pos, float size);

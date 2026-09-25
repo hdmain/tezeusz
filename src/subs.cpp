@@ -1003,13 +1003,12 @@ void processJob(Job job) {
         if (g_stop.load()) return;
         if (hasSidecar(job.videoPath, lang)) continue;
 
-        // Bazarr queries ALL enabled providers and picks the best score. We keep the
-        // same idea but simpler: try keyless providers first (exact hash match),
-        // then fall back to OpenSubtitles when configured.
         bool got = tryKeyless(job, lang);
+        if (g_stop.load()) return;
 
         if (!got && osConfigured) {
             if (ensureToken(cfg)) {
+                if (g_stop.load()) return;
                 downloadOne(job, lang, cfg);
                 got = hasSidecar(job.videoPath, lang);
             }
@@ -1017,8 +1016,9 @@ void processJob(Job job) {
 
         if (!got && !osConfigured && lang == pref)
             setStatus(std::string(i18n::tr("subs.missing")) + lang + i18n::tr("subs.need_os_key"));
-        // gentle rate limit
-        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        // gentle rate limit (interruptible)
+        for (int i = 0; i < 8 && !g_stop.load(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 }
 
@@ -1088,7 +1088,8 @@ void init() {
     g_worker = std::thread(workerMain);
     // Delayed library scan
     core::enqueue([] {
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        for (int i = 0; i < 30 && !g_stop.load(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         if (!g_stop.load() && stack::StackConfig::get().subsAuto)
             scanLibrary();
     });
@@ -1096,8 +1097,33 @@ void init() {
 
 void shutdown() {
     g_stop = true;
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        g_q.clear();
+        g_queued.clear();
+    }
     g_cv.notify_all();
-    if (g_worker.joinable()) g_worker.join();
+    // Abort in-flight provider HTTP so we aren't stuck on a long receive timeout.
+    http::abortPending();
+
+    if (g_worker.joinable()) {
+        std::thread worker = std::move(g_worker);
+        std::atomic<bool> joined{false};
+        std::thread waiter([&] {
+            if (worker.joinable()) worker.join();
+            joined.store(true);
+        });
+        for (int i = 0; i < 40 && !joined.load(); ++i) { // ~1.6s max
+            g_cv.notify_all();
+            std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        }
+        if (joined.load()) {
+            if (waiter.joinable()) waiter.join();
+        } else {
+            // Process is exiting — don't block on a stuck hash/read forever.
+            waiter.detach();
+        }
+    }
     std::lock_guard<std::mutex> lk(g_mu);
     g_q.clear();
     g_queued.clear();

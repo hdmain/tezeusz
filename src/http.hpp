@@ -27,4 +27,7 @@ HttpResponse post(const std::string& url, const std::string& body,
                   const std::string& contentType = "application/json",
                   const std::string& extraHeaders = "");
 
+// Abort in-flight requests (quit / shutdown). Next call opens a fresh session.
+void abortPending();
+
 } // namespace http

@@ -3,6 +3,7 @@
 #include <thread>
 #include <chrono>
 #include <mutex>
+#include <atomic>
 #include <cstring>
 #include <future>
 #include <functional>
@@ -28,17 +29,33 @@ namespace http {
 
 #ifdef _WIN32
 
+static std::mutex g_sessMu;
+static HINTERNET g_sharedSess = nullptr;
+static std::atomic<bool> g_httpAbort{false};
+
 static HINTERNET sharedSession() {
-    static HINTERNET s = [] {
-        HINTERNET sess = WinHttpOpen(L"SeerrCpp/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-        if (!sess)
-            sess = WinHttpOpen(L"SeerrCpp/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                               WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-        if (sess) WinHttpSetTimeouts(sess, 5000, 10000, 15000, 30000);
-        return sess;
-    }();
-    return s;
+    std::lock_guard<std::mutex> lk(g_sessMu);
+    if (!g_sharedSess) {
+        g_sharedSess = WinHttpOpen(L"SeerrCpp/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+                                   WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (!g_sharedSess)
+            g_sharedSess = WinHttpOpen(L"SeerrCpp/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                       WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        // Resolve / connect / send / receive — keep receive shorter so quit isn't stuck for 30s+.
+        if (g_sharedSess) WinHttpSetTimeouts(g_sharedSess, 3000, 5000, 8000, 12000);
+    }
+    return g_sharedSess;
+}
+
+void abortPending() {
+    g_httpAbort.store(true);
+    HINTERNET old = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(g_sessMu);
+        old = g_sharedSess;
+        g_sharedSess = nullptr;
+    }
+    if (old) WinHttpCloseHandle(old);
 }
 
 static HINTERNET longSession(int timeoutSec) {
@@ -191,6 +208,12 @@ static HttpResponse postOnce(const std::string& url, const std::string& body,
 
 #else // curl
 
+static std::atomic<bool> g_httpAbort{false};
+
+void abortPending() {
+    g_httpAbort.store(true);
+}
+
 static size_t writeCb(char* ptr, size_t size, size_t nmemb, void* userdata) {
     auto* out = static_cast<std::string*>(userdata);
     out->append(ptr, size * nmemb);
@@ -237,8 +260,8 @@ static HttpResponse getOnce(const std::string& url, const std::string& accept, c
     curl_easy_setopt(curl, CURLOPT_HEADERDATA, &r);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "SeerrCpp/1.0");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
     CURLcode code = curl_easy_perform(curl);
     if (code != CURLE_OK) r.err = curl_easy_strerror(code);
     else {
@@ -277,7 +300,8 @@ static HttpResponse postOnce(const std::string& url, const std::string& body,
     curl_easy_setopt(curl, CURLOPT_HEADERDATA, &r);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "SeerrCpp/1.0");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
     CURLcode code = curl_easy_perform(curl);
     if (code != CURLE_OK) r.err = curl_easy_strerror(code);
     else {
@@ -294,10 +318,13 @@ static HttpResponse postOnce(const std::string& url, const std::string& body,
 
 HttpResponse get(const std::string& url, const std::string& accept, const std::string& extraHeaders) {
     HttpResponse r;
-    for (int attempt = 0; attempt < 3; attempt++) {
+    g_httpAbort.store(false);
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (g_httpAbort.load()) { r.err = "aborted"; return r; }
         r = getOnce(url, accept, extraHeaders);
         if (r.err.empty() && r.status != 429 && r.status < 500) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(300 * (attempt + 1)));
+        if (g_httpAbort.load()) { r.err = "aborted"; return r; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(150 * (attempt + 1)));
     }
     return r;
 }
@@ -441,10 +468,13 @@ std::future<HttpResponse> getAsync(const std::string& url, const std::string& ac
 HttpResponse post(const std::string& url, const std::string& body,
                   const std::string& contentType, const std::string& extraHeaders) {
     HttpResponse r;
-    for (int attempt = 0; attempt < 3; attempt++) {
+    g_httpAbort.store(false);
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (g_httpAbort.load()) { r.err = "aborted"; return r; }
         r = postOnce(url, body, contentType, extraHeaders);
         if (r.err.empty() && r.status != 429 && r.status < 500) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(300 * (attempt + 1)));
+        if (g_httpAbort.load()) { r.err = "aborted"; return r; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(150 * (attempt + 1)));
     }
     return r;
 }

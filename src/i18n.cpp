@@ -205,6 +205,26 @@ void seedEnglish() {
     g_en["settings.subs_password"] = "OpenSubtitles password";
     g_en["settings.subs_save"] = "Save subtitles";
     g_en["settings.scan_library"] = "Scan library";
+    g_en["update.settings_title"] = "Updates";
+    g_en["update.settings_hint"] =
+        "Checks GitHub in the background and downloads only changed files (SHA-256).";
+    g_en["update.check_now"] = "Check for updates";
+    g_en["update.current"] = "Installed:";
+    g_en["update.idle"] = "Automatic updates enabled";
+    g_en["update.checking"] = "Checking for updates…";
+    g_en["update.up_to_date"] = "You are up to date";
+    g_en["update.downloading"] = "Downloading update";
+    g_en["update.ready"] = "Update ready — restarting…";
+    g_en["update.applying"] = "Applying update…";
+    g_en["update.disabled"] = "Updates disabled";
+    g_en["update.not_writable"] = "Install folder is not writable — auto-update unavailable";
+    g_en["update.check_failed"] = "Could not check for updates";
+    g_en["update.bad_manifest"] = "Invalid update manifest";
+    g_en["update.bad_platform"] = "Update is for a different platform";
+    g_en["update.download_failed"] = "Download failed";
+    g_en["update.checksum_failed"] = "Checksum mismatch";
+    g_en["update.write_failed"] = "Could not write update files";
+    g_en["update.apply_failed"] = "Could not start update installer";
 
     // Request dialog
     g_en["req.dialog_title"] = "Request";

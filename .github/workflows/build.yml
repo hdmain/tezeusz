@@ -65,11 +65,14 @@ jobs:
           set -euo pipefail
           VER="${{ steps.ver.outputs.version }}"
           bash packaging/make-windows-portable.sh build/seerr.exe "build/seerr-portable" "$VER"
+          bash packaging/make-update-manifest.sh build/seerr-portable windows-x64 "$VER" build/update-windows
           (
             cd build
             rm -f "seerr-windows-portable-${VER}.zip"
             zip -r "seerr-windows-portable-${VER}.zip" seerr-portable
-            ls -lah "seerr-windows-portable-${VER}.zip"
+            rm -f "seerr-update-windows-${VER}.zip"
+            zip -r "seerr-update-windows-${VER}.zip" update-windows
+            ls -lah "seerr-windows-portable-${VER}.zip" "seerr-update-windows-${VER}.zip"
           )
 
       - name: Upload portable zip
@@ -77,6 +80,13 @@ jobs:
         with:
           name: seerr-windows-portable
           path: build/seerr-windows-portable-*.zip
+          if-no-files-found: error
+
+      - name: Upload update pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: seerr-update-windows
+          path: build/seerr-update-windows-*.zip
           if-no-files-found: error
 
   linux:
@@ -125,6 +135,29 @@ jobs:
           dpkg-deb -I ./*.deb
           dpkg-deb -c ./*.deb | head -n 40
 
+      - name: Package linux portable + update manifest
+        run: |
+          set -euo pipefail
+          VER="${{ steps.ver.outputs.version }}"
+          OUT=build/seerr-linux-portable
+          rm -rf "$OUT"
+          mkdir -p "$OUT/fonts" "$OUT/icons" "$OUT/locales"
+          cp -f build/seerr "$OUT/seerr"
+          chmod +x "$OUT/seerr"
+          cp -f vendor/logo_full.png vendor/icon.png vendor/poster_missing.png "$OUT/"
+          cp -f vendor/fonts/*.ttf "$OUT/fonts/" 2>/dev/null || true
+          cp -f vendor/icons/*.svg "$OUT/icons/" 2>/dev/null || true
+          cp -f locales/*.json "$OUT/locales/" 2>/dev/null || true
+          bash packaging/make-update-manifest.sh "$OUT" linux-x64 "$VER" build/update-linux
+          (
+            cd build
+            rm -f "seerr-linux-portable-${VER}.zip"
+            zip -r "seerr-linux-portable-${VER}.zip" seerr-linux-portable
+            rm -f "seerr-update-linux-${VER}.zip"
+            zip -r "seerr-update-linux-${VER}.zip" update-linux
+            ls -lah "seerr-linux-portable-${VER}.zip" "seerr-update-linux-${VER}.zip"
+          )
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
@@ -137,6 +170,20 @@ jobs:
         with:
           name: seerr-deb
           path: build/*.deb
+          if-no-files-found: error
+
+      - name: Upload linux portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: seerr-linux-portable
+          path: build/seerr-linux-portable-*.zip
+          if-no-files-found: error
+
+      - name: Upload linux update pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: seerr-update-linux
+          path: build/seerr-update-linux-*.zip
           if-no-files-found: error
 
       - name: Smoke-test .deb
@@ -154,7 +201,7 @@ jobs:
           # Headless runners often lack a usable GL stack; don't fail the job if
           # the GUI process dies under xvfb — packaging itself is already verified.
           set +e
-          SEERR_DISABLE_IMGSWARM=1 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a timeout 8s seerr 2>seerr-xvfb.log
+          SEERR_DISABLE_UPDATE=1 SEERR_DISABLE_IMGSWARM=1 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a timeout 8s seerr 2>seerr-xvfb.log
           rc=$?
           set -e
           echo "xvfb seerr exit code: $rc"
@@ -188,6 +235,8 @@ jobs:
           find dist -type f \( -name '*.zip' -o -name '*.deb' -o -name 'seerr' \) -print
           # Portable Windows zip
           cp -f dist/seerr-windows-portable/*.zip release/ || true
+          # Linux portable zip (self-updating layout)
+          cp -f dist/seerr-linux-portable/*.zip release/ || true
           # Debian package
           cp -f dist/seerr-deb/*.deb release/ || true
           # Linux ELF binary (rename with version)
@@ -195,7 +244,14 @@ jobs:
             cp -f dist/seerr-linux/seerr "release/seerr-linux-amd64-${VER}"
             chmod +x "release/seerr-linux-amd64-${VER}"
           fi
+          # Unpack update packs for differential publish
+          mkdir -p update-publish
+          for z in dist/seerr-update-windows/*.zip dist/seerr-update-linux/*.zip; do
+            [[ -f "$z" ]] || continue
+            unzip -q -o "$z" -d update-publish
+          done
           ls -lah release
+          ls -lah update-publish || true
           test -n "$(ls -A release)"
 
       - name: Publish continuous release
@@ -210,11 +266,12 @@ jobs:
           Automated build from \`main\` (\`${GITHUB_SHA:0:7}\`).
 
           ### Downloads
-          - **Windows portable** — unzip and run \`seerr.exe\` (fonts/locales bundled)
-          - **Linux .deb** — \`sudo apt install ./seerr_*.deb\`
+          - **Windows portable** — unzip and run \`seerr.exe\` (auto-updates in the background)
+          - **Linux portable** — unzip and run \`./seerr\` (auto-updates when folder is writable)
+          - **Linux .deb** — \`sudo apt install ./seerr_*.deb\` (system install; auto-update needs a writable copy)
           - **Linux binary** — raw ELF (needs system GLFW/CURL/libtorrent)
 
-          Linux GUI note: if \`seerr\` segfaults, run from a terminal and check stderr lines starting with \`seerr:\`.
+          Updates download **only changed files** (SHA-256) from the \`continuous\` channel and restart automatically.
           EOF
           )"
           if gh release view continuous >/dev/null 2>&1; then
@@ -225,6 +282,14 @@ jobs:
               --title "Continuous build (${VER})" \
               --notes "$NOTES" \
               --latest=false
+          fi
+
+          # Differential update blobs + manifests (only new blobs uploaded)
+          if [[ -d update-publish/update-windows ]]; then
+            bash packaging/publish-update-assets.sh update-publish/update-windows windows-x64
+          fi
+          if [[ -d update-publish/update-linux ]]; then
+            bash packaging/publish-update-assets.sh update-publish/update-linux linux-x64
           fi
 
           # Also keep a versioned release tag for this commit

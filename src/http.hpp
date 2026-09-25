@@ -17,6 +17,8 @@ namespace http {
 HttpResponse get(const std::string& url, const std::string& accept = "application/json",
                  const std::string& extraHeaders = "");
 std::vector<uint8_t> getBinary(const std::string& url, std::string* err = nullptr);
+// Longer timeout for update blobs / large payloads (seconds; 0 = default).
+std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err = nullptr, int timeoutSec = 180);
 std::future<HttpResponse> getAsync(const std::string& url, const std::string& accept = "application/json");
 
 // POST with body. contentType e.g. "application/json" or "application/x-www-form-urlencoded".

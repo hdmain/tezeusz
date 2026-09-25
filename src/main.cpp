@@ -25,6 +25,7 @@
 #include "i18n.hpp"
 #include "gl_compat.hpp"
 #include "tray.hpp"
+#include "updater.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -361,6 +362,7 @@ int main() {
     subs::init();
     localdb::init();
     localdb::loadWatchlist(app().watchlist);
+    updater::init();
 
     // assets
     {
@@ -436,6 +438,8 @@ int main() {
         tray::tick();
         if (tray::consumeQuitRequest() && !quitting.load())
             quitting.store(true);
+        if (updater::wantsQuitForApply() && !quitting.load())
+            quitting.store(true);
         if (tray::consumeShowRequest())
             tray::showFromTray();
 
@@ -452,6 +456,7 @@ int main() {
             tray::showFromTray();
 
         if (!quitting.load()) {
+            updater::tick();
             ImageCache::instance().pump();
             core::tick();
             stack::tick();
@@ -521,6 +526,7 @@ int main() {
             if (quitBgDone.load()) {
                 if (quitThread.joinable()) quitThread.join();
                 setQuitStatus(i18n::tr("quit.ui"));
+                try { updater::shutdown(); } catch (...) {}
                 try { tray::shutdown(); } catch (...) {}
                 try { svgicon::shutdown(); } catch (...) {}
                 ImGui_ImplOpenGL3_Shutdown();
@@ -593,6 +599,25 @@ int main() {
 
         renderSidebar(a);
         renderRequestQualityDialog();
+        }
+
+        // Update toast (download / restart)
+        {
+            auto ust = updater::state();
+            if (ust == updater::State::Downloading || ust == updater::State::Ready ||
+                ust == updater::State::Applying) {
+                ImDrawList* fdl = ImGui::GetForegroundDrawList();
+                std::string msg = updater::statusText();
+                if (ust == updater::State::Downloading)
+                    msg += "  " + std::to_string(updater::downloadPercent()) + "%";
+                ImVec2 ts = ImGui::CalcTextSize(msg.c_str());
+                ImVec2 pad(14, 10);
+                ImVec2 br(io.DisplaySize.x - 16, io.DisplaySize.y - 16);
+                ImVec2 tl(br.x - ts.x - pad.x * 2, br.y - ts.y - pad.y * 2);
+                fdl->AddRectFilled(tl, br, IM_COL32(17, 24, 39, 230), 10.f);
+                fdl->AddRect(tl, br, IM_COL32(0, 164, 220, 180), 10.f);
+                fdl->AddText(ImVec2(tl.x + pad.x, tl.y + pad.y), IM_COL32(229, 231, 235, 255), msg.c_str());
+            }
         }
 
         ImGui::Render();

@@ -33,6 +33,7 @@ set(SEERR_SOURCES
     src/subs.cpp
     src/i18n.cpp
     src/gl_load.cpp
+    src/updater.cpp
 )
 
 add_executable(seerr ${SEERR_SOURCES})
@@ -48,6 +49,9 @@ target_compile_definitions(seerr PRIVATE
     APP_ASSET_DIR="${CMAKE_SOURCE_DIR}/vendor"
     APP_LOCALE_DIR="${CMAKE_SOURCE_DIR}/locales"
     GLFW_INCLUDE_NONE
+    SEERR_VERSION="${SEERR_VERSION}"
+    SEERR_UPDATE_REPO="hdmain/tezeusz"
+    SEERR_UPDATE_CHANNEL="continuous"
 )
 
 target_link_libraries(seerr PRIVATE imgui ${SEERR_TORRENT_TARGET} Boost::headers)

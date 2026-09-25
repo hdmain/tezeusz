@@ -40,6 +40,23 @@ static HINTERNET sharedSession() {
     return s;
 }
 
+static HINTERNET longSession(int timeoutSec) {
+    // Dedicated session for large downloads (updates).
+    static thread_local HINTERNET s = nullptr;
+    static thread_local int lastT = 0;
+    if (s && lastT == timeoutSec) return s;
+    if (s) { WinHttpCloseHandle(s); s = nullptr; }
+    s = WinHttpOpen(L"SeerrCpp/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+                    WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!s)
+        s = WinHttpOpen(L"SeerrCpp/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    int t = timeoutSec > 0 ? timeoutSec * 1000 : 180000;
+    if (s) WinHttpSetTimeouts(s, 10000, 30000, 60000, t);
+    lastT = timeoutSec;
+    return s;
+}
+
 static void splitUrl(const std::string& url, std::wstring& host, std::wstring& path, INTERNET_PORT& port) {
     std::string u = url;
     port = INTERNET_DEFAULT_HTTPS_PORT;
@@ -291,6 +308,81 @@ std::vector<uint8_t> getBinary(const std::string& url, std::string* err) {
     std::vector<uint8_t> out(r.body.size());
     if (!out.empty()) std::memcpy(out.data(), r.body.data(), out.size());
     return out;
+}
+
+std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err, int timeoutSec) {
+#ifdef _WIN32
+    HttpResponse r;
+    HINTERNET session = longSession(timeoutSec), connect = nullptr, request = nullptr;
+    auto cleanup = [&]() {
+        if (request) WinHttpCloseHandle(request);
+        if (connect) WinHttpCloseHandle(connect);
+    };
+    std::wstring host, path;
+    INTERNET_PORT port;
+    splitUrl(url, host, path, port);
+    if (!session) { if (err) *err = "WinHttpOpen failed"; return {}; }
+    connect = WinHttpConnect(session, host.c_str(), port, 0);
+    if (!connect) { if (err) *err = "WinHttpConnect failed"; cleanup(); return {}; }
+    request = WinHttpOpenRequest(connect, L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER,
+                                 WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                 port == INTERNET_DEFAULT_HTTPS_PORT ? WINHTTP_FLAG_SECURE : 0);
+    if (!request) { if (err) *err = "WinHttpOpenRequest failed"; cleanup(); return {}; }
+    std::wstring headers = L"Accept: */*\r\n";
+    if (!WinHttpSendRequest(request, headers.c_str(), (DWORD)-1, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpReceiveResponse(request, nullptr)) {
+        if (err) *err = "request failed: " + std::to_string(GetLastError());
+        cleanup();
+        return {};
+    }
+    DWORD statusCode = 0, size = sizeof(statusCode);
+    WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                        WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &size, WINHTTP_NO_HEADER_INDEX);
+    r.status = (int)statusCode;
+    for (;;) {
+        DWORD avail = 0;
+        if (!WinHttpQueryDataAvailable(request, &avail) || avail == 0) break;
+        std::string chunk(avail, '\0');
+        DWORD read = 0;
+        if (!WinHttpReadData(request, chunk.data(), avail, &read) || read == 0) break;
+        r.body.append(chunk.data(), read);
+    }
+    cleanup();
+    if (r.status < 200 || r.status >= 300) {
+        if (err) *err = "status " + std::to_string(r.status);
+        return {};
+    }
+    std::vector<uint8_t> out(r.body.size());
+    if (!out.empty()) std::memcpy(out.data(), r.body.data(), out.size());
+    return out;
+#else
+    ensureCurl();
+    HttpResponse r;
+    CURL* curl = curl_easy_init();
+    if (!curl) { if (err) *err = "curl_easy_init failed"; return {}; }
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &r.body);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SeerrCpp/1.0");
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)(timeoutSec > 0 ? timeoutSec : 180));
+    CURLcode code = curl_easy_perform(curl);
+    if (code != CURLE_OK) {
+        if (err) *err = curl_easy_strerror(code);
+        curl_easy_cleanup(curl);
+        return {};
+    }
+    long status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_cleanup(curl);
+    if (status < 200 || status >= 300) {
+        if (err) *err = "status " + std::to_string((int)status);
+        return {};
+    }
+    std::vector<uint8_t> out(r.body.size());
+    if (!out.empty()) std::memcpy(out.data(), r.body.data(), out.size());
+    return out;
+#endif
 }
 
 std::future<HttpResponse> getAsync(const std::string& url, const std::string& accept) {

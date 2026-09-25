@@ -11,6 +11,7 @@
 #include "svgicons.hpp"
 #include "subs.hpp"
 #include "i18n.hpp"
+#include "updater.hpp"
 #include "imgui.h"
 #include <algorithm>
 #include <cctype>
@@ -1542,6 +1543,30 @@ void renderSettings() {
         if (ImGui::Button(i18n::tr("settings.scan_library"), ImVec2(160, 28)))
             subs::scanLibrary();
         ImGui::TextUnformatted(subs::statusMessage().c_str());
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::TextUnformatted(i18n::tr("update.settings_title"));
+    ImGui::TextDisabled("%s", i18n::tr("update.settings_hint"));
+    {
+        auto st = updater::state();
+        std::string line = updater::statusText();
+        if (!updater::remoteVersion().empty())
+            line += std::string("  ·  ") + updater::remoteVersion();
+        if (st == updater::State::Downloading)
+            line += "  " + std::to_string(updater::downloadPercent()) + "%";
+        ImGui::TextWrapped("%s", line.c_str());
+        ImGui::TextDisabled("%s %s", i18n::tr("update.current"),
+#ifndef SEERR_VERSION
+                            "dev"
+#else
+                            SEERR_VERSION
+#endif
+        );
+        if (ImGui::Button(i18n::tr("update.check_now"), ImVec2(160, 28)))
+            updater::checkNow();
     }
 
     ImGui::PopItemWidth();

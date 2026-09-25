@@ -86,10 +86,26 @@ struct PlaybackProgress {
     int64_t durationMs = 0;
     int64_t updatedAt = 0;
 };
+
+// Per-file audio / subtitle choice (survives finished / cleared resume points).
+struct PlaybackTracks {
+    bool hasSubtitle = false;
+    bool hasAudio = false;
+    int subtitleId = -1;       // -1 = off
+    int audioId = -1;
+    std::string subtitleName;  // preferred match key (stable across remux)
+    std::string audioName;
+};
+
 // Returns true if a usable resume point exists (~>30s and <~95%).
 bool getPlaybackProgress(const std::string& path, PlaybackProgress* out);
-// Persist current position (throttled by caller). Clears entry near start/end.
+// Persist current position (throttled by caller). Clears position near start/end
+// but keeps track preferences.
 void savePlaybackProgress(const std::string& path, double position, int64_t timeMs, int64_t durationMs);
 void clearPlaybackProgress(const std::string& path);
+
+bool getPlaybackTracks(const std::string& path, PlaybackTracks* out);
+void savePlaybackTracks(const std::string& path, int subtitleId, const std::string& subtitleName,
+                        int audioId, const std::string& audioName);
 
 } // namespace localdb

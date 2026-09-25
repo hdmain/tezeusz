@@ -161,6 +161,51 @@ double g_resumePos = -1;       // fraction to seek once playback is ready
 bool g_didResume = false;
 double g_lastSavedPos = -1;
 double g_lastSaveAt = 0;       // ImGui::GetTime() of last disk write
+localdb::PlaybackTracks g_savedTracks{};
+bool g_didApplyTracks = false;
+
+std::string trackNameById(const std::vector<Track>& tracks, int id) {
+    for (auto& t : tracks)
+        if (t.id == id) return t.name;
+    return {};
+}
+
+// Match saved preference: name first (stable), then id.
+int matchSavedTrack(const std::vector<Track>& tracks, bool has, int id, const std::string& name,
+                    bool allowOff) {
+    if (!has) return -2; // sentinel: no preference
+    if (allowOff && id < 0 && name.empty()) return -1;
+    if (!name.empty()) {
+        for (auto& t : tracks) {
+            if (util::iequals(t.name, name)) return t.id;
+        }
+        // Soft match: saved name contained in track name or vice versa
+        std::string want = util::lower(name);
+        for (auto& t : tracks) {
+            std::string n = util::lower(t.name);
+            if (n.find(want) != std::string::npos || want.find(n) != std::string::npos)
+                return t.id;
+        }
+    }
+    for (auto& t : tracks)
+        if (t.id == id) return t.id;
+    if (allowOff && id < 0) return -1;
+    return -2;
+}
+
+void persistTracks() {
+    if (g_st.path.empty()) return;
+    localdb::savePlaybackTracks(
+        g_st.path,
+        g_st.subtitleId, trackNameById(g_st.subtitles, g_st.subtitleId),
+        g_st.audioId, trackNameById(g_st.audioTracks, g_st.audioId));
+    g_savedTracks.hasSubtitle = true;
+    g_savedTracks.hasAudio = true;
+    g_savedTracks.subtitleId = g_st.subtitleId;
+    g_savedTracks.audioId = g_st.audioId;
+    g_savedTracks.subtitleName = trackNameById(g_st.subtitles, g_st.subtitleId);
+    g_savedTracks.audioName = trackNameById(g_st.audioTracks, g_st.audioId);
+}
 
 struct PendingOpen {
     bool ready = false;
@@ -330,33 +375,53 @@ void refreshTracks() {
             g_st.subtitles.push_back({t->i_id, t->psz_name ? t->psz_name : ("Sub " + std::to_string(t->i_id))});
         p_libvlc_track_description_list_release(list);
         g_st.subtitleId = p_libvlc_video_get_spu(g_mp);
-
-        // Prefer preferred language, then EN (Bazarr-style)
-        std::string pref = util::lower(stack::StackConfig::get().subsPreferredLang);
-        if (pref.empty()) pref = "pl";
-        auto matchLang = [](const std::string& name, const std::string& lang) {
-            std::string n = util::lower(name);
-            return n.find(lang) != std::string::npos ||
-                   (lang == "pl" && (n.find("polski") != std::string::npos || n.find("polish") != std::string::npos)) ||
-                   (lang == "en" && (n.find("english") != std::string::npos || n.find("angiel") != std::string::npos));
-        };
-        int pick = -1;
-        for (auto& t : g_st.subtitles)
-            if (t.id >= 0 && matchLang(t.name, pref)) { pick = t.id; break; }
-        if (pick < 0 && pref != "en") {
-            for (auto& t : g_st.subtitles)
-                if (t.id >= 0 && matchLang(t.name, "en")) { pick = t.id; break; }
-        }
-        if (pick >= 0 && pick != g_st.subtitleId) {
-            p_libvlc_video_set_spu(g_mp, pick);
-            g_st.subtitleId = pick;
-        }
     }
     if (auto* list = p_libvlc_audio_get_track_description(g_mp)) {
         for (auto* t = list; t; t = t->p_next)
             g_st.audioTracks.push_back({t->i_id, t->psz_name ? t->psz_name : ("Audio " + std::to_string(t->i_id))});
         p_libvlc_track_description_list_release(list);
         g_st.audioId = p_libvlc_audio_get_track(g_mp);
+    }
+
+    // Restore last choice for this file, else preferred subtitle language.
+    if (!g_didApplyTracks) {
+        // Wait until VLC exposes tracks (or enough playback time that there are none).
+        if (g_st.audioTracks.empty() && g_st.subtitles.empty() && g_st.timeMs < 2500)
+            return;
+        g_didApplyTracks = true;
+        int subPick = matchSavedTrack(g_st.subtitles, g_savedTracks.hasSubtitle,
+                                      g_savedTracks.subtitleId, g_savedTracks.subtitleName, true);
+        int audPick = matchSavedTrack(g_st.audioTracks, g_savedTracks.hasAudio,
+                                      g_savedTracks.audioId, g_savedTracks.audioName, false);
+
+        if (subPick == -2) {
+            // No saved subtitle — Bazarr-style preferred language, then EN
+            std::string pref = util::lower(stack::StackConfig::get().subsPreferredLang);
+            if (pref.empty()) pref = "pl";
+            auto matchLang = [](const std::string& name, const std::string& lang) {
+                std::string n = util::lower(name);
+                return n.find(lang) != std::string::npos ||
+                       (lang == "pl" && (n.find("polski") != std::string::npos || n.find("polish") != std::string::npos)) ||
+                       (lang == "en" && (n.find("english") != std::string::npos || n.find("angiel") != std::string::npos));
+            };
+            int pick = -1;
+            for (auto& t : g_st.subtitles)
+                if (t.id >= 0 && matchLang(t.name, pref)) { pick = t.id; break; }
+            if (pick < 0 && pref != "en") {
+                for (auto& t : g_st.subtitles)
+                    if (t.id >= 0 && matchLang(t.name, "en")) { pick = t.id; break; }
+            }
+            if (pick >= 0) subPick = pick;
+        }
+
+        if (subPick != -2 && subPick != g_st.subtitleId) {
+            p_libvlc_video_set_spu(g_mp, subPick);
+            g_st.subtitleId = subPick;
+        }
+        if (audPick != -2 && audPick != g_st.audioId) {
+            p_libvlc_audio_set_track(g_mp, audPick);
+            g_st.audioId = audPick;
+        }
     }
 }
 void ensureTex(unsigned w, unsigned h) {
@@ -565,10 +630,13 @@ bool open(const std::string& path, const std::string& title) {
     g_didResume = false;
     g_lastSavedPos = -1;
     g_lastSaveAt = 0;
+    g_savedTracks = {};
+    g_didApplyTracks = false;
     {
         localdb::PlaybackProgress pp;
         if (localdb::getPlaybackProgress(path, &pp))
             g_resumePos = pp.position;
+        localdb::getPlaybackTracks(path, &g_savedTracks);
     }
     {
         std::lock_guard<std::mutex> lk(g_pendingMu);
@@ -731,8 +799,16 @@ void toggleFullscreen() {
         glfwSetInputMode(g_host, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     }
 }
-void setSubtitle(int id) { g_st.subtitleId = id; if (g_mp) p_libvlc_video_set_spu(g_mp, id); }
-void setAudioTrack(int id) { g_st.audioId = id; if (g_mp) p_libvlc_audio_set_track(g_mp, id); }
+void setSubtitle(int id) {
+    g_st.subtitleId = id;
+    if (g_mp) p_libvlc_video_set_spu(g_mp, id);
+    persistTracks();
+}
+void setAudioTrack(int id) {
+    g_st.audioId = id;
+    if (g_mp) p_libvlc_audio_set_track(g_mp, id);
+    persistTracks();
+}
 void cycleSubtitle() {
     if (g_st.subtitles.empty()) return;
     std::vector<int> ids = { -1 };

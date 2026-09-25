@@ -355,12 +355,30 @@ bool getPlaybackProgress(const std::string& path, PlaybackProgress* out) {
     return true;
 }
 
+// Keep subtitle/audio prefs when wiping resume position.
+void stripPositionFields(json& entry) {
+    entry.erase("position");
+    entry.erase("timeMs");
+    entry.erase("durationMs");
+}
+
+bool entryHasTracks(const json& entry) {
+    return entry.value("hasSubtitle", false) || entry.value("hasAudio", false);
+}
+
 void clearPlaybackProgress(const std::string& path) {
     if (path.empty()) return;
     json m = loadPlaybackMap();
     std::string k = playbackKey(path);
-    if (!m.contains(k)) return;
-    m.erase(k);
+    if (!m.contains(k) || !m[k].is_object()) return;
+    json entry = m[k];
+    stripPositionFields(entry);
+    entry.erase("updatedAt");
+    if (!entryHasTracks(entry)) {
+        m.erase(k);
+    } else {
+        m[k] = entry;
+    }
     savePlaybackMap(m);
 }
 
@@ -368,24 +386,25 @@ void savePlaybackProgress(const std::string& path, double position, int64_t time
     if (path.empty()) return;
     position = std::clamp(position, 0.0, 1.0);
 
-    // Near start → drop resume marker
+    // Near start → drop resume marker (keep tracks)
     if (timeMs < 30'000 || position < 0.01) {
         clearPlaybackProgress(path);
         return;
     }
-    // Near end → finished, clear
+    // Near end → finished, clear position (keep tracks)
     if (position >= 0.95 || (durationMs > 0 && durationMs - timeMs < 60'000)) {
         clearPlaybackProgress(path);
         return;
     }
 
     json m = loadPlaybackMap();
-    m[playbackKey(path)] = {
-        {"position", position},
-        {"timeMs", timeMs},
-        {"durationMs", durationMs},
-        {"updatedAt", nowMs()}
-    };
+    std::string k = playbackKey(path);
+    json entry = (m.contains(k) && m[k].is_object()) ? m[k] : json::object();
+    entry["position"] = position;
+    entry["timeMs"] = timeMs;
+    entry["durationMs"] = durationMs;
+    entry["updatedAt"] = nowMs();
+    m[k] = entry;
     // Cap map size — keep newest 200 entries
     if (m.size() > 200) {
         std::vector<std::pair<int64_t, std::string>> order;
@@ -399,6 +418,40 @@ void savePlaybackProgress(const std::string& path, double position, int64_t time
             order.erase(order.begin());
         }
     }
+    savePlaybackMap(m);
+}
+
+bool getPlaybackTracks(const std::string& path, PlaybackTracks* out) {
+    if (path.empty() || !out) return false;
+    json m = loadPlaybackMap();
+    auto it = m.find(playbackKey(path));
+    if (it == m.end() || !it->is_object()) return false;
+    PlaybackTracks t;
+    t.hasSubtitle = it->value("hasSubtitle", false);
+    t.hasAudio = it->value("hasAudio", false);
+    if (!t.hasSubtitle && !t.hasAudio) return false;
+    t.subtitleId = it->value("subtitleId", -1);
+    t.audioId = it->value("audioId", -1);
+    t.subtitleName = it->value("subtitleName", std::string{});
+    t.audioName = it->value("audioName", std::string{});
+    *out = t;
+    return true;
+}
+
+void savePlaybackTracks(const std::string& path, int subtitleId, const std::string& subtitleName,
+                        int audioId, const std::string& audioName) {
+    if (path.empty()) return;
+    json m = loadPlaybackMap();
+    std::string k = playbackKey(path);
+    json entry = (m.contains(k) && m[k].is_object()) ? m[k] : json::object();
+    entry["hasSubtitle"] = true;
+    entry["hasAudio"] = true;
+    entry["subtitleId"] = subtitleId;
+    entry["audioId"] = audioId;
+    entry["subtitleName"] = subtitleName;
+    entry["audioName"] = audioName;
+    entry["updatedAt"] = nowMs();
+    m[k] = entry;
     savePlaybackMap(m);
 }
 

@@ -327,7 +327,19 @@ void renderSearch() {
         ImGui::InputTextWithHint("##search_page", i18n::tr("search.hint"), buf, sizeof(buf));
         ImGui::PopStyleColor(5);
         ImGui::PopItemWidth();
+        std::string prev = a.searchInput;
         a.searchInput = buf;
+
+        auto goHome = [&]() {
+            a.searchInput.clear();
+            a.lastQuery.clear();
+            debounceSrc.clear();
+            lastChange = -1;
+            res = {};
+            req = {};
+            a.focusHomeSearch = true;
+            a.navigate(Page::Discover);
+        };
 
         if (!a.searchInput.empty()) {
             ImVec2 cl(be.x - 30, (bp.y + be.y) * 0.5f - 9);
@@ -336,13 +348,13 @@ void renderSearch() {
                                   icons::close(d2, c, s, col2, 1.6f);
                               },
                               0, theme::c("#1f2937"), 0, theme::c("#9ca3af"), true)) {
-                a.searchInput.clear();
-                a.lastQuery.clear();
-                debounceSrc.clear();
-                lastChange = -1;
-                res = {};
-                req = {};
+                goHome();
+                return;
             }
+        } else if (!prev.empty()) {
+            // Cleared the last character — back to Discover (trending etc.)
+            goHome();
+            return;
         }
         origin.y = be.y + 16;
         ImGui::SetCursorScreenPos(origin);
@@ -487,6 +499,10 @@ void renderDiscover() {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.72f, 0.76f, 0.85f, 1.0f));
         ImGui::PushFont(G.m18 ? G.m18 : ImGui::GetFont());
+        if (a.focusHomeSearch) {
+            ImGui::SetKeyboardFocusHere();
+            a.focusHomeSearch = false;
+        }
         bool enter = ImGui::InputTextWithHint("##home_search", i18n::tr("search.hint"),
                                               buf, sizeof(buf), ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::PopFont();

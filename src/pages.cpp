@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <cstring>
 #include <cstdio>
@@ -46,7 +47,12 @@ static void initColors() {
     TXT2 = theme::c("#9ca3af");
 }
 
-static std::map<std::string, float> g_scrolls;
+struct SliderScroll {
+    float pos = 0;
+    float vel = 0;
+    float animTo = -1; // < 0 = inactive
+};
+static std::map<std::string, SliderScroll> g_sliderScroll;
 
 static void handleCardClick(const MediaItem& it, int r) {
     auto& a = app();
@@ -90,12 +96,17 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
 
     dl->AddText(G.b28, 20, ImVec2(cur.x, cur.y + 4), SLIDER_TITLE, title.c_str());
 
-    auto& sc = g_scrolls[title];
+    auto& ss = g_sliderScroll[title];
+    float& sc = ss.pos;
     float totalW = pr.results.size() * (CARD_W + GAP);
     float maxScroll = std::max(0.0f, totalW - (w - (cur.x - wpos.x)) - 16);
+    ImGuiIO& io = ImGui::GetIO();
+    float dt = io.DeltaTime > 0.0001f ? io.DeltaTime : (1.0f / 60.0f);
+    dt = ImMin(dt, 0.05f); // avoid huge jumps after stalls
+
     bool hovering = ImGui::IsMouseHoveringRect(ImVec2(cur.x, rowY), ImVec2(wpos.x + w, rowY + rowH));
+    float wantVel = 0.0f;
     if (hovering) {
-        ImGuiIO& io = ImGui::GetIO();
         // Horizontal: trackpad / tilt-wheel, or Shift + normal wheel.
         float delta = io.MouseWheelH;
         if (delta == 0.0f && io.KeyShift && io.MouseWheel != 0.0f)
@@ -106,32 +117,62 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
             if (io.KeyShift)
                 ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, wheelId);
             sc = std::min(std::max(0.0f, sc - delta * 100.0f), maxScroll);
+            ss.vel = 0;
+            ss.animTo = -1;
             if (io.KeyShift && io.MouseWheel != 0.0f) {
                 float step = ImTrunc(ImMin(5.0f * ImGui::GetFontSize(), ImGui::GetWindowHeight() * 0.7f));
                 ImGui::SetScrollY(ImGui::GetScrollY() + io.MouseWheel * step);
             }
         }
-        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 4.0f) && !ImGui::IsAnyItemActive())
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 4.0f) && !ImGui::IsAnyItemActive()) {
             sc = std::min(std::max(0.0f, sc - io.MouseDelta.x), maxScroll);
+            ss.vel = 0;
+            ss.animTo = -1;
+        }
 
-        // Auto-scroll when the cursor approaches the side arrows.
+        // Desired velocity from proximity to side arrows (smooth ramp).
         if (maxScroll > 0.0f && !ImGui::IsAnyItemActive()) {
-            const float zone = 72.0f;
+            const float zone = 96.0f;
             float mx = io.MousePos.x;
             float leftEdge = cur.x;
             float rightEdge = wpos.x + w;
-            float dt = io.DeltaTime > 0.0f ? io.DeltaTime : (1.0f / 60.0f);
-            float speed = 520.0f; // px/s at the arrow edge
-            if (sc > 0.0f && mx < leftEdge + zone) {
-                float t = 1.0f - (mx - leftEdge) / zone; // 0 at zone start, 1 at edge
-                t = ImClamp(t, 0.0f, 1.0f);
-                sc = std::max(0.0f, sc - speed * (t * t) * dt);
-            } else if (sc < maxScroll && mx > rightEdge - zone) {
-                float t = 1.0f - (rightEdge - mx) / zone;
-                t = ImClamp(t, 0.0f, 1.0f);
-                sc = std::min(maxScroll, sc + speed * (t * t) * dt);
+            const float maxSpeed = 780.0f; // px/s
+            if (sc > 0.5f && mx < leftEdge + zone) {
+                float t = ImClamp(1.0f - (mx - leftEdge) / zone, 0.0f, 1.0f);
+                wantVel = -maxSpeed * (t * t * (3.0f - 2.0f * t)); // smoothstep
+            } else if (sc < maxScroll - 0.5f && mx > rightEdge - zone) {
+                float t = ImClamp(1.0f - (rightEdge - mx) / zone, 0.0f, 1.0f);
+                wantVel = maxSpeed * (t * t * (3.0f - 2.0f * t));
             }
         }
+    }
+
+    // Smoothly chase desired edge velocity; coast to a stop when leaving the zone.
+    {
+        float follow = 1.0f - expf(-14.0f * dt);
+        ss.vel += (wantVel - ss.vel) * follow;
+        if (fabsf(ss.vel) < 2.0f && wantVel == 0.0f)
+            ss.vel = 0.0f;
+        if (ss.vel != 0.0f) {
+            sc = std::min(std::max(0.0f, sc + ss.vel * dt), maxScroll);
+            ss.animTo = -1;
+            if (sc <= 0.0f || sc >= maxScroll)
+                ss.vel = 0.0f;
+        }
+    }
+
+    // Smooth arrow-click animation
+    if (ss.animTo >= 0.0f) {
+        float follow = 1.0f - expf(-10.0f * dt);
+        float next = sc + (ss.animTo - sc) * follow;
+        if (fabsf(ss.animTo - next) < 0.5f) {
+            sc = ss.animTo;
+            ss.animTo = -1;
+        } else {
+            sc = next;
+        }
+        sc = std::min(std::max(0.0f, sc), maxScroll);
+        ss.vel = 0;
     }
 
     if (!pr.loaded) {
@@ -153,16 +194,20 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
             ImGui::SetCursorScreenPos(ac);
             if (w::iconButton(dl, ("##l" + title).c_str(), ac, ImVec2(ac.x + 30, ac.y + 48),
                               [](ImDrawList* d2, ImVec2 c, float s, ImU32 col) { icons::chevron(d2, c, s, col, true); },
-                              theme::c("#111827/B3"), theme::c("#111827/E6"), 0, IM_COL32(255,255,255,220)))
-                sc = std::max(0.0f, sc - 600);
+                              theme::c("#111827/B3"), theme::c("#111827/E6"), 0, IM_COL32(255,255,255,220))) {
+                ss.animTo = std::max(0.0f, sc - (CARD_W + GAP) * 3.5f);
+                ss.vel = 0;
+            }
         }
         if (sc < maxScroll - 1) {
             ImVec2 ac(wpos.x + w - 28, rowY + rowH / 2 - 24);
             ImGui::SetCursorScreenPos(ac);
             if (w::iconButton(dl, ("##r" + title).c_str(), ac, ImVec2(ac.x + 30, ac.y + 48),
                               [](ImDrawList* d2, ImVec2 c, float s, ImU32 col) { icons::chevron(d2, c, s, col, false); },
-                              theme::c("#111827/B3"), theme::c("#111827/E6"), 0, IM_COL32(255,255,255,220)))
-                sc = std::min(maxScroll, sc + 600);
+                              theme::c("#111827/B3"), theme::c("#111827/E6"), 0, IM_COL32(255,255,255,220))) {
+                ss.animTo = std::min(maxScroll, sc + (CARD_W + GAP) * 3.5f);
+                ss.vel = 0;
+            }
         }
     }
 

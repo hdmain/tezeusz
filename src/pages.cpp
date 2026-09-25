@@ -1748,7 +1748,11 @@ void renderSettings() {
         fieldLabel(i18n::tr("settings.download_path"));
         ImGui::InputText("##dl", dlpath, sizeof(dlpath));
         ImGui::Dummy(ImVec2(1, 4));
-        ImGui::Checkbox(i18n::tr("settings.auto_start"), &cfg.autoStart);
+        if (ImGui::Checkbox(i18n::tr("settings.auto_start"), &cfg.autoStart))
+            cfg.save();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::TextWrapped("%s", i18n::tr("settings.auto_start_hint"));
+        ImGui::PopStyleColor();
         fieldLabel(i18n::tr("settings.min_seeders"));
         ImGui::SliderInt("##seeders", &cfg.minSeeders, 0, 50);
         fieldLabel(i18n::tr("settings.default_quality"));
@@ -1809,6 +1813,15 @@ void renderSettings() {
         }
     } else if (tab == TabUpdates) {
         sectionTitle(i18n::tr("settings.tab_updates"), i18n::tr("update.settings_hint"));
+        {
+            bool autoUp = updater::autoEnabled();
+            if (ImGui::Checkbox(i18n::tr("settings.auto_update"), &autoUp))
+                updater::setAutoEnabled(autoUp);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+            ImGui::TextWrapped("%s", i18n::tr("settings.auto_update_hint"));
+            ImGui::PopStyleColor();
+            ImGui::Dummy(ImVec2(1, 12));
+        }
         {
             auto st = updater::state();
             ImU32 badgeBg = theme::c("#374151");

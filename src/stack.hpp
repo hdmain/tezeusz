@@ -47,7 +47,8 @@ struct StackConfig {
     std::string downloadPath;
     int minSeeders = 2;
     std::string preferredQuality = "1080p";
-    bool autoStart = true;
+    bool autoStart = true;       // start torrent download after request
+    bool autoUpdate = true;      // background app update check/download
     std::string uiLanguage = "en";
 
     // Bazarr-like subtitles (OpenSubtitles.com)

@@ -833,6 +833,7 @@ void StackConfig::load() {
             minSeeders = j.value("minSeeders", minSeeders);
             preferredQuality = j.value("preferredQuality", preferredQuality);
             autoStart = j.value("autoStart", autoStart);
+            autoUpdate = j.value("autoUpdate", autoUpdate);
             uiLanguage = j.value("uiLanguage", j.value("ui_language", uiLanguage));
             subsAuto = j.value("subsAuto", subsAuto);
             subsPreferredLang = j.value("subsPreferredLang", subsPreferredLang);
@@ -853,6 +854,7 @@ void StackConfig::save() const {
         {"moviesPath", moviesPath}, {"tvPath", tvPath}, {"downloadPath", downloadPath},
         {"minSeeders", minSeeders}, {"preferredQuality", preferredQuality},
         {"autoStart", autoStart},
+        {"autoUpdate", autoUpdate},
         {"uiLanguage", uiLanguage},
         {"subsAuto", subsAuto}, {"subsPreferredLang", subsPreferredLang},
         {"subsApiKey", subsApiKey}, {"subsUsername", subsUsername},

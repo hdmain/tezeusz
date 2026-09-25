@@ -5,6 +5,7 @@
 #include "player.hpp"
 #include "i18n.hpp"
 #include "sha256.hpp"
+#include "stack.hpp"
 #include "json.hpp"
 #include <atomic>
 #include <chrono>
@@ -427,6 +428,10 @@ void init() {
         setStatus(State::Disabled, i18n::tr("update.disabled"));
         return;
     }
+    if (!stack::StackConfig::get().autoUpdate) {
+        setStatus(State::Disabled, i18n::tr("update.disabled_user"));
+        return;
+    }
     if (!dirWritable(g_installDir)) {
         setStatus(State::Disabled, i18n::tr("update.not_writable"));
         return;
@@ -441,20 +446,67 @@ void shutdown() {
 }
 
 void checkNow() {
-    if (g_state.load() == State::Disabled) return;
+    if (const char* dis = std::getenv("SEERR_DISABLE_UPDATE"); dis && dis[0] && dis[0] != '0') {
+        setStatus(State::Disabled, i18n::tr("update.disabled"));
+        return;
+    }
+    if (!dirWritable(g_installDir)) {
+        setStatus(State::Disabled, i18n::tr("update.not_writable"));
+        return;
+    }
+    // Manual check is allowed even when auto-update is off.
+    State st = g_state.load();
+    if (st == State::Disabled)
+        setStatus(State::Idle, i18n::tr("update.checking"));
     g_checkRequested.store(true);
+}
+
+void setAutoEnabled(bool on) {
+    auto& cfg = stack::StackConfig::get();
+    cfg.autoUpdate = on;
+    cfg.save();
+    if (!on) {
+        g_checkRequested.store(false);
+        g_wantQuit.store(false);
+        g_readySince = 0;
+        State st = g_state.load();
+        if (st != State::Downloading && st != State::Checking && st != State::Applying)
+            setStatus(State::Disabled, i18n::tr("update.disabled_user"));
+        return;
+    }
+    if (const char* dis = std::getenv("SEERR_DISABLE_UPDATE"); dis && dis[0] && dis[0] != '0') {
+        setStatus(State::Disabled, i18n::tr("update.disabled"));
+        return;
+    }
+    if (!dirWritable(g_installDir)) {
+        setStatus(State::Disabled, i18n::tr("update.not_writable"));
+        return;
+    }
+    setStatus(State::Idle, i18n::tr("update.idle"));
+    g_checkRequested.store(true);
+}
+
+bool autoEnabled() {
+    return stack::StackConfig::get().autoUpdate;
 }
 
 void tick() {
     State st = g_state.load();
-    if (st == State::Disabled || st == State::Applying) return;
+    if (st == State::Applying) return;
+
+    const bool autoOn = stack::StackConfig::get().autoUpdate;
 
     if (g_checkRequested.exchange(false)) {
-        if (st != State::Downloading && st != State::Checking && st != State::Ready)
+        if (st != State::Downloading && st != State::Checking && st != State::Ready && st != State::Applying)
             enqueueCheck();
     }
 
-    // Periodic re-check every 6 hours when idle / up-to-date
+    st = g_state.load();
+    if (st == State::Disabled) return;
+
+    // Periodic re-check + auto-apply only when auto-update is enabled.
+    if (!autoOn) return;
+
     static double lastPeriodic = 0;
     double now = (double)std::chrono::duration_cast<std::chrono::milliseconds>(
                      std::chrono::steady_clock::now().time_since_epoch())
@@ -469,10 +521,8 @@ void tick() {
         }
     }
 
-    // Auto-apply when ready and safe (not watching a movie)
     if (st == State::Ready && !player::isOpen()) {
         if (g_readySince <= 0) g_readySince = now;
-        // Brief delay so UI can show "restarting…"
         if (now - g_readySince >= 1.5)
             beginApply();
     }

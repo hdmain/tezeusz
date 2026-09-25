@@ -447,10 +447,12 @@ int main() {
             glfwWaitEventsTimeout(1.0 / 60.0);
         else if (tray::isHidden())
             glfwWaitEventsTimeout(0.25);
-        else if (ImageCache::instance().busy() || player::isOpen())
+        else if (!glfwGetWindowAttrib(win, GLFW_FOCUSED))
             glfwWaitEventsTimeout(1.0 / 30.0);
         else
-            glfwWaitEventsTimeout(0.05);
+            // Visible + focused: let vsync (SwapInterval) pace the loop.
+            // Never throttle to 20/30fps while images load — that made Discover feel stuck.
+            glfwPollEvents();
 
         if (quitting.load() && tray::isHidden())
             tray::showFromTray();

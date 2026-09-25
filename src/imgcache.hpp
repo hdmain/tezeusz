@@ -71,5 +71,6 @@ private:
     std::chrono::steady_clock::time_point nextStart_{};
     static constexpr int MAX_ACTIVE = 4;
     static constexpr int MAX_ATTEMPTS = 8;
-    static constexpr int UPLOADS_PER_FRAME = 3;
+    // Keep GPU uploads light so scrolling stays smooth while posters stream in.
+    static constexpr int UPLOADS_PER_FRAME = 2;
 };

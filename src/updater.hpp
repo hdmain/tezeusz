@@ -30,4 +30,8 @@ bool wantsQuitForApply();   // main should begin graceful quit
 // Manual trigger (Settings).
 void checkNow();
 
+// Persist + apply auto-update preference from Settings.
+void setAutoEnabled(bool on);
+bool autoEnabled();
+
 } // namespace updater

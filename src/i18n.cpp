@@ -207,6 +207,11 @@ void seedEnglish() {
     g_en["settings.tv_path"] = "TV shows folder";
     g_en["settings.download_path"] = "Download folder";
     g_en["settings.auto_start"] = "Start downloads automatically";
+    g_en["settings.auto_start_hint"] =
+        "When off, requests stay queued until you start them from Requests.";
+    g_en["settings.auto_update"] = "Download app updates automatically";
+    g_en["settings.auto_update_hint"] =
+        "When off, Seerr will not check or install updates in the background. You can still check manually.";
     g_en["settings.min_seeders"] = "Minimum seeders";
     g_en["settings.default_quality"] = "Default quality";
     g_en["settings.quality_any"] = "Any";
@@ -238,6 +243,7 @@ void seedEnglish() {
     g_en["update.ready"] = "Update ready — restarting…";
     g_en["update.applying"] = "Applying update…";
     g_en["update.disabled"] = "Updates disabled";
+    g_en["update.disabled_user"] = "Automatic updates are off";
     g_en["update.not_writable"] = "Install folder is not writable — auto-update unavailable";
     g_en["update.check_failed"] = "Could not check for updates";
     g_en["update.bad_manifest"] = "Invalid update manifest";

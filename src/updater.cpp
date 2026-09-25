@@ -179,36 +179,57 @@ bool writeFileAtomic(const std::string& path, const std::vector<uint8_t>& data) 
 #ifdef _WIN32
 bool spawnApplyScript(const std::string& script, const std::string& pid,
                       const std::string& stage, const std::string& dest) {
-    std::string cmd = "cmd.exe /c \"\"" + script + "\" " + pid + " \"" + stage + "\" \"" + dest + "\"\"";
-    STARTUPINFOA si{};
-    si.cb = sizeof(si);
-    PROCESS_INFORMATION pi{};
-    BOOL ok = CreateProcessA(nullptr, cmd.data(), nullptr, nullptr, FALSE,
-                             CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr, nullptr, &si, &pi);
-    if (!ok) return false;
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
+    // ShellExecuteEx avoids broken cmd.exe quoting with paths that end in '\'.
+    std::string params = pid + " \"" + stage + "\" \"" + dest + "\"";
+    SHELLEXECUTEINFOA sei{};
+    sei.cbSize = sizeof(sei);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC;
+    sei.lpVerb = "open";
+    sei.lpFile = script.c_str();
+    sei.lpParameters = params.c_str();
+    sei.nShow = SW_HIDE;
+    if (!ShellExecuteExA(&sei)) return false;
+    if (sei.hProcess) CloseHandle(sei.hProcess);
     return true;
 }
 
 bool writeApplyScript(const std::string& path) {
+    // NOTE: never write "%DEST%\" — the trailing \" eats the closing quote on Windows.
     const char* body =
         "@echo off\r\n"
-        "setlocal\r\n"
-        "set PID=%~1\r\n"
-        "set STAGE=%~2\r\n"
-        "set DEST=%~3\r\n"
+        "setlocal EnableExtensions\r\n"
+        "set \"PID=%~1\"\r\n"
+        "set \"STAGE=%~2\"\r\n"
+        "set \"DEST=%~3\"\r\n"
+        "set \"LOG=%TEMP%\\seerr-update-apply.log\"\r\n"
+        "echo apply start %DATE% %TIME% PID=%PID% > \"%LOG%\"\r\n"
+        "echo STAGE=%STAGE%>> \"%LOG%\"\r\n"
+        "echo DEST=%DEST%>> \"%LOG%\"\r\n"
         ":wait\r\n"
         "tasklist /FI \"PID eq %PID%\" 2>nul | find \"%PID%\" >nul\r\n"
         "if not errorlevel 1 (\r\n"
         "  timeout /t 1 /nobreak >nul\r\n"
         "  goto wait\r\n"
         ")\r\n"
-        "timeout /t 1 /nobreak >nul\r\n"
-        "xcopy /E /Y /I /Q \"%STAGE%\\*\" \"%DEST%\\\" >nul\r\n"
-        "if exist \"%DEST%\\seerr.exe\" start \"\" \"%DEST%\\seerr.exe\"\r\n"
+        "timeout /t 2 /nobreak >nul\r\n"
+        "if not exist \"%STAGE%\" (\r\n"
+        "  echo missing STAGE>> \"%LOG%\"\r\n"
+        "  exit /b 1\r\n"
+        ")\r\n"
+        "robocopy \"%STAGE%\" \"%DEST%\" /E /IS /IT /R:3 /W:1 /NFL /NDL /NJH /NJS /NC /NS >> \"%LOG%\" 2>&1\r\n"
+        "if errorlevel 8 (\r\n"
+        "  echo copy failed - keeping STAGE for retry>> \"%LOG%\"\r\n"
+        "  exit /b 1\r\n"
+        ")\r\n"
+        "if not exist \"%DEST%\\seerr.exe\" (\r\n"
+        "  echo missing seerr.exe after copy>> \"%LOG%\"\r\n"
+        "  exit /b 1\r\n"
+        ")\r\n"
         "rmdir /S /Q \"%STAGE%\" 2>nul\r\n"
-        "del \"%~f0\" 2>nul\r\n";
+        "echo ok, restarting>> \"%LOG%\"\r\n"
+        "start \"\" /D \"%DEST%\" \"%DEST%\\seerr.exe\"\r\n"
+        "del \"%~f0\" 2>nul\r\n"
+        "exit /b 0\r\n";
     return util::writeFile(path, body);
 }
 #else
@@ -234,15 +255,19 @@ bool writeApplyScript(const std::string& path) {
     const char* body =
         "#!/bin/bash\n"
         "PID=\"$1\"; STAGE=\"$2\"; DEST=\"$3\"\n"
+        "LOG=\"${TMPDIR:-/tmp}/seerr-update-apply.log\"\n"
+        "echo \"apply start $(date) PID=$PID\" > \"$LOG\"\n"
         "while kill -0 \"$PID\" 2>/dev/null; do sleep 0.4; done\n"
-        "sleep 0.5\n"
-        "cp -a \"$STAGE\"/. \"$DEST\"/\n"
+        "sleep 0.8\n"
+        "if [ ! -d \"$STAGE\" ]; then echo missing STAGE >> \"$LOG\"; exit 1; fi\n"
+        "if ! cp -a \"$STAGE\"/. \"$DEST\"/; then echo cp failed >> \"$LOG\"; exit 1; fi\n"
         "chmod +x \"$DEST/seerr\" 2>/dev/null || true\n"
-        "if [ -x \"$DEST/seerr\" ]; then\n"
-        "  (cd \"$DEST\" && nohup ./seerr >/dev/null 2>&1 &)\n"
-        "fi\n"
+        "if [ ! -x \"$DEST/seerr\" ]; then echo missing seerr >> \"$LOG\"; exit 1; fi\n"
         "rm -rf \"$STAGE\"\n"
-        "rm -f \"$0\"\n";
+        "echo ok, restarting >> \"$LOG\"\n"
+        "(cd \"$DEST\" && nohup ./seerr >/dev/null 2>&1 &)\n"
+        "rm -f \"$0\"\n"
+        "exit 0\n";
     if (!util::writeFile(path, body)) return false;
     chmod(path.c_str(), 0755);
     return true;
@@ -322,19 +347,38 @@ void workerCheckAndDownload() {
               std::string(i18n::tr("update.downloading")) + " (" +
                   std::to_string(need.size()) + ")");
 
-    // Fresh stage
+    // Keep any already-valid staged files (resume after a failed apply).
     std::error_code ec;
-    fs::remove_all(g_stageDir, ec);
     fs::create_directories(g_stageDir, ec);
 
     int done = 0;
     for (auto& f : need) {
         if (g_stop.load()) return;
+        fs::path dest = fs::path(g_stageDir) / f.path;
+        {
+            std::error_code ec2;
+            if (fs::exists(dest, ec2)) {
+                std::string staged = sha256::ofFile(dest.string());
+                if (staged == f.sha256) {
+                    ++done;
+                    g_dlPercent = (int)((done * 100) / (int)need.size());
+                    {
+                        std::lock_guard<std::mutex> lk(g_mu);
+                        g_status = std::string(i18n::tr("update.downloading")) + " " +
+                                   std::to_string(done) + "/" + std::to_string(need.size());
+                    }
+                    continue;
+                }
+                fs::remove(dest, ec2);
+            }
+        }
+
         std::string url = blobUrl(man.baseUrl, f.sha256);
         std::string dlErr;
         auto bytes = http::getBinaryLong(url, &dlErr, 180);
-        if (bytes.empty() || (!dlErr.empty() && bytes.empty())) {
-            setStatus(State::Error, i18n::tr("update.download_failed") + std::string(": ") + f.path);
+        if (bytes.empty()) {
+            setStatus(State::Error, i18n::tr("update.download_failed") + std::string(": ") + f.path +
+                                        (dlErr.empty() ? "" : (" (" + dlErr + ")")));
             return;
         }
         std::string got = sha256::ofBytes(bytes.data(), bytes.size());
@@ -342,7 +386,6 @@ void workerCheckAndDownload() {
             setStatus(State::Error, i18n::tr("update.checksum_failed") + std::string(": ") + f.path);
             return;
         }
-        fs::path dest = fs::path(g_stageDir) / f.path;
         if (!writeFileAtomic(dest.string(), bytes)) {
             setStatus(State::Error, i18n::tr("update.write_failed"));
             return;

@@ -5,6 +5,7 @@
 #include <mutex>
 #include <cstring>
 #include <future>
+#include <functional>
 #include <vector>
 
 #ifdef _WIN32
@@ -312,49 +313,96 @@ std::vector<uint8_t> getBinary(const std::string& url, std::string* err) {
 
 std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err, int timeoutSec) {
 #ifdef _WIN32
-    HttpResponse r;
-    HINTERNET session = longSession(timeoutSec), connect = nullptr, request = nullptr;
-    auto cleanup = [&]() {
-        if (request) WinHttpCloseHandle(request);
-        if (connect) WinHttpCloseHandle(connect);
-    };
-    std::wstring host, path;
-    INTERNET_PORT port;
-    splitUrl(url, host, path, port);
-    if (!session) { if (err) *err = "WinHttpOpen failed"; return {}; }
-    connect = WinHttpConnect(session, host.c_str(), port, 0);
-    if (!connect) { if (err) *err = "WinHttpConnect failed"; cleanup(); return {}; }
-    request = WinHttpOpenRequest(connect, L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER,
-                                 WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                 port == INTERNET_DEFAULT_HTTPS_PORT ? WINHTTP_FLAG_SECURE : 0);
-    if (!request) { if (err) *err = "WinHttpOpenRequest failed"; cleanup(); return {}; }
-    std::wstring headers = L"Accept: */*\r\n";
-    if (!WinHttpSendRequest(request, headers.c_str(), (DWORD)-1, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
-        !WinHttpReceiveResponse(request, nullptr)) {
-        if (err) *err = "request failed: " + std::to_string(GetLastError());
+    // Follow redirects (GitHub release assets → objects.githubusercontent.com).
+    std::function<std::vector<uint8_t>(const std::string&, int)> downloadOnce =
+        [&](const std::string& u, int depth) -> std::vector<uint8_t> {
+        if (depth > 8) {
+            if (err) *err = "too many redirects";
+            return {};
+        }
+        HINTERNET session = longSession(timeoutSec), connect = nullptr, request = nullptr;
+        auto cleanup = [&]() {
+            if (request) WinHttpCloseHandle(request);
+            if (connect) WinHttpCloseHandle(connect);
+        };
+        std::wstring host, path;
+        INTERNET_PORT port;
+        splitUrl(u, host, path, port);
+        if (!session) { if (err) *err = "WinHttpOpen failed"; return {}; }
+        connect = WinHttpConnect(session, host.c_str(), port, 0);
+        if (!connect) { if (err) *err = "WinHttpConnect failed"; cleanup(); return {}; }
+        DWORD flags = (port == INTERNET_DEFAULT_HTTPS_PORT) ? WINHTTP_FLAG_SECURE : 0;
+        request = WinHttpOpenRequest(connect, L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER,
+                                     WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
+        if (!request) { if (err) *err = "WinHttpOpenRequest failed"; cleanup(); return {}; }
+
+        // Disable auto-redirect so we can rebuild the absolute URL ourselves
+        // (WinHTTP sometimes drops the body on cross-host 302 to GitHub CDN).
+        DWORD redir = WINHTTP_DISABLE_REDIRECTS;
+        WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &redir, sizeof(redir));
+
+        std::wstring headers = L"Accept: */*\r\n";
+        if (!WinHttpSendRequest(request, headers.c_str(), (DWORD)-1, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+            !WinHttpReceiveResponse(request, nullptr)) {
+            if (err) *err = "request failed: " + std::to_string(GetLastError());
+            cleanup();
+            return {};
+        }
+        DWORD statusCode = 0, size = sizeof(statusCode);
+        WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                            WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &size, WINHTTP_NO_HEADER_INDEX);
+
+        if (statusCode == 301 || statusCode == 302 || statusCode == 303 || statusCode == 307 || statusCode == 308) {
+            DWORD locSize = 0;
+            WinHttpQueryHeaders(request, WINHTTP_QUERY_LOCATION, WINHTTP_HEADER_NAME_BY_INDEX,
+                                WINHTTP_NO_OUTPUT_BUFFER, &locSize, WINHTTP_NO_HEADER_INDEX);
+            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || locSize == 0) {
+                if (err) *err = "redirect without Location";
+                cleanup();
+                return {};
+            }
+            std::wstring loc(locSize / sizeof(wchar_t) + 1, 0);
+            if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_LOCATION, WINHTTP_HEADER_NAME_BY_INDEX,
+                                     loc.data(), &locSize, WINHTTP_NO_HEADER_INDEX)) {
+                if (err) *err = "redirect Location read failed";
+                cleanup();
+                return {};
+            }
+            while (!loc.empty() && loc.back() == L'\0') loc.pop_back();
+            std::string next(loc.begin(), loc.end());
+            cleanup();
+            if (next.rfind("http://", 0) != 0 && next.rfind("https://", 0) != 0) {
+                // relative Location
+                size_t scheme = u.find("://");
+                size_t hostStart = scheme == std::string::npos ? 0 : scheme + 3;
+                size_t pathStart = u.find('/', hostStart);
+                std::string origin = pathStart == std::string::npos ? u : u.substr(0, pathStart);
+                if (!next.empty() && next[0] == '/') next = origin + next;
+                else next = origin + "/" + next;
+            }
+            return downloadOnce(next, depth + 1);
+        }
+
+        std::string body;
+        for (;;) {
+            DWORD avail = 0;
+            if (!WinHttpQueryDataAvailable(request, &avail) || avail == 0) break;
+            std::string chunk(avail, '\0');
+            DWORD read = 0;
+            if (!WinHttpReadData(request, chunk.data(), avail, &read) || read == 0) break;
+            body.append(chunk.data(), read);
+        }
         cleanup();
-        return {};
-    }
-    DWORD statusCode = 0, size = sizeof(statusCode);
-    WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                        WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &size, WINHTTP_NO_HEADER_INDEX);
-    r.status = (int)statusCode;
-    for (;;) {
-        DWORD avail = 0;
-        if (!WinHttpQueryDataAvailable(request, &avail) || avail == 0) break;
-        std::string chunk(avail, '\0');
-        DWORD read = 0;
-        if (!WinHttpReadData(request, chunk.data(), avail, &read) || read == 0) break;
-        r.body.append(chunk.data(), read);
-    }
-    cleanup();
-    if (r.status < 200 || r.status >= 300) {
-        if (err) *err = "status " + std::to_string(r.status);
-        return {};
-    }
-    std::vector<uint8_t> out(r.body.size());
-    if (!out.empty()) std::memcpy(out.data(), r.body.data(), out.size());
-    return out;
+        if (statusCode < 200 || statusCode >= 300) {
+            if (err) *err = "status " + std::to_string((int)statusCode);
+            return {};
+        }
+        if (err) err->clear();
+        std::vector<uint8_t> out(body.size());
+        if (!out.empty()) std::memcpy(out.data(), body.data(), out.size());
+        return out;
+    };
+    return downloadOnce(url, 0);
 #else
     ensureCurl();
     HttpResponse r;
@@ -365,6 +413,7 @@ std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err, int
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &r.body);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "SeerrCpp/1.0");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)(timeoutSec > 0 ? timeoutSec : 180));
     CURLcode code = curl_easy_perform(curl);
     if (code != CURLE_OK) {

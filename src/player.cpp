@@ -79,6 +79,7 @@ libvlc_instance_t* (*p_libvlc_new)(int, const char* const*) = nullptr;
 void (*p_libvlc_release)(libvlc_instance_t*) = nullptr;
 libvlc_media_t* (*p_libvlc_media_new_path)(libvlc_instance_t*, const char*) = nullptr;
 libvlc_media_t* (*p_libvlc_media_new_location)(libvlc_instance_t*, const char*) = nullptr;
+void (*p_libvlc_media_add_option)(libvlc_media_t*, const char*) = nullptr;
 void (*p_libvlc_media_release)(libvlc_media_t*) = nullptr;
 libvlc_media_player_t* (*p_libvlc_media_player_new_from_media)(libvlc_media_t*) = nullptr;
 void (*p_libvlc_media_player_release)(libvlc_media_player_t*) = nullptr;
@@ -269,6 +270,7 @@ bool loadVlc(std::string* err) {
 #define L(n) do { p_##n = (decltype(p_##n))getSym(g_mod, #n); if (!p_##n) { if (err) *err = "brak " #n; closeLib(g_mod); g_mod = nullptr; return false; } } while (0)
     L(libvlc_new); L(libvlc_release); L(libvlc_media_new_path); L(libvlc_media_release);
     p_libvlc_media_new_location = (decltype(p_libvlc_media_new_location))getSym(g_mod, "libvlc_media_new_location");
+    p_libvlc_media_add_option = (decltype(p_libvlc_media_add_option))getSym(g_mod, "libvlc_media_add_option");
     L(libvlc_media_player_new_from_media); L(libvlc_media_player_release);
     L(libvlc_media_player_play); L(libvlc_media_player_stop); L(libvlc_media_player_set_pause);
     L(libvlc_media_player_is_playing); L(libvlc_media_player_set_position); L(libvlc_media_player_get_position);
@@ -514,6 +516,7 @@ std::string fmtTime(int64_t ms) {
 
 void persistProgress(bool force) {
     if (g_st.path.empty() || g_st.durationMs <= 0) return;
+    if (g_st.path.rfind("http://", 0) == 0 || g_st.path.rfind("https://", 0) == 0) return;
     const double pos = g_st.position;
     const int64_t t = g_st.timeMs;
     const double now = ImGui::GetTime();
@@ -556,8 +559,8 @@ void applyPendingOpen() {
     g_tracksDirty = true;
 }
 
-void startOpenJob(uint64_t gen, std::string path, int volume) {
-    core::enqueue([gen, path = std::move(path), volume]() {
+void startOpenJob(uint64_t gen, std::string path, int volume, std::string audioSlave) {
+    core::enqueue([gen, path = std::move(path), volume, audioSlave = std::move(audioSlave)]() {
         PendingOpen out;
         out.gen = gen;
         out.ready = true;
@@ -634,6 +637,11 @@ void startOpenJob(uint64_t gen, std::string path, int volume) {
             media = p_libvlc_media_new_path(vlc, path.c_str());
         }
         if (!media) { fail(i18n::tr("player.file_open_failed")); return; }
+        if (remote && !audioSlave.empty() && p_libvlc_media_add_option) {
+            // YouTube adaptive: video URL + separate audio URL
+            std::string opt = ":input-slave=" + audioSlave;
+            p_libvlc_media_add_option(media, opt.c_str());
+        }
         auto* mp = p_libvlc_media_player_new_from_media(media);
         p_libvlc_media_release(media);
         if (!mp) { fail("media_player failed"); return; }
@@ -674,6 +682,10 @@ void startOpenJob(uint64_t gen, std::string path, int volume) {
 void bindWindow(GLFWwindow* w) { g_host = w; }
 
 bool open(const std::string& path, const std::string& title) {
+    return open(path, title, {});
+}
+
+bool open(const std::string& path, const std::string& title, const std::string& audioSlaveUrl) {
     close();
     uint64_t gen = ++g_openGen;
     g_st = State{};
@@ -710,7 +722,8 @@ bool open(const std::string& path, const std::string& title) {
     g_lastSaveAt = 0;
     g_savedTracks = {};
     g_didApplyTracks = false;
-    {
+    const bool remote = path.rfind("http://", 0) == 0 || path.rfind("https://", 0) == 0;
+    if (!remote) {
         localdb::PlaybackProgress pp;
         if (localdb::getPlaybackProgress(path, &pp))
             g_resumePos = pp.position;
@@ -720,7 +733,7 @@ bool open(const std::string& path, const std::string& title) {
         std::lock_guard<std::mutex> lk(g_pendingMu);
         g_pending = PendingOpen{};
     }
-    startOpenJob(gen, path, g_st.volume);
+    startOpenJob(gen, path, g_st.volume, audioSlaveUrl);
     return true;
 }
 

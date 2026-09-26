@@ -39,6 +39,8 @@ struct State {
 
 void bindWindow(GLFWwindow* w);
 bool open(const std::string& path, const std::string& title);
+// Optional second HTTP URL (e.g. YouTube audio) merged via libVLC :input-slave=
+bool open(const std::string& path, const std::string& title, const std::string& audioSlaveUrl);
 void close();
 bool isOpen();
 

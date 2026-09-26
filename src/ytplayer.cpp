@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <cstdio>
+#include <fstream>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -21,8 +22,10 @@
 #endif
 #include <windows.h>
 #else
+#include <sys/stat.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <cstdlib>
 #endif
 
 using json = nlohmann::json;
@@ -35,6 +38,7 @@ struct PendingPlay {
     std::mutex mu;
     bool done = false;
     std::string url;
+    std::string audioUrl;
     std::string title;
     std::string videoId;
     bool ok = false;
@@ -89,6 +93,8 @@ std::string pickMuxed(const json& streams, const char* urlKey, const char* quali
 
 std::string tryInvidious(const std::string& videoId) {
     static const char* hosts[] = {
+        "https://inv.riverside.rocks",
+        "https://invidious.protokolla.fi",
         "https://yewtu.be",
         "https://inv.nadeko.net",
         "https://invidious.nerdvpn.de",
@@ -179,21 +185,6 @@ std::string runCapture(const std::string& cmdLine) {
 #endif
 }
 
-std::string findYtDlp() {
-    std::error_code ec;
-    fs::path nextToExe = fs::path(util::exeDir()) / "yt-dlp"
-#ifdef _WIN32
-                                                       ".exe"
-#endif
-        ;
-    if (fs::exists(nextToExe, ec)) return nextToExe.string();
-#ifdef _WIN32
-    return "yt-dlp.exe";
-#else
-    return "yt-dlp";
-#endif
-}
-
 std::string shellQuote(const std::string& s) {
 #ifdef _WIN32
     std::string o = "\"";
@@ -214,31 +205,98 @@ std::string shellQuote(const std::string& s) {
 #endif
 }
 
-std::string tryYtDlp(const std::string& videoId) {
-    const std::string bin = findYtDlp();
+std::string findYtDlp() {
+    std::error_code ec;
+    const fs::path candidates[] = {
+        fs::path(util::exeDir()) / "yt-dlp.exe",
+        fs::path(util::exeDir()) / "yt-dlp",
+        fs::path(util::appDataPath("yt-dlp.exe")),
+        fs::path(util::appDataPath("yt-dlp")),
+    };
+    for (auto& p : candidates) {
+        if (fs::exists(p, ec) && fs::is_regular_file(p, ec) && fs::file_size(p, ec) > 100000)
+            return p.string();
+    }
+#ifdef _WIN32
+    return {};
+#else
+    // May be on PATH
+    return "yt-dlp";
+#endif
+}
+
+bool ensureYtDlp(std::string* outPath) {
+    std::string existing = findYtDlp();
+#ifdef _WIN32
+    if (!existing.empty()) {
+        if (outPath) *outPath = existing;
+        return true;
+    }
+#else
+    if (!existing.empty() && existing != "yt-dlp") {
+        if (outPath) *outPath = existing;
+        return true;
+    }
+    // Probe PATH
+    if (system("yt-dlp --version >/dev/null 2>&1") == 0) {
+        if (outPath) *outPath = "yt-dlp";
+        return true;
+    }
+#endif
+
+#ifdef _WIN32
+    const char* url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+    const std::string dest = util::appDataPath("yt-dlp.exe");
+#else
+    const char* url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
+    const std::string dest = util::appDataPath("yt-dlp");
+#endif
+    std::string err;
+    auto bytes = http::getBinaryLong(url, &err, 120);
+    if (bytes.size() < 100000) return false;
+    {
+        std::ofstream f(dest, std::ios::binary | std::ios::trunc);
+        if (!f) return false;
+        f.write((const char*)bytes.data(), (std::streamsize)bytes.size());
+        if (!f) return false;
+    }
+#ifndef _WIN32
+    chmod(dest.c_str(), 0755);
+#endif
+    if (outPath) *outPath = dest;
+    return true;
+}
+
+std::string tryYtDlp(const std::string& videoId, std::string* audioOut) {
+    if (audioOut) audioOut->clear();
+    std::string bin;
+    if (!ensureYtDlp(&bin) || bin.empty()) return {};
     const std::string watch = "https://www.youtube.com/watch?v=" + videoId;
-    // Progressive muxed preferred; fall back to best single URL yt-dlp can give.
+    // Adaptive A/V pair (YouTube dropped most muxed progressives).
     std::string cmd = shellQuote(bin) +
-        " -g -f \"best[height<=720][ext=mp4]/best[height<=720]/best\" "
+        " -g -f \"bv*[height<=720]+ba/b\" "
         "--no-playlist --no-warnings --no-check-certificates " +
         shellQuote(watch);
     std::string out = runCapture(cmd);
-    // First non-empty line that looks like a URL
+    std::vector<std::string> urls;
     size_t i = 0;
     while (i < out.size()) {
         size_t e = out.find('\n', i);
         if (e == std::string::npos) e = out.size();
         std::string line = util::trim(out.substr(i, e - i));
         if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (looksLikeUrl(line)) return line;
+        if (looksLikeUrl(line)) urls.push_back(line);
         i = e + 1;
     }
-    return {};
+    if (urls.empty()) return {};
+    if (urls.size() >= 2 && audioOut) *audioOut = urls[1];
+    return urls[0];
 }
 
-std::string resolveStreamUrl(const std::string& videoId) {
+std::string resolveStreamUrl(const std::string& videoId, std::string* audioOut) {
     if (videoId.empty()) return {};
-    if (auto u = tryYtDlp(videoId); !u.empty()) return u;
+    if (auto u = tryYtDlp(videoId, audioOut); !u.empty()) return u;
+    if (audioOut) audioOut->clear();
     if (auto u = tryInvidious(videoId); !u.empty()) return u;
     if (auto u = tryPiped(videoId); !u.empty()) return u;
     return {};
@@ -260,9 +318,11 @@ void open(const std::string& videoId, const std::string& title) {
     }
 
     core::enqueue([job, videoId]() {
-        std::string url = resolveStreamUrl(videoId);
+        std::string audio;
+        std::string url = resolveStreamUrl(videoId, &audio);
         std::lock_guard<std::mutex> lk(job->mu);
         job->url = std::move(url);
+        job->audioUrl = std::move(audio);
         job->ok = !job->url.empty();
         job->done = true;
         g_busy.store(false);
@@ -285,18 +345,19 @@ void tick() {
         g_pending.reset();
     }
 
-    std::string url, title, videoId;
+    std::string url, audio, title, videoId;
     bool ok = false;
     {
         std::lock_guard<std::mutex> jlk(job->mu);
         url = job->url;
+        audio = job->audioUrl;
         title = job->title;
         videoId = job->videoId;
         ok = job->ok;
     }
 
     if (ok && !url.empty()) {
-        player::open(url, title);
+        player::open(url, title, audio);
     } else {
         // Last resort: system browser (never spawn a headless browser ourselves).
         platform::openUrl("https://www.youtube.com/watch?v=" + videoId);

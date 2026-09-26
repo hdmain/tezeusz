@@ -1182,16 +1182,28 @@ bool render() {
 
     auto popup = [&](const char* title, std::vector<Track>& tracks, int cur, bool off, bool& flag, void (*apply)(int)) {
         if (!flag) return;
-        float h = 48.f + 34.f * ((int)tracks.size() + (off ? 1 : 0));
-        ImGui::SetNextWindowPos(ImVec2(wpos.x + wsize.x - 304, wpos.y + wsize.y - 170 - h));
-        ImGui::SetNextWindowSize(ImVec2(280, h));
+        const int rows = (int)tracks.size() + (off ? 1 : 0);
+        const float rowH = 34.f;
+        const float headerH = 48.f;
+        const float contentH = rowH * (float)rows;
+        // Cap menu height so a long subtitle list doesn't cover the whole player.
+        const float maxBody = std::min(320.f, std::max(140.f, wsize.y * 0.45f));
+        const float bodyH = std::min(contentH, maxBody);
+        const float winH = headerH + bodyH + 8.f;
+        ImGui::SetNextWindowPos(ImVec2(wpos.x + wsize.x - 304, wpos.y + wsize.y - 170 - winH));
+        ImGui::SetNextWindowSize(ImVec2(280, winH));
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.11f, 0.11f, 0.13f, 0.97f));
         ImGui::Begin(title, &flag, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar);
         ImGui::TextUnformatted(title);
         ImGui::Separator();
+        ImGuiWindowFlags childFlags = ImGuiWindowFlags_None;
+        if (contentH > maxBody + 0.5f)
+            childFlags |= ImGuiWindowFlags_AlwaysVerticalScrollbar;
+        ImGui::BeginChild("##tracks", ImVec2(0, bodyH), false, childFlags);
         if (off && ImGui::Selectable(i18n::tr("player.off"), cur < 0)) { apply(-1); flag = false; }
         for (auto& t : tracks)
             if (ImGui::Selectable(t.name.c_str(), t.id == cur)) { apply(t.id); flag = false; }
+        ImGui::EndChild();
         ImGui::End();
         ImGui::PopStyleColor();
     };

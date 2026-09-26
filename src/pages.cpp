@@ -1451,6 +1451,37 @@ void renderLibrary() {
                     : it.folder;
                 platform::openPath(folder);
             }
+            if (it.mediaType == MediaType::TV) {
+                if (ImGui::MenuItem(i18n::tr("library.install_episodes"))) {
+                    int tmdbId = it.tmdbId;
+                    std::string imdb, orig;
+                    if (tmdbId <= 0) {
+                        for (auto& r : stack::listRequests()) {
+                            if (r.mediaType != MediaType::TV) continue;
+                            if (!util::iequals(r.title, it.title)) continue;
+                            if (!it.year.empty() && !r.year.empty() && r.year != it.year) continue;
+                            if (r.tmdbId > 0) {
+                                tmdbId = r.tmdbId;
+                                imdb = r.imdbId;
+                                orig = r.originalTitle;
+                                break;
+                            }
+                        }
+                    } else {
+                        for (auto& r : stack::listRequests()) {
+                            if (r.mediaType == MediaType::TV && r.tmdbId == tmdbId) {
+                                imdb = r.imdbId;
+                                orig = r.originalTitle;
+                                break;
+                            }
+                        }
+                    }
+                    if (tmdbId > 0) {
+                        openRequestQualityDialog(MediaType::TV, tmdbId, it.title, it.year, imdb,
+                                                 orig, {}, true);
+                    }
+                }
+            }
             if (ImGui::MenuItem(i18n::tr("common.properties")))
                 openProps = true;
             ImGui::Separator();
@@ -2040,6 +2071,7 @@ namespace {
 struct RequestDlg {
     bool wantOpen = false;
     bool pendingOpenInteractive = false;
+    bool installMore = false; // library "install episodes" mode
     MediaType type = MediaType::Movie;
     int id = 0;
     std::string title, year, imdbId, originalTitle;
@@ -2108,9 +2140,12 @@ void applyAvailableSeasons(RequestDlg& d, const std::vector<SeasonInfo>& seasons
     d.episodeSeason = -1;
     d.availableEpisodes.clear();
     d.selectedEpisodes.clear();
-    // default: select all regular seasons
-    for (auto& s : d.availableSeasons)
-        d.selectedSeasons.insert(s.seasonNumber);
+    if (d.installMore) {
+        // Leave seasons unchecked — user picks what to add.
+    } else {
+        for (auto& s : d.availableSeasons)
+            d.selectedSeasons.insert(s.seasonNumber);
+    }
 }
 
 void pollSeasonFetch(RequestDlg& d) {
@@ -2194,9 +2229,11 @@ void grabSelectedRelease(RequestDlg& d) {
 void openRequestQualityDialog(MediaType type, int id, const std::string& title,
                               const std::string& year, const std::string& imdbId,
                               const std::string& originalTitle,
-                              const std::vector<SeasonInfo>& availableSeasons) {
+                              const std::vector<SeasonInfo>& availableSeasons,
+                              bool installMore) {
     auto& d = reqDlg();
     d.wantOpen = true;
+    d.installMore = installMore;
     d.type = type;
     d.id = id;
     d.title = title;
@@ -2225,6 +2262,7 @@ void openRequestQualityDialog(MediaType type, int id, const std::string& title,
     } else {
         d.availableSeasons.clear();
         d.selectedSeasons.clear();
+        d.installMore = false;
     }
 }
 
@@ -2267,9 +2305,16 @@ void renderRequestQualityDialog() {
                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
                                ImGuiWindowFlags_NoMove)) {
         ImGui::PushFont(G.sb22 ? G.sb22 : ImGui::GetFont());
-        ImGui::TextUnformatted(i18n::tr("req.dialog_title"));
+        ImGui::TextUnformatted(d.installMore ? i18n::tr("library.install_episodes_title")
+                                             : i18n::tr("req.dialog_title"));
         ImGui::PopFont();
         ImGui::Spacing();
+        if (d.installMore) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.61f, 0.64f, 0.69f, 1));
+            ImGui::TextWrapped("%s", i18n::tr("library.install_episodes_hint"));
+            ImGui::PopStyleColor();
+            ImGui::Spacing();
+        }
 
         std::string head = d.title;
         if (!d.year.empty()) head += " (" + d.year + ")";

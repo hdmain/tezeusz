@@ -190,6 +190,10 @@ void seedEnglish() {
     g_en["library.folder"] = "Folder";
     g_en["library.type_movie"] = "Movie";
     g_en["library.type_tv"] = "TV Show";
+    g_en["library.install_episodes"] = "Install episodes…";
+    g_en["library.install_episodes_title"] = "Install more episodes";
+    g_en["library.install_episodes_hint"] =
+        "Pick a season and the episodes you want to download. Episodes you already have are skipped.";
 
     // Settings
     g_en["settings.title"] = "Settings";
@@ -332,6 +336,7 @@ void seedEnglish() {
     g_en["stack.downloaded_folder"] = "Downloaded (download folder)";
     g_en["stack.unknown_error"] = "Unknown error";
     g_en["stack.retrying"] = "Retrying…";
+    g_en["stack.more_episodes_queued"] = "More episodes queued";
     g_en["stack.picked_queued"] = "Release selected — queued";
     g_en["stack.cancelled"] = "Cancelled";
     g_en["stack.removed_library"] = "Removed from library";

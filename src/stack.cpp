@@ -518,6 +518,62 @@ std::string sanitizeName(std::string s) {
     return util::trim(s);
 }
 
+std::string seasonFolderName(int season) {
+    char sn[64];
+    std::snprintf(sn, sizeof(sn), i18n::tr("stack.season"), season);
+    return sn;
+}
+
+bool parseSxEy(const std::string& name, int& season, int& episode) {
+    std::string s = util::lower(name);
+    season = 0;
+    episode = 0;
+    for (size_t i = 0; i + 5 < s.size(); ++i) {
+        if (s[i] == 's' && std::isdigit((unsigned char)s[i + 1])) {
+            size_t j = i + 1;
+            int se = 0;
+            while (j < s.size() && std::isdigit((unsigned char)s[j]))
+                se = se * 10 + (s[j++] - '0');
+            if (j < s.size() && (s[j] == 'e' || s[j] == 'x') && j + 1 < s.size() &&
+                std::isdigit((unsigned char)s[j + 1])) {
+                ++j;
+                int ep = 0;
+                while (j < s.size() && std::isdigit((unsigned char)s[j]))
+                    ep = ep * 10 + (s[j++] - '0');
+                if (se > 0 && ep > 0) {
+                    season = se;
+                    episode = ep;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+bool episodePresentIn(const fs::path& root, int season, int episode) {
+    std::error_code ec;
+    if (!fs::exists(root, ec)) return false;
+    auto scan = [&](const fs::path& dir) -> bool {
+        if (!fs::exists(dir, ec)) return false;
+        for (auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
+             it != fs::recursive_directory_iterator(); it.increment(ec)) {
+            if (ec) { ec.clear(); continue; }
+            if (!it->is_regular_file(ec)) continue;
+            auto e = util::lower(it->path().extension().string());
+            if (e != ".mkv" && e != ".mp4" && e != ".avi" && e != ".m4v" && e != ".ts" &&
+                e != ".m2ts" && e != ".webm" && e != ".mov")
+                continue;
+            int s = 0, ep = 0;
+            if (parseSxEy(it->path().filename().string(), s, ep) && s == season && ep == episode)
+                return true;
+        }
+        return false;
+    };
+    if (scan(root / seasonFolderName(season))) return true;
+    return scan(root);
+}
+
 std::string importToLibrary(const MediaRequest& req, const std::string& srcPath) {
     auto& cfg = StackConfig::get();
     std::error_code ec;
@@ -535,9 +591,7 @@ std::string importToLibrary(const MediaRequest& req, const std::string& srcPath)
         destFile = destDir / (folderName + src.extension().string());
     } else {
         int season = req.seasons.empty() ? 1 : req.seasons[0];
-        char sn[32];
-        std::snprintf(sn, sizeof(sn), i18n::tr("stack.season"), season);
-        destDir = fs::path(cfg.tvPath) / folderName / sn;
+        destDir = fs::path(cfg.tvPath) / folderName / seasonFolderName(season);
         destFile = destDir / src.filename();
     }
     fs::create_directories(destDir, ec);
@@ -558,6 +612,47 @@ bool libraryHas(const MediaRequest& req) {
     if (!req.year.empty()) folderName += " (" + req.year + ")";
     std::error_code ec;
     auto roots = req.mediaType == MediaType::Movie ? cfg.allMoviesPaths() : cfg.allTvPaths();
+
+    if (req.mediaType == MediaType::Movie) {
+        for (auto& root : roots) {
+            fs::path dir = fs::path(root) / folderName;
+            if (fs::exists(dir, ec) && !findBiggestVideo(dir).empty())
+                return true;
+        }
+        return false;
+    }
+
+    // TV — only skip download when requested seasons/episodes are already on disk.
+    if (!req.episodes.empty() && req.seasons.size() == 1) {
+        int sn = req.seasons[0];
+        for (int ep : req.episodes) {
+            bool found = false;
+            for (auto& root : roots) {
+                if (episodePresentIn(fs::path(root) / folderName, sn, ep)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
+
+    if (!req.seasons.empty()) {
+        for (int sn : req.seasons) {
+            bool seasonOk = false;
+            for (auto& root : roots) {
+                fs::path seasonDir = fs::path(root) / folderName / seasonFolderName(sn);
+                if (fs::exists(seasonDir, ec) && !findBiggestVideo(seasonDir).empty()) {
+                    seasonOk = true;
+                    break;
+                }
+            }
+            if (!seasonOk) return false;
+        }
+        return true;
+    }
+
     for (auto& root : roots) {
         fs::path dir = fs::path(root) / folderName;
         if (fs::exists(dir, ec) && !findBiggestVideo(dir).empty())
@@ -1080,9 +1175,14 @@ std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
         std::lock_guard<std::recursive_mutex> lk(g_mu);
         for (auto& r : g_reqs) {
             if (r.tmdbId == tmdbId && r.mediaType == type) {
-                if (r.status == ReqStatus::Failed || r.status == ReqStatus::Declined) {
+                // Allow another download when already Available (install more episodes)
+                // or after Failed/Declined.
+                if (r.status == ReqStatus::Failed || r.status == ReqStatus::Declined ||
+                    r.status == ReqStatus::Available) {
+                    const bool moreEps = (r.status == ReqStatus::Available);
                     r.status = ReqStatus::Pending;
-                    r.message = i18n::tr("stack.retrying");
+                    r.message = moreEps ? i18n::tr("stack.more_episodes_queued")
+                                        : i18n::tr("stack.retrying");
                     r.progress = 0;
                     r.magnetOrUrl.clear();
                     r.releaseTitle.clear();
@@ -1091,9 +1191,10 @@ std::string requestMedia(MediaType type, int tmdbId, const std::string& title,
                     if (!originalTitle.empty()) r.originalTitle = originalTitle;
                     if (!year.empty()) r.year = year;
                     if (!imdbId.empty()) r.imdbId = imdbId;
-                    if (!seasons.empty()) r.seasons = seasons;
+                    r.seasons = seasons;
                     r.episodes = episodes;
                     r.preferredQuality = q;
+                    // Keep libraryPath so existing episodes stay linked until new import.
                     g_queue.push_back(r.id);
                     id = r.id;
                     saveRequestsLocked();

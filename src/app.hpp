@@ -86,7 +86,8 @@ void renderRequestQualityDialog(); // modal: jakość + sezony/odcinki
 void openRequestQualityDialog(MediaType type, int id, const std::string& title,
                               const std::string& year, const std::string& imdbId,
                               const std::string& originalTitle,
-                              const std::vector<SeasonInfo>& availableSeasons = {});
+                              const std::vector<SeasonInfo>& availableSeasons = {},
+                              bool installMore = false);
 
 // GLFW Win32 HWND for owned popups (trailer player). Set from main.
 void* appMainHwnd();

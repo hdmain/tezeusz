@@ -496,6 +496,7 @@ int main() {
             // Kick off: GL-safe player close on UI thread, then background shutdown
             if (!quitStarted.exchange(true)) {
                 setQuitStatus(i18n::tr("quit.torrents"));
+                try { ytplayer::cancel(); } catch (...) {}
                 try { player::close(); } catch (...) {}
                 setQuitStatus(i18n::tr("quit.torrents"));
                 quitThread = std::thread([setQuitStatus]() {
@@ -616,6 +617,9 @@ int main() {
         renderSidebar(a);
         renderRequestQualityDialog();
         }
+
+        // Trailer resolve overlay (ImGui — same on Windows and Linux)
+        ytplayer::drawOverlay();
 
         // Update toast (download / restart)
         {

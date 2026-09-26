@@ -325,6 +325,7 @@
   "player.vlc_load_failed": "Nie załadowano libVLC",
   "yt.connecting": "Łączenie z YouTube…",
   "yt.loading": "Ładowanie zwiastunu…",
+  "yt.goto_youtube": "Przejdź do YouTube",
   "yt.window_title": "Zwiastun — Seerr",
   "yt.vlc_fail": "VLC nie odtworzył zwiastunu",
   "yt.timeout": "Timeout ładowania zwiastunu",

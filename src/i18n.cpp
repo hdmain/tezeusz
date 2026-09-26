@@ -416,6 +416,7 @@ void seedEnglish() {
     g_en["player.vlc_load_failed"] = "Failed to load libVLC";
     g_en["yt.connecting"] = "Connecting to YouTube…";
     g_en["yt.loading"] = "Loading trailer…";
+    g_en["yt.goto_youtube"] = "Go to YouTube";
     g_en["yt.window_title"] = "Trailer — Seerr";
     g_en["yt.vlc_fail"] = "VLC failed to play trailer";
     g_en["yt.timeout"] = "Trailer load timeout";

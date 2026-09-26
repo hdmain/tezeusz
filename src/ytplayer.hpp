@@ -7,6 +7,10 @@
 namespace ytplayer {
 void open(const std::string& videoId, const std::string& title = {});
 bool isOpen();
+bool isResolving(); // true from click until stream is ready / cancelled / failed-over
+void openOnYoutube(); // open watch URL in system browser and cancel in-app resolve
+void cancel();
 void close();
-void tick(); // apply pending play on the UI thread
+void tick();      // apply pending play on the UI thread
+void drawOverlay(); // loading card + "Go to YouTube" (Windows + Linux ImGui)
 }

@@ -182,7 +182,17 @@ void seedEnglish() {
     g_en["library.delete_title"] = "Remove from library";
     g_en["library.delete_confirm"] =
         "Delete “%s” from disk? This cannot be undone.";
+    g_en["library.delete_disk_hint"] =
+        "The title folder and all files inside will be permanently deleted.";
     g_en["library.delete_failed"] = "Failed to delete";
+    g_en["library.archive"] = "Archive";
+    g_en["library.archive_title"] = "Archive to ZIP";
+    g_en["library.archive_confirm"] =
+        "Compress “%s” and remove the original from the library?";
+    g_en["library.archive_hint"] =
+        "Creates a ZIP under Archives/ next to your movies/TV folder, then deletes the original files.";
+    g_en["library.archive_done"] = "Archived to:";
+    g_en["library.archive_failed"] = "Archive failed";
     g_en["library.size"] = "Size";
     g_en["library.container"] = "Container";
     g_en["library.modified"] = "Modified";

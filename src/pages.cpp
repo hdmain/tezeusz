@@ -1319,7 +1319,10 @@ void renderLibrary() {
     static library::Item ctxItem;
     static bool openProps = false;
     static bool openDelete = false;
+    static bool openArchive = false;
     static std::string deleteErr;
+    static std::string archiveErr;
+    static std::string archiveOkPath;
 
     double now = ImGui::GetTime();
     if (items.empty() || now - lastScan > 3.0) {
@@ -1485,6 +1488,11 @@ void renderLibrary() {
             if (ImGui::MenuItem(i18n::tr("common.properties")))
                 openProps = true;
             ImGui::Separator();
+            if (ImGui::MenuItem(i18n::tr("library.archive"))) {
+                archiveErr.clear();
+                archiveOkPath.clear();
+                openArchive = true;
+            }
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.96f, 0.45f, 0.45f, 1));
             if (ImGui::MenuItem(i18n::tr("common.delete"))) {
                 deleteErr.clear();
@@ -1611,6 +1619,10 @@ void renderLibrary() {
             ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", ctxItem.folder.c_str());
         else if (!ctxItem.path.empty())
             ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", ctxItem.path.c_str());
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.96f, 0.55f, 0.55f, 1));
+        ImGui::TextWrapped("%s", i18n::tr("library.delete_disk_hint"));
+        ImGui::PopStyleColor();
         if (!deleteErr.empty()) {
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.96f, 0.4f, 0.4f, 1), "%s", deleteErr.c_str());
@@ -1633,6 +1645,65 @@ void renderLibrary() {
         ImGui::SameLine();
         if (ImGui::Button(i18n::tr("common.cancel"), ImVec2(120, 32)))
             ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+
+    // ---- Archive ----
+    if (openArchive) {
+        ImGui::OpenPopup("##lib_archive");
+        openArchive = false;
+    }
+    if (ImGui::BeginPopupModal("##lib_archive", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.65f, 0.78f, 0.98f, 1));
+        ImGui::TextUnformatted(i18n::tr("library.archive_title"));
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::TextWrapped(i18n::tr("library.archive_confirm"), ctxItem.title.c_str());
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.61f, 0.64f, 0.69f, 1));
+        ImGui::TextWrapped("%s", i18n::tr("library.archive_hint"));
+        ImGui::PopStyleColor();
+        if (!archiveOkPath.empty()) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.4f, 0.85f, 0.55f, 1), "%s",
+                               i18n::tr("library.archive_done"));
+            ImGui::TextWrapped("%s", archiveOkPath.c_str());
+        }
+        if (!archiveErr.empty()) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.96f, 0.4f, 0.4f, 1), "%s", archiveErr.c_str());
+        }
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        if (archiveOkPath.empty()) {
+            if (ImGui::Button(i18n::tr("library.archive"), ImVec2(140, 32))) {
+                std::string err;
+                std::string zip = library::archiveItem(ctxItem, &err);
+                if (!zip.empty()) {
+                    archiveOkPath = zip;
+                    archiveErr = err; // may warn if originals linger
+                    items = library::scan();
+                    lastScan = ImGui::GetTime();
+                    posterPaths.erase(ctxItem.id);
+                    posterReqs.erase(ctxItem.id);
+                } else {
+                    archiveErr = err.empty() ? i18n::tr("library.archive_failed") : err;
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(i18n::tr("common.cancel"), ImVec2(120, 32)))
+                ImGui::CloseCurrentPopup();
+        } else {
+            if (ImGui::Button(i18n::tr("common.open_folder"), ImVec2(140, 32))) {
+                std::filesystem::path zp(archiveOkPath);
+                platform::openPath(zp.parent_path().string());
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(i18n::tr("common.close"), ImVec2(120, 32)))
+                ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
     }
 }

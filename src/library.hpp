@@ -24,8 +24,12 @@ std::vector<Item> scan();
 // If path is a folder, pick the largest video inside; otherwise return path.
 std::string resolvePlayable(const std::string& pathOrFolder);
 
-// Delete title from disk (folder if under library, else file). Returns false on error.
+// Delete title folder from disk (not just from the UI list).
 bool removeItem(const Item& item, std::string* err = nullptr);
+
+// Compress title folder to Archives/*.zip, then remove originals from the library.
+// Returns the zip path on success (empty string on failure — see err).
+std::string archiveItem(const Item& item, std::string* err = nullptr);
 
 // Human-readable size, e.g. "1.4 GB".
 std::string formatSize(int64_t bytes);

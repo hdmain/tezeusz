@@ -272,10 +272,11 @@ std::string tryYtDlp(const std::string& videoId, std::string* audioOut) {
     std::string bin;
     if (!ensureYtDlp(&bin) || bin.empty()) return {};
     const std::string watch = "https://www.youtube.com/watch?v=" + videoId;
-    // Adaptive A/V pair (YouTube dropped most muxed progressives).
+    // -g / --skip-download: only print stream URLs — never write the video to disk.
     std::string cmd = shellQuote(bin) +
-        " -g -f \"bv*[height<=720]+ba/b\" "
-        "--no-playlist --no-warnings --no-check-certificates " +
+        " --skip-download -g -f \"bv*[height<=720]+ba/b\" "
+        "--no-playlist --no-warnings --no-check-certificates "
+        "--no-part --no-mtime " +
         shellQuote(watch);
     std::string out = runCapture(cmd);
     std::vector<std::string> urls;

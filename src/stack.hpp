@@ -42,13 +42,16 @@ inline const char* statusLabel(ReqStatus s) {
 }
 
 struct StackConfig {
-    std::string moviesPath;
-    std::string tvPath;
-    std::string downloadPath;
+    std::string moviesPath;                 // primary write target for movies
+    std::string tvPath;                     // primary write target for TV
+    std::vector<std::string> moviesPathsExtra; // legacy / extra roots (still scanned)
+    std::vector<std::string> tvPathsExtra;
+    std::string downloadPath;               // staging / SSD cache before import
     int minSeeders = 2;
     std::string preferredQuality = "1080p";
     bool autoStart = true;       // start torrent download after request
     bool autoUpdate = true;      // background app update check/download
+    int downloadCacheMaxGb = 40; // prune staging after import; 0 = keep forever
     std::string uiLanguage = "en";
 
     // Bazarr-like subtitles (OpenSubtitles.com)
@@ -61,6 +64,13 @@ struct StackConfig {
     static StackConfig& get();
     void load();
     void save() const;
+
+    // All movie/TV roots (primary first, then extras) — used by library scan/delete.
+    std::vector<std::string> allMoviesPaths() const;
+    std::vector<std::string> allTvPaths() const;
+    // Move previous primary into extras when switching write disk.
+    void setMoviesPath(const std::string& path);
+    void setTvPath(const std::string& path);
 };
 
 struct MediaRequest {

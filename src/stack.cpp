@@ -557,10 +557,70 @@ bool libraryHas(const MediaRequest& req) {
     std::string folderName = sanitizeName(req.title);
     if (!req.year.empty()) folderName += " (" + req.year + ")";
     std::error_code ec;
-    fs::path dir = req.mediaType == MediaType::Movie
-                       ? fs::path(cfg.moviesPath) / folderName
-                       : fs::path(cfg.tvPath) / folderName;
-    return fs::exists(dir, ec) && !findBiggestVideo(dir).empty();
+    auto roots = req.mediaType == MediaType::Movie ? cfg.allMoviesPaths() : cfg.allTvPaths();
+    for (auto& root : roots) {
+        fs::path dir = fs::path(root) / folderName;
+        if (fs::exists(dir, ec) && !findBiggestVideo(dir).empty())
+            return true;
+    }
+    return false;
+}
+
+void pruneDownloadCache(bool force = false) {
+    auto& cfg = StackConfig::get();
+    if (cfg.downloadCacheMaxGb <= 0) return;
+    static double last = 0;
+    double now = nowMs() / 1000.0;
+    if (!force && now - last < 120.0) return;
+    last = now;
+
+    std::error_code ec;
+    fs::path root = cfg.downloadPath;
+    if (!fs::exists(root, ec) || !fs::is_directory(root, ec)) return;
+
+    struct Entry {
+        fs::path path;
+        uintmax_t bytes = 0;
+        fs::file_time_type mtime{};
+    };
+    std::vector<Entry> dirs;
+    uintmax_t total = 0;
+    for (auto& ent : fs::directory_iterator(root, ec)) {
+        if (ec) { ec.clear(); continue; }
+        if (!ent.is_directory(ec)) continue;
+        Entry e;
+        e.path = ent.path();
+        e.mtime = fs::last_write_time(ent.path(), ec);
+        e.bytes = folderBytes(ent.path());
+        total += e.bytes;
+        dirs.push_back(std::move(e));
+    }
+    const uintmax_t limit = (uintmax_t)cfg.downloadCacheMaxGb * 1024ull * 1024ull * 1024ull;
+    if (total <= limit) return;
+
+    std::sort(dirs.begin(), dirs.end(), [](const Entry& a, const Entry& b) {
+        return a.mtime < b.mtime;
+    });
+    for (auto& e : dirs) {
+        if (total <= limit) break;
+        // Don't delete folders that still match an in-progress request.
+        bool busy = false;
+        {
+            std::lock_guard<std::recursive_mutex> lk(g_mu);
+            for (auto& r : g_reqs) {
+                if (r.status == ReqStatus::Downloading || r.status == ReqStatus::Importing ||
+                    r.status == ReqStatus::Searching || r.status == ReqStatus::Pending) {
+                    if ((fs::path(cfg.downloadPath) / r.id) == e.path) {
+                        busy = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (busy) continue;
+        fs::remove_all(e.path, ec);
+        if (!ec) total = total > e.bytes ? total - e.bytes : 0;
+    }
 }
 
 void processOne(const std::string& id) {
@@ -766,6 +826,12 @@ void processOne(const std::string& id) {
         }
     }
     syncAppStatuses();
+    // Staging folder on the download/cache disk can be freed after a successful import.
+    if (!dest.empty()) {
+        std::error_code ec;
+        fs::remove_all(jobDir, ec);
+        pruneDownloadCache(true);
+    }
     // Bazarr-style: auto-fetch EN + preferred language subtitles, scoring the
     // release name (jobDir folder / release title) against OpenSubtitles candidates.
     if (!playable.empty()) {
@@ -779,6 +845,7 @@ void schedulePump();
 void pumpOnce() {
     g_pumpScheduled.store(false);
     if (g_stop.load()) return;
+    pruneDownloadCache(false);
     std::string id;
     {
         std::lock_guard<std::recursive_mutex> lk(g_mu);
@@ -819,11 +886,65 @@ void schedulePump() {
 
 StackConfig& StackConfig::get() { return g_cfg; }
 
+static void pushUniquePath(std::vector<std::string>& v, const std::string& path) {
+    if (path.empty()) return;
+    for (auto& e : v)
+        if (util::iequals(e, path)) return;
+    v.push_back(path);
+}
+
+std::vector<std::string> StackConfig::allMoviesPaths() const {
+    std::vector<std::string> v;
+    pushUniquePath(v, moviesPath);
+    for (auto& e : moviesPathsExtra) pushUniquePath(v, e);
+    return v;
+}
+
+std::vector<std::string> StackConfig::allTvPaths() const {
+    std::vector<std::string> v;
+    pushUniquePath(v, tvPath);
+    for (auto& e : tvPathsExtra) pushUniquePath(v, e);
+    return v;
+}
+
+void StackConfig::setMoviesPath(const std::string& path) {
+    std::string next = util::trim(path);
+    if (next.empty() || util::iequals(next, moviesPath)) {
+        if (!next.empty()) moviesPath = next;
+        return;
+    }
+    if (!moviesPath.empty())
+        pushUniquePath(moviesPathsExtra, moviesPath);
+    // Drop if it was already listed as an extra
+    moviesPathsExtra.erase(
+        std::remove_if(moviesPathsExtra.begin(), moviesPathsExtra.end(),
+                       [&](const std::string& e) { return util::iequals(e, next); }),
+        moviesPathsExtra.end());
+    moviesPath = next;
+}
+
+void StackConfig::setTvPath(const std::string& path) {
+    std::string next = util::trim(path);
+    if (next.empty() || util::iequals(next, tvPath)) {
+        if (!next.empty()) tvPath = next;
+        return;
+    }
+    if (!tvPath.empty())
+        pushUniquePath(tvPathsExtra, tvPath);
+    tvPathsExtra.erase(
+        std::remove_if(tvPathsExtra.begin(), tvPathsExtra.end(),
+                       [&](const std::string& e) { return util::iequals(e, next); }),
+        tvPathsExtra.end());
+    tvPath = next;
+}
+
 void StackConfig::load() {
     std::string raw = util::readFile(cfgPath());
     moviesPath = util::appDataPath("library\\movies");
     tvPath = util::appDataPath("library\\tv");
     downloadPath = util::appDataPath("downloads");
+    moviesPathsExtra.clear();
+    tvPathsExtra.clear();
     if (!raw.empty()) {
         try {
             auto j = json::parse(raw);
@@ -834,27 +955,50 @@ void StackConfig::load() {
             preferredQuality = j.value("preferredQuality", preferredQuality);
             autoStart = j.value("autoStart", autoStart);
             autoUpdate = j.value("autoUpdate", autoUpdate);
+            downloadCacheMaxGb = j.value("downloadCacheMaxGb", downloadCacheMaxGb);
             uiLanguage = j.value("uiLanguage", j.value("ui_language", uiLanguage));
             subsAuto = j.value("subsAuto", subsAuto);
             subsPreferredLang = j.value("subsPreferredLang", subsPreferredLang);
             subsApiKey = j.value("subsApiKey", subsApiKey);
             subsUsername = j.value("subsUsername", subsUsername);
             subsPassword = j.value("subsPassword", subsPassword);
+            if (j.contains("moviesPathsExtra") && j["moviesPathsExtra"].is_array()) {
+                for (auto& x : j["moviesPathsExtra"])
+                    if (x.is_string()) pushUniquePath(moviesPathsExtra, x.get<std::string>());
+            }
+            if (j.contains("tvPathsExtra") && j["tvPathsExtra"].is_array()) {
+                for (auto& x : j["tvPathsExtra"])
+                    if (x.is_string()) pushUniquePath(tvPathsExtra, x.get<std::string>());
+            }
         } catch (...) {}
     }
+    // Keep extras distinct from primary
+    moviesPathsExtra.erase(
+        std::remove_if(moviesPathsExtra.begin(), moviesPathsExtra.end(),
+                       [&](const std::string& e) { return util::iequals(e, moviesPath); }),
+        moviesPathsExtra.end());
+    tvPathsExtra.erase(
+        std::remove_if(tvPathsExtra.begin(), tvPathsExtra.end(),
+                       [&](const std::string& e) { return util::iequals(e, tvPath); }),
+        tvPathsExtra.end());
+
     std::error_code ec;
     fs::create_directories(moviesPath, ec);
     fs::create_directories(tvPath, ec);
     fs::create_directories(downloadPath, ec);
+    for (auto& p : moviesPathsExtra) fs::create_directories(p, ec);
+    for (auto& p : tvPathsExtra) fs::create_directories(p, ec);
     save();
 }
 
 void StackConfig::save() const {
     json j{
         {"moviesPath", moviesPath}, {"tvPath", tvPath}, {"downloadPath", downloadPath},
+        {"moviesPathsExtra", moviesPathsExtra}, {"tvPathsExtra", tvPathsExtra},
         {"minSeeders", minSeeders}, {"preferredQuality", preferredQuality},
         {"autoStart", autoStart},
         {"autoUpdate", autoUpdate},
+        {"downloadCacheMaxGb", downloadCacheMaxGb},
         {"uiLanguage", uiLanguage},
         {"subsAuto", subsAuto}, {"subsPreferredLang", subsPreferredLang},
         {"subsApiKey", subsApiKey}, {"subsUsername", subsUsername},

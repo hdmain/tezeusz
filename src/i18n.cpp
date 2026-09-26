@@ -172,6 +172,9 @@ void seedEnglish() {
     g_en["library.title"] = "Library";
     g_en["library.sub"] = "Click to watch · right-click for options (delete, properties…)";
     g_en["library.titles"] = "titles";
+    g_en["library.used"] = "Used";
+    g_en["library.free"] = "Free";
+    g_en["library.multi_disk"] = "multiple folders";
     g_en["library.empty"] =
         "Library is empty. Request a movie and wait for the download — it will show up here.";
     g_en["library.movies"] = "Movies";
@@ -198,8 +201,26 @@ void seedEnglish() {
     g_en["settings.tab_subs"] = "Subtitles";
     g_en["settings.tab_updates"] = "Updates";
     g_en["settings.general_hint"] = "Language and app preferences.";
-    g_en["settings.library_hint"] = "Folders where finished movies and TV shows are stored.";
-    g_en["settings.downloads_hint"] = "Where torrents download before import into the library.";
+    g_en["settings.library_hint"] =
+        "Choose which disk new movies save to. The previous folder stays as a second library — both "
+        "are scanned.";
+    g_en["settings.downloads_hint"] =
+        "Staging folder (prefer SSD). Torrents download here, then copy to the library disk "
+        "(HDD-friendly cache).";
+    g_en["settings.save_disk"] = "Save movies on disk";
+    g_en["settings.save_disk_hint"] =
+        "Picks Seerr/Movies and Seerr/TV on that volume. Your old folders stay visible in the library.";
+    g_en["settings.no_disks"] = "No disks detected";
+    g_en["settings.extra_libraries"] = "Also scanning (previous disks)";
+    g_en["settings.extra_libraries_hint"] =
+        "Titles on these folders still appear in Library. Remove only unlinks the path — files stay "
+        "on disk.";
+    g_en["settings.remove_extra"] = "Remove";
+    g_en["settings.download_cache_max"] = "Download cache limit";
+    g_en["settings.download_cache_hint"] =
+        "After import, staging files are deleted. Older cache folders are pruned when this limit is "
+        "exceeded. Put this folder on an SSD when the library is on HDD.";
+    g_en["settings.cache_unlimited"] = "0 = keep staging forever (no auto prune)";
     g_en["settings.save_hint"] = "Config file: %APPDATA%\\SeerrCpp\\stack.json (Linux: ~/.local/share/SeerrCpp).";
     g_en["settings.saved_toast"] = "Saved to disk";
     g_en["settings.ui_language"] = "UI language";

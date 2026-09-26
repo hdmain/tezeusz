@@ -18,7 +18,7 @@ struct Item {
     int64_t sizeBytes = 0;
 };
 
-// Scan moviesPath/tvPath (+ Available requests) for playable videos.
+// Scan movies/TV primary + extra roots (+ Available requests) for playable videos.
 std::vector<Item> scan();
 
 // If path is a folder, pick the largest video inside; otherwise return path.

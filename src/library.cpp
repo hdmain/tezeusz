@@ -124,8 +124,10 @@ std::vector<Item> scan() {
         }
     };
 
-    addFromFolder(MediaType::Movie, cfg.moviesPath);
-    addFromFolder(MediaType::TV, cfg.tvPath);
+    for (auto& p : cfg.allMoviesPaths())
+        addFromFolder(MediaType::Movie, p);
+    for (auto& p : cfg.allTvPaths())
+        addFromFolder(MediaType::TV, p);
 
     // Available requests whose files aren't under scanned folders
     for (auto& r : reqs) {
@@ -201,14 +203,25 @@ bool removeItem(const Item& item, std::string* err) {
     fs::path target;
     if (!item.folder.empty()) {
         fs::path folder(item.folder);
-        bool isTitleFolder =
-            underRoot(cfg.moviesPath, folder) || underRoot(cfg.tvPath, folder);
+        bool isTitleFolder = false;
+        for (auto& root : cfg.allMoviesPaths())
+            if (underRoot(root, folder)) { isTitleFolder = true; break; }
+        if (!isTitleFolder) {
+            for (auto& root : cfg.allTvPaths())
+                if (underRoot(root, folder)) { isTitleFolder = true; break; }
+        }
         // Don't delete the library root itself
-        auto moviesCanon = fs::weakly_canonical(cfg.moviesPath, ec);
-        auto tvCanon = fs::weakly_canonical(cfg.tvPath, ec);
         auto folderCanon = fs::weakly_canonical(folder, ec);
-        if (isTitleFolder && folderCanon != moviesCanon && folderCanon != tvCanon &&
-            fs::is_directory(folder, ec)) {
+        bool isRoot = false;
+        for (auto& root : cfg.allMoviesPaths()) {
+            if (folderCanon == fs::weakly_canonical(root, ec)) { isRoot = true; break; }
+        }
+        if (!isRoot) {
+            for (auto& root : cfg.allTvPaths()) {
+                if (folderCanon == fs::weakly_canonical(root, ec)) { isRoot = true; break; }
+            }
+        }
+        if (isTitleFolder && !isRoot && fs::is_directory(folder, ec)) {
             target = folder;
         }
     }

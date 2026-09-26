@@ -14,6 +14,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 namespace util {
@@ -312,6 +313,85 @@ std::string libvlcDir() {
 #else
     return {};
 #endif
+}
+
+DiskSpace diskSpace(const std::string& path) {
+    DiskSpace out;
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path p = path.empty() ? fs::current_path(ec) : fs::path(path);
+    // Walk up to an existing ancestor so space() works for not-yet-created folders.
+    while (!p.empty() && !fs::exists(p, ec)) {
+        auto parent = p.parent_path();
+        if (parent == p) break;
+        p = parent;
+    }
+    if (p.empty() || !fs::exists(p, ec)) {
+#ifdef _WIN32
+        if (!path.empty() && path.size() >= 2 && path[1] == ':')
+            p = fs::path(path.substr(0, 2) + "\\");
+#else
+        p = "/";
+#endif
+    }
+    auto si = fs::space(p, ec);
+    if (ec) return out;
+    out.capacity = si.capacity;
+    out.free = si.free;
+    out.available = si.available;
+    out.ok = out.capacity > 0;
+    return out;
+}
+
+std::vector<VolumeInfo> listVolumes() {
+    std::vector<VolumeInfo> out;
+#ifdef _WIN32
+    char buf[512];
+    DWORD n = GetLogicalDriveStringsA(sizeof(buf) - 1, buf);
+    if (n == 0 || n >= sizeof(buf)) return out;
+    for (char* p = buf; *p; p += std::strlen(p) + 1) {
+        UINT type = GetDriveTypeA(p);
+        if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE) continue;
+        VolumeInfo v;
+        v.root = p;
+        v.label = std::string(p, 2); // "C:"
+        if (type == DRIVE_REMOVABLE) v.label += " (USB)";
+        v.space = diskSpace(v.root);
+        if (v.space.ok) out.push_back(std::move(v));
+    }
+#else
+    auto tryAdd = [&](const std::string& root, const std::string& label) {
+        for (auto& e : out)
+            if (e.root == root) return;
+        auto sp = diskSpace(root);
+        if (!sp.ok || sp.capacity < (uintmax_t)1 * 1024 * 1024 * 1024) return; // skip tiny
+        VolumeInfo v;
+        v.root = root;
+        v.label = label.empty() ? root : label;
+        v.space = sp;
+        out.push_back(std::move(v));
+    };
+    tryAdd("/", "/");
+    std::ifstream mounts("/proc/mounts");
+    std::string line;
+    while (std::getline(mounts, line)) {
+        std::istringstream iss(line);
+        std::string dev, mnt, type;
+        if (!(iss >> dev >> mnt >> type)) continue;
+        if (mnt == "/" || mnt == "/boot" || mnt == "/boot/efi" || mnt == "/snap" ||
+            mnt.rfind("/snap/", 0) == 0 || mnt.rfind("/run/", 0) == 0 ||
+            mnt.rfind("/sys", 0) == 0 || mnt.rfind("/proc", 0) == 0 ||
+            mnt.rfind("/dev", 0) == 0)
+            continue;
+        if (type != "ext4" && type != "ext3" && type != "xfs" && type != "btrfs" &&
+            type != "ntfs" && type != "fuseblk" && type != "vfat" && type != "exfat" &&
+            type != "zfs")
+            continue;
+        if (dev.rfind("/dev/", 0) != 0 && type != "fuseblk" && type != "zfs") continue;
+        tryAdd(mnt, mnt);
+    }
+#endif
+    return out;
 }
 
 } // namespace util

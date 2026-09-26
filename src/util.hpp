@@ -1,10 +1,32 @@
 #pragma once
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <map>
 #include <optional>
 
 namespace util {
+
+struct DiskSpace {
+    uintmax_t capacity = 0;
+    uintmax_t free = 0;
+    uintmax_t available = 0;
+    bool ok = false;
+};
+
+struct VolumeInfo {
+    std::string root;   // e.g. "D:\\" or "/mnt/data"
+    std::string label;  // short label for UI
+    DiskSpace space;
+};
+
+// Free/capacity for the volume containing `path` (path need not exist yet —
+// uses the existing parent / drive root).
+DiskSpace diskSpace(const std::string& path);
+
+// Fixed/removable volumes suitable as movie library targets.
+std::vector<VolumeInfo> listVolumes();
+
 
 std::string urlEncode(const std::string& s);
 std::string buildQuery(const std::map<std::string, std::string>& params);

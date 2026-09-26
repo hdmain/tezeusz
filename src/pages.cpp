@@ -1333,20 +1333,48 @@ void renderLibrary() {
         lastScan = now;
     }
     ImGui::SameLine();
-    char countBuf[64];
-    std::snprintf(countBuf, sizeof(countBuf), "%d %s", (int)items.size(), i18n::tr("library.titles"));
-    ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", countBuf);
+    {
+        auto& cfg = stack::StackConfig::get();
+        int64_t used = 0;
+        for (auto& it : items) used += it.sizeBytes;
+        auto sp = util::diskSpace(cfg.moviesPath);
+        char countBuf[256];
+        if (sp.ok) {
+            std::snprintf(countBuf, sizeof(countBuf), "%d %s · %s %s · %s %s / %s",
+                          (int)items.size(), i18n::tr("library.titles"),
+                          i18n::tr("library.used"), library::formatSize(used).c_str(),
+                          i18n::tr("library.free"), library::formatSize((int64_t)sp.available).c_str(),
+                          library::formatSize((int64_t)sp.capacity).c_str());
+        } else {
+            std::snprintf(countBuf, sizeof(countBuf), "%d %s · %s %s",
+                          (int)items.size(), i18n::tr("library.titles"),
+                          i18n::tr("library.used"), library::formatSize(used).c_str());
+        }
+        ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", countBuf);
+        if (!cfg.moviesPathsExtra.empty() || !cfg.tvPathsExtra.empty()) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(0.50f, 0.55f, 0.62f, 1), "· %s",
+                               i18n::tr("library.multi_disk"));
+        }
+    }
 
     float y = origin.y + 100;
     if (items.empty()) {
         dl->AddText(G.r16, 15, ImVec2(origin.x, y), ATTR2,
                     i18n::tr("library.empty"));
         auto& cfg = stack::StackConfig::get();
-        dl->AddText(G.r14, 12, ImVec2(origin.x, y + 28), ATTR,
-                    (std::string(i18n::tr("library.movies")) + ": " + cfg.moviesPath).c_str());
-        dl->AddText(G.r14, 12, ImVec2(origin.x, y + 48), ATTR,
-                    (std::string(i18n::tr("library.tv")) + ": " + cfg.tvPath).c_str());
-        ImGui::SetCursorScreenPos(ImVec2(origin.x, y + 80));
+        float ey = y + 28;
+        for (auto& p : cfg.allMoviesPaths()) {
+            dl->AddText(G.r14, 12, ImVec2(origin.x, ey), ATTR,
+                        (std::string(i18n::tr("library.movies")) + ": " + p).c_str());
+            ey += 20;
+        }
+        for (auto& p : cfg.allTvPaths()) {
+            dl->AddText(G.r14, 12, ImVec2(origin.x, ey), ATTR,
+                        (std::string(i18n::tr("library.tv")) + ": " + p).c_str());
+            ey += 20;
+        }
+        ImGui::SetCursorScreenPos(ImVec2(origin.x, ey + 20));
         return;
     }
 
@@ -1730,10 +1758,119 @@ void renderSettings() {
         ImGui::PopStyleColor();
     } else if (tab == TabLibrary) {
         sectionTitle(i18n::tr("settings.tab_library"), i18n::tr("settings.library_hint"));
+
+        // Disk picker — sets primary movies/TV folders on the chosen volume.
+        {
+            fieldLabel(i18n::tr("settings.save_disk"));
+            static std::vector<util::VolumeInfo> vols;
+            static double lastVolScan = -100;
+            double t = ImGui::GetTime();
+            if (t - lastVolScan > 5.0) {
+                vols = util::listVolumes();
+                lastVolScan = t;
+            }
+            int sel = -1;
+            std::string curRoot;
+#ifdef _WIN32
+            if (movies[0] && movies[1] == ':') {
+                curRoot = std::string(movies, 2);
+                if (curRoot.size() == 2) curRoot += "\\";
+            }
+#else
+            // Match longest mount prefix
+            for (auto& v : vols) {
+                if (std::strncmp(movies, v.root.c_str(), v.root.size()) == 0) {
+                    if (curRoot.size() < v.root.size()) curRoot = v.root;
+                }
+            }
+#endif
+            std::vector<std::string> labels;
+            labels.reserve(vols.size() + 1);
+            for (int i = 0; i < (int)vols.size(); i++) {
+                auto& v = vols[i];
+                char line[256];
+                std::snprintf(line, sizeof(line), "%s  (%s free / %s)",
+                              v.label.c_str(),
+                              library::formatSize((int64_t)v.space.available).c_str(),
+                              library::formatSize((int64_t)v.space.capacity).c_str());
+                labels.push_back(line);
+#ifdef _WIN32
+                if (util::iequals(v.root, curRoot) || util::iequals(v.root.substr(0, 2), curRoot.substr(0, 2)))
+                    sel = i;
+#else
+                if (v.root == curRoot) sel = i;
+#endif
+            }
+            if (labels.empty()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+                ImGui::TextUnformatted(i18n::tr("settings.no_disks"));
+                ImGui::PopStyleColor();
+            } else {
+                // ImGui Combo needs const char* array — rebuild each frame
+                std::vector<const char*> ptrs;
+                for (auto& s : labels) ptrs.push_back(s.c_str());
+                int prev = sel;
+                if (ImGui::Combo("##savedisk", &sel, ptrs.data(), (int)ptrs.size()) && sel >= 0 &&
+                    sel != prev) {
+                    auto& v = vols[sel];
+#ifdef _WIN32
+                    std::string base = v.root;
+                    if (!base.empty() && base.back() != '\\') base.push_back('\\');
+                    base += "Seerr";
+                    std::snprintf(movies, sizeof(movies), "%s\\Movies", base.c_str());
+                    std::snprintf(tv, sizeof(tv), "%s\\TV", base.c_str());
+#else
+                    std::string base = v.root;
+                    if (base == "/") base = "/var/lib/seerr";
+                    else if (!base.empty() && base.back() == '/') base.pop_back();
+                    base += "/Seerr";
+                    std::snprintf(movies, sizeof(movies), "%s/Movies", base.c_str());
+                    std::snprintf(tv, sizeof(tv), "%s/TV", base.c_str());
+#endif
+                }
+            }
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+            ImGui::TextWrapped("%s", i18n::tr("settings.save_disk_hint"));
+            ImGui::PopStyleColor();
+            ImGui::Dummy(ImVec2(1, 6));
+        }
+
         fieldLabel(i18n::tr("settings.movies_path"));
         ImGui::InputText("##movies", movies, sizeof(movies));
         fieldLabel(i18n::tr("settings.tv_path"));
         ImGui::InputText("##tv", tv, sizeof(tv));
+
+        if (!cfg.moviesPathsExtra.empty() || !cfg.tvPathsExtra.empty()) {
+            ImGui::Dummy(ImVec2(1, 8));
+            fieldLabel(i18n::tr("settings.extra_libraries"));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+            ImGui::TextWrapped("%s", i18n::tr("settings.extra_libraries_hint"));
+            ImGui::PopStyleColor();
+            for (int i = 0; i < (int)cfg.moviesPathsExtra.size(); i++) {
+                ImGui::BulletText("%s: %s", i18n::tr("library.movies"),
+                                  cfg.moviesPathsExtra[i].c_str());
+                ImGui::SameLine();
+                if (ImGui::SmallButton((std::string(i18n::tr("settings.remove_extra")) + "##mx" +
+                                        std::to_string(i))
+                                           .c_str())) {
+                    cfg.moviesPathsExtra.erase(cfg.moviesPathsExtra.begin() + i);
+                    cfg.save();
+                    break;
+                }
+            }
+            for (int i = 0; i < (int)cfg.tvPathsExtra.size(); i++) {
+                ImGui::BulletText("%s: %s", i18n::tr("library.tv"), cfg.tvPathsExtra[i].c_str());
+                ImGui::SameLine();
+                if (ImGui::SmallButton((std::string(i18n::tr("settings.remove_extra")) + "##tx" +
+                                        std::to_string(i))
+                                           .c_str())) {
+                    cfg.tvPathsExtra.erase(cfg.tvPathsExtra.begin() + i);
+                    cfg.save();
+                    break;
+                }
+            }
+        }
+
         ImGui::Dummy(ImVec2(1, 6));
         if (ImGui::Button(i18n::tr("settings.scan_library"), ImVec2(180, 36)))
             subs::scanLibrary();
@@ -1747,6 +1884,14 @@ void renderSettings() {
         sectionTitle(i18n::tr("settings.tab_downloads"), i18n::tr("settings.downloads_hint"));
         fieldLabel(i18n::tr("settings.download_path"));
         ImGui::InputText("##dl", dlpath, sizeof(dlpath));
+        fieldLabel(i18n::tr("settings.download_cache_max"));
+        if (ImGui::SliderInt("##cachegb", &cfg.downloadCacheMaxGb, 0, 500, "%d GB"))
+            cfg.save();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::TextWrapped("%s", cfg.downloadCacheMaxGb <= 0
+                                     ? i18n::tr("settings.cache_unlimited")
+                                     : i18n::tr("settings.download_cache_hint"));
+        ImGui::PopStyleColor();
         ImGui::Dummy(ImVec2(1, 4));
         if (ImGui::Checkbox(i18n::tr("settings.auto_start"), &cfg.autoStart))
             cfg.save();
@@ -1865,9 +2010,15 @@ void renderSettings() {
     // Save footer (paths + download prefs)
     if (tab == TabLibrary || tab == TabDownloads || tab == TabGeneral) {
         if (ImGui::Button(i18n::tr("common.save"), ImVec2(160, 38))) {
-            cfg.moviesPath = movies;
-            cfg.tvPath = tv;
+            cfg.setMoviesPath(movies);
+            cfg.setTvPath(tv);
             cfg.downloadPath = dlpath;
+            std::error_code ec;
+            std::filesystem::create_directories(cfg.moviesPath, ec);
+            std::filesystem::create_directories(cfg.tvPath, ec);
+            std::filesystem::create_directories(cfg.downloadPath, ec);
+            std::snprintf(movies, sizeof(movies), "%s", cfg.moviesPath.c_str());
+            std::snprintf(tv, sizeof(tv), "%s", cfg.tvPath.c_str());
             cfg.save();
         }
         ImGui::SameLine();

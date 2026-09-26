@@ -449,10 +449,19 @@ int main() {
             glfwWaitEventsTimeout(0.25);
         else if (!glfwGetWindowAttrib(win, GLFW_FOCUSED))
             glfwWaitEventsTimeout(1.0 / 30.0);
-        else
-            // Visible + focused: let vsync (SwapInterval) pace the loop.
-            // Never throttle to 20/30fps while images load — that made Discover feel stuck.
-            glfwPollEvents();
+        else {
+            // Pace to ~60fps. Pure PollEvents busy-spins when vsync is ignored
+            // (common on Linux/Wayland/WSLg) and pegs a core while the UI looks frozen.
+            const double budget = 1.0 / 60.0;
+            static double lastFrame = 0.0;
+            const double now = glfwGetTime();
+            const double remain = budget - (now - lastFrame);
+            if (remain > 0.0008)
+                glfwWaitEventsTimeout(remain);
+            else
+                glfwPollEvents();
+            lastFrame = glfwGetTime();
+        }
 
         if (quitting.load() && tray::isHidden())
             tray::showFromTray();

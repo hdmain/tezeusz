@@ -141,6 +141,8 @@
   "library.archive_working_hint": "Możesz dalej korzystać z aplikacji — to działa w tle.",
   "library.archive_done": "Zarchiwizowano do:",
   "library.archive_failed": "Archiwizacja nieudana",
+  "library.archived_badge": "Archiwum",
+  "library.archived_status": "Zarchiwizowano",
   "library.size": "Rozmiar",
   "library.container": "Kontener",
   "library.modified": "Zmodyfikowano",

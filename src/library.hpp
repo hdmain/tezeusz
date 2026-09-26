@@ -10,12 +10,13 @@ struct Item {
     std::string id;
     std::string title;
     std::string year;
-    std::string path;          // video file
+    std::string path;          // video file (or .zip when archived)
     std::string folder;        // containing folder
     std::string posterPath;    // TMDB poster if known
     MediaType mediaType = MediaType::Movie;
     int tmdbId = 0;
     int64_t sizeBytes = 0;
+    bool archived = false;     // ZIP under Archives/ — shown greyed at end of library
 };
 
 // Scan movies/TV primary + extra roots (+ Available requests) for playable videos.

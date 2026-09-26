@@ -1416,6 +1416,8 @@ void renderLibrary() {
         ImVec2 p0(x, yy), p1(x + cardW, yy + cardH);
         dl->AddRectFilled(p0, p1, theme::c("#1f2937"), 16);
 
+        const ImU32 posterTint = it.archived ? IM_COL32(130, 130, 130, 255)
+                                             : IM_COL32(255, 255, 255, 255);
         bool drew = false;
         std::string pp = it.posterPath;
         if (pp.empty()) {
@@ -1427,7 +1429,7 @@ void renderLibrary() {
             stub.posterPath = pp;
             auto* e = ImageCache::instance().request(stub.posterUrl("w300_and_h450_face"));
             if (e && e->tex) {
-                w::imageCoverRounded(dl, e->tex, e->w, e->h, p0, ImVec2(cardW, cardH), 16);
+                w::imageCoverRounded(dl, e->tex, e->w, e->h, p0, ImVec2(cardW, cardH), 16, posterTint);
                 drew = true;
             } else if (e) {
                 icons::spinner(dl, ImVec2((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f), 36, IM_COL32(255, 255, 255, 180));
@@ -1436,7 +1438,7 @@ void renderLibrary() {
         }
         if (!drew) {
             GLuint m = ImageCache::instance().missingPosterTex;
-            if (m) w::imageCoverRounded(dl, m, 300, 450, p0, ImVec2(cardW, cardH), 16);
+            if (m) w::imageCoverRounded(dl, m, 300, 450, p0, ImVec2(cardW, cardH), 16, posterTint);
             else {
                 svgicon::draw(dl, svgicon::Play,
                               ImVec2((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f - 10),
@@ -1446,18 +1448,37 @@ void renderLibrary() {
                 dl->AddText(G.r14, 12, ImVec2((p0.x + p1.x - ks.x) * 0.5f, (p0.y + p1.y) * 0.5f + 24), ATTR, kind);
             }
         }
-        dl->AddRect(p0, p1, theme::c("#374151"), 16, 0, 1.0f);
+        if (it.archived) {
+            // Extra desaturate / archive look
+            dl->AddRectFilled(p0, p1, IM_COL32(30, 30, 34, 110), 16);
+            const char* badge = i18n::tr("library.archived_badge");
+            ImVec2 bs = G.r14->CalcTextSizeA(11, FLT_MAX, 0, badge);
+            ImVec2 bp(p0.x + 8, p1.y - bs.y - 10);
+            dl->AddRectFilled(ImVec2(bp.x - 4, bp.y - 2), ImVec2(bp.x + bs.x + 4, bp.y + bs.y + 2),
+                              IM_COL32(20, 20, 24, 200), 6);
+            dl->AddText(G.r14, 11, bp, IM_COL32(200, 200, 205, 255), badge);
+        }
+        dl->AddRect(p0, p1, it.archived ? theme::c("#4b5563") : theme::c("#374151"), 16, 0, 1.0f);
 
         ImGui::SetCursorScreenPos(p0);
         ImGui::PushID(it.id.c_str());
         if (ImGui::InvisibleButton("##libcard", ImVec2(cardW, cardH))) {
-            player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
+            if (it.archived) {
+                std::string folder = it.folder.empty()
+                    ? std::filesystem::path(it.path).parent_path().string()
+                    : it.folder;
+                platform::openPath(folder);
+            } else {
+                player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
+            }
         }
         bool hov = ImGui::IsItemHovered();
         if (ImGui::BeginPopupContextItem("##libctx")) {
             ctxItem = it;
-            if (ImGui::MenuItem(i18n::tr("common.play"))) {
-                player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
+            if (!it.archived) {
+                if (ImGui::MenuItem(i18n::tr("common.play"))) {
+                    player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
+                }
             }
             if (ImGui::MenuItem(i18n::tr("common.open_folder"))) {
                 std::string folder = it.folder.empty()
@@ -1465,7 +1486,7 @@ void renderLibrary() {
                     : it.folder;
                 platform::openPath(folder);
             }
-            if (it.mediaType == MediaType::TV) {
+            if (!it.archived && it.mediaType == MediaType::TV) {
                 if (ImGui::MenuItem(i18n::tr("library.install_episodes"))) {
                     int tmdbId = it.tmdbId;
                     std::string imdb, orig;
@@ -1499,10 +1520,12 @@ void renderLibrary() {
             if (ImGui::MenuItem(i18n::tr("common.properties")))
                 openProps = true;
             ImGui::Separator();
-            if (ImGui::MenuItem(i18n::tr("library.archive"), nullptr, false, !archiveJob)) {
-                archiveErr.clear();
-                archiveOkPath.clear();
-                openArchive = true;
+            if (!it.archived) {
+                if (ImGui::MenuItem(i18n::tr("library.archive"), nullptr, false, !archiveJob)) {
+                    archiveErr.clear();
+                    archiveOkPath.clear();
+                    openArchive = true;
+                }
             }
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.96f, 0.45f, 0.45f, 1));
             if (ImGui::MenuItem(i18n::tr("common.delete"))) {
@@ -1513,19 +1536,28 @@ void renderLibrary() {
             ImGui::EndPopup();
         }
         ImGui::PopID();
-        if (hov) {
+        if (hov && !it.archived) {
             dl->AddRectFilled(p0, p1, IM_COL32(0, 0, 0, 120), 16);
             dl->AddCircleFilled(ImVec2((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f), 28, IM_COL32(0, 164, 220, 230));
             svgicon::draw(dl, svgicon::Play,
                           ImVec2((p0.x + p1.x) * 0.5f + 2, (p0.y + p1.y) * 0.5f),
                           22, IM_COL32(255, 255, 255, 255));
+        } else if (hov && it.archived) {
+            dl->AddRectFilled(p0, p1, IM_COL32(0, 0, 0, 90), 16);
         }
 
+        ImU32 titleCol = it.archived ? IM_COL32(156, 163, 175, 255) : TXT;
+        ImU32 metaCol = it.archived ? IM_COL32(107, 114, 128, 255) : ATTR;
         std::string label = it.title;
         if (label.size() > 22) label = label.substr(0, 20) + "…";
-        dl->AddText(G.m16, 14, ImVec2(x, yy + cardH + 8), TXT, label.c_str());
-        if (!it.year.empty())
-            dl->AddText(G.r14, 12, ImVec2(x, yy + cardH + 28), ATTR, it.year.c_str());
+        dl->AddText(G.m16, 14, ImVec2(x, yy + cardH + 8), titleCol, label.c_str());
+        std::string meta = it.year;
+        if (it.archived) {
+            if (!meta.empty()) meta += " · ";
+            meta += i18n::tr("library.archived_badge");
+        }
+        if (!meta.empty())
+            dl->AddText(G.r14, 12, ImVec2(x, yy + cardH + 28), metaCol, meta.c_str());
     }
 
     int rows = (i + cols - 1) / cols;
@@ -1557,6 +1589,8 @@ void renderLibrary() {
         if (!ctxItem.year.empty()) titleLine += " (" + ctxItem.year + ")";
         row(i18n::tr("common.title"), titleLine);
         row(i18n::tr("common.type"), ctxItem.mediaType == MediaType::TV ? i18n::tr("library.type_tv") : i18n::tr("library.type_movie"));
+        if (ctxItem.archived)
+            row(i18n::tr("library.archived_badge"), "ZIP");
         if (ctxItem.tmdbId > 0)
             row("TMDB ID", std::to_string(ctxItem.tmdbId));
 

@@ -1383,4 +1383,30 @@ void onLibraryRemoved(const std::string& pathOrFolder) {
     }
 }
 
+void onLibraryArchived(const std::string& videoPath, const std::string& folderPath,
+                       const std::string& zipPath) {
+    if (zipPath.empty()) return;
+    auto matches = [&](const std::string& libraryPath) {
+        if (libraryPath.empty()) return false;
+        auto hit = [&](const std::string& p) {
+            if (p.empty()) return false;
+            return libraryPath == p || p.find(libraryPath) == 0 || libraryPath.find(p) == 0;
+        };
+        return hit(videoPath) || hit(folderPath);
+    };
+    std::lock_guard<std::recursive_mutex> lk(g_mu);
+    bool changed = false;
+    for (auto& r : g_reqs) {
+        if (!matches(r.libraryPath)) continue;
+        r.libraryPath = zipPath;
+        r.progress = 1.0;
+        setStatus(r, ReqStatus::Available, i18n::tr("library.archived_status"));
+        changed = true;
+    }
+    if (changed) {
+        saveRequestsLocked();
+        syncAppStatuses();
+    }
+}
+
 } // namespace stack

@@ -143,14 +143,38 @@ std::vector<Item> scan() {
     auto& cfg = stack::StackConfig::get();
     auto reqs = stack::listRequests();
 
-    auto matchReq = [&](MediaType t, const std::string& title, const std::string& year) -> const stack::MediaRequest* {
+    auto matchReq = [&](MediaType t, const std::string& title, const std::string& year,
+                        bool availableOnly) -> const stack::MediaRequest* {
+        const stack::MediaRequest* soft = nullptr;
         for (auto& r : reqs) {
             if (r.mediaType != t) continue;
-            if (r.status != stack::ReqStatus::Available) continue;
-            if (util::iequals(r.title, title) && (year.empty() || r.year == year))
-                return &r;
+            const bool titleOk = util::iequals(r.title, title) ||
+                                 (!r.originalTitle.empty() && util::iequals(r.originalTitle, title));
+            if (!titleOk) continue;
+            if (!year.empty() && !r.year.empty() && r.year != year) continue;
+            if (availableOnly) {
+                if (r.status == stack::ReqStatus::Available) return &r;
+            } else {
+                if (r.status == stack::ReqStatus::Available) return &r;
+                if (!soft) soft = &r;
+            }
         }
-        return nullptr;
+        return availableOnly ? nullptr : soft;
+    };
+
+    auto attachMeta = [&](Item& it, MediaType t, const std::string& folderName) {
+        if (auto* r = matchReq(t, it.title, it.year, !it.archived))
+            it.tmdbId = r->tmdbId;
+        for (auto& r : reqs) {
+            if (r.libraryPath.empty()) continue;
+            if (r.libraryPath == it.path ||
+                (!folderName.empty() && r.libraryPath.find(folderName) != std::string::npos)) {
+                it.tmdbId = r.tmdbId;
+                it.mediaType = r.mediaType;
+                if (it.title.empty()) it.title = r.title;
+                if (it.year.empty()) it.year = r.year;
+            }
+        }
     };
 
     auto addFromFolder = [&](MediaType t, const fs::path& root) {
@@ -167,11 +191,12 @@ std::vector<Item> scan() {
                     it.mediaType = t;
                     it.id = makeId(t, it.path);
                     it.sizeBytes = (int64_t)ent.file_size(ec);
+                    attachMeta(it, t, {});
                     out.push_back(std::move(it));
                 }
                 continue;
             }
-            // Skip Archives folder inside library roots
+            // Active titles: skip Archives (handled below)
             if (util::iequals(ent.path().filename().string(), "Archives")) continue;
 
             std::string video = biggestVideoIn(ent.path());
@@ -184,18 +209,26 @@ std::vector<Item> scan() {
             it.id = makeId(t, it.path);
             std::error_code ec2;
             it.sizeBytes = (int64_t)fs::file_size(video, ec2);
-            if (auto* r = matchReq(t, it.title, it.year))
-                it.tmdbId = r->tmdbId;
-            for (auto& r : reqs) {
-                if (r.libraryPath.empty()) continue;
-                if (r.libraryPath == video ||
-                    r.libraryPath.find(ent.path().filename().string()) != std::string::npos) {
-                    it.tmdbId = r.tmdbId;
-                    it.mediaType = r.mediaType;
-                    if (it.title.empty()) it.title = r.title;
-                    if (it.year.empty()) it.year = r.year;
-                }
-            }
+            attachMeta(it, t, ent.path().filename().string());
+            out.push_back(std::move(it));
+        }
+
+        // Archived ZIPs under <root>/Archives/*.zip
+        fs::path arch = root / "Archives";
+        if (!fs::exists(arch, ec) || !fs::is_directory(arch, ec)) return;
+        for (auto& ent : fs::directory_iterator(arch, ec)) {
+            if (ec) { ec.clear(); continue; }
+            if (!ent.is_regular_file(ec)) continue;
+            if (util::lower(ent.path().extension().string()) != ".zip") continue;
+            Item it;
+            it.archived = true;
+            it.path = ent.path().string();
+            it.folder = arch.string();
+            parseFolderName(ent.path().stem().string(), it.title, it.year);
+            it.mediaType = t;
+            it.id = makeId(t, it.path);
+            it.sizeBytes = (int64_t)ent.file_size(ec);
+            attachMeta(it, t, ent.path().stem().string());
             out.push_back(std::move(it));
         }
     };
@@ -215,6 +248,8 @@ std::vector<Item> scan() {
             if (it.path == r.libraryPath || it.folder == r.libraryPath) { already = true; break; }
         }
         if (already) continue;
+        // Don't resurrect from a .zip path as an active title
+        if (util::lower(fs::path(r.libraryPath).extension().string()) == ".zip") continue;
         Item it;
         it.path = fs::is_directory(r.libraryPath, ec) ? biggestVideoIn(r.libraryPath) : r.libraryPath;
         if (it.path.empty()) continue;
@@ -229,6 +264,7 @@ std::vector<Item> scan() {
     }
 
     std::sort(out.begin(), out.end(), [](const Item& a, const Item& b) {
+        if (a.archived != b.archived) return !a.archived && b.archived; // active first
         return util::lower(a.title) < util::lower(b.title);
     });
     return out;
@@ -261,6 +297,24 @@ std::string formatSize(int64_t bytes) {
 
 bool removeItem(const Item& item, std::string* err) {
     std::error_code ec;
+
+    // Archived ZIP — just delete the archive file.
+    if (item.archived) {
+        fs::path zip = item.path;
+        if (zip.empty() || !fs::exists(zip, ec) ||
+            util::lower(zip.extension().string()) != ".zip") {
+            if (err) *err = "Nie znaleziono archiwum";
+            return false;
+        }
+        fs::remove(zip, ec);
+        if (ec) {
+            if (err) *err = ec.message();
+            return false;
+        }
+        notifyRemoved(item, zip);
+        return true;
+    }
+
     fs::path titleDir = resolveTitleDir(item);
     fs::path target = titleDir;
 
@@ -345,7 +399,8 @@ std::string archiveItem(const Item& item, std::string* err) {
     if (ec && err)
         *err = std::string("Archiwum OK, ale nie usunięto oryginału: ") + ec.message();
 
-    notifyRemoved(item, titleDir);
+    stack::onLibraryArchived(item.path, titleDir.empty() ? item.folder : titleDir.string(),
+                             zipPath.string());
     return zipPath.string();
 }
 

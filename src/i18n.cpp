@@ -195,6 +195,8 @@ void seedEnglish() {
     g_en["library.archive_working_hint"] = "You can keep using the app — this runs in the background.";
     g_en["library.archive_done"] = "Archived to:";
     g_en["library.archive_failed"] = "Archive failed";
+    g_en["library.archived_badge"] = "Archived";
+    g_en["library.archived_status"] = "Archived";
     g_en["library.size"] = "Size";
     g_en["library.container"] = "Container";
     g_en["library.modified"] = "Modified";

@@ -138,6 +138,9 @@ std::vector<MediaRequest> listRequests();
 bool cancelRequest(const std::string& id);
 // Clear Available entries whose library files were deleted.
 void onLibraryRemoved(const std::string& pathOrFolder);
+// Point request at the ZIP after archiving (keeps Available + TMDB for library posters).
+void onLibraryArchived(const std::string& videoPath, const std::string& folderPath,
+                       const std::string& zipPath);
 void syncAppStatuses();
 
 } // namespace stack

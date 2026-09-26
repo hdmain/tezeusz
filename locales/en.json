@@ -141,6 +141,8 @@
   "library.archive_working_hint": "You can keep using the app — this runs in the background.",
   "library.archive_done": "Archived to:",
   "library.archive_failed": "Archive failed",
+  "library.archived_badge": "Archived",
+  "library.archived_status": "Archived",
   "library.size": "Size",
   "library.container": "Container",
   "library.modified": "Modified",

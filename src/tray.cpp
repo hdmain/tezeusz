@@ -665,8 +665,10 @@ void platformTick() {
     auto& d = dbus();
     if (!g_conn || !d.ok) return;
     d.connection_read_write(g_conn, 0);
-    // DBUS_DISPATCH_DATA_REMAINS == 1
-    while (d.connection_dispatch(g_conn) == 1) {}
+    // Cap dispatches — a stuck DATA_REMAINS loop would freeze the UI thread.
+    for (int i = 0; i < 64; ++i) {
+        if (d.connection_dispatch(g_conn) != 1) break;
+    }
 }
 #endif
 

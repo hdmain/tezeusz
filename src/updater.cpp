@@ -60,11 +60,19 @@ std::atomic<bool> g_stop{false};
 std::atomic<bool> g_checkRequested{false};
 std::atomic<bool> g_workerBusy{false};
 double g_readySince = 0;
+double g_deferCheckUntil = 0; // monotonic seconds; 0 = no defer
 std::string g_stageDir;
 std::string g_installDir;   // directory containing the seerr binary
 std::string g_shareDir;     // assets root (may equal installDir for portable)
 bool g_systemLayout = false; // binary and assets live in different dirs (.deb)
 bool g_needsElevation = false;
+
+double monoNow() {
+    return (double)std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+               .count() /
+           1000.0;
+}
 
 std::string currentVersion() { return SEERR_VERSION; }
 
@@ -630,8 +638,8 @@ void init() {
     }
     setStatus(State::Idle,
               i18n::tr(g_needsElevation ? "update.idle_permission" : "update.idle"));
-    // First check shortly after start (background).
-    g_checkRequested.store(true);
+    // Defer first check so Discover/UI can paint before background HTTP starts.
+    g_deferCheckUntil = monoNow() + 6.0;
 }
 
 void shutdown() {
@@ -648,6 +656,7 @@ void checkNow() {
         return;
     }
     // Manual check is allowed even when auto-update is off.
+    g_deferCheckUntil = 0.0;
     State st = g_state.load();
     if (st == State::Disabled)
         setStatus(State::Idle, i18n::tr("update.checking"));
@@ -678,6 +687,7 @@ void setAutoEnabled(bool on) {
     g_needsElevation = !installWritable();
     setStatus(State::Idle,
               i18n::tr(g_needsElevation ? "update.idle_permission" : "update.idle"));
+    g_deferCheckUntil = 0.0;
     g_checkRequested.store(true);
 }
 
@@ -690,6 +700,12 @@ void tick() {
     if (st == State::Applying) return;
 
     const bool autoOn = stack::StackConfig::get().autoUpdate;
+    const double now = monoNow();
+
+    if (g_deferCheckUntil > 0.0 && now >= g_deferCheckUntil) {
+        g_deferCheckUntil = 0.0;
+        if (autoOn) g_checkRequested.store(true);
+    }
 
     if (g_checkRequested.exchange(false)) {
         if (st != State::Downloading && st != State::Checking && st != State::Ready && st != State::Applying)
@@ -703,10 +719,6 @@ void tick() {
     if (!autoOn) return;
 
     static double lastPeriodic = 0;
-    double now = (double)std::chrono::duration_cast<std::chrono::milliseconds>(
-                     std::chrono::steady_clock::now().time_since_epoch())
-                     .count() /
-                 1000.0;
     if ((st == State::Idle || st == State::UpToDate || st == State::Error) &&
         !g_workerBusy.load()) {
         if (lastPeriodic <= 0) lastPeriodic = now;
@@ -718,7 +730,9 @@ void tick() {
 
     if (st == State::Ready && !player::isOpen()) {
         if (g_readySince <= 0) g_readySince = now;
-        if (now - g_readySince >= 1.5)
+        // Give a moment to read the status; elevated installs need the polkit dialog.
+        const double delay = g_needsElevation ? 2.5 : 1.5;
+        if (now - g_readySince >= delay)
             beginApply();
     }
 }

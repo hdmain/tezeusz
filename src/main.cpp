@@ -353,6 +353,19 @@ int main() {
     std::fprintf(stderr, "seerr: GL entry points ok\n");
     std::fflush(stderr);
 
+    // Paint one blank frame ASAP so the window isn't a dead black hole during font/asset init.
+    {
+        int fbw = 0, fbh = 0;
+        glfwGetFramebufferSize(win, &fbw, &fbh);
+        if (fbw > 0 && fbh > 0) {
+            glViewport(0, 0, fbw, fbh);
+            glClearColor(0.067f, 0.094f, 0.157f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glfwSwapBuffers(win);
+            glfwWaitEventsTimeout(0.0);
+        }
+    }
+
     initFonts();
     i18n::init();
     ImageCache::instance().init();
@@ -449,19 +462,11 @@ int main() {
             glfwWaitEventsTimeout(0.25);
         else if (!glfwGetWindowAttrib(win, GLFW_FOCUSED))
             glfwWaitEventsTimeout(1.0 / 30.0);
-        else {
-            // Pace to ~60fps. Pure PollEvents busy-spins when vsync is ignored
-            // (common on Linux/Wayland/WSLg) and pegs a core while the UI looks frozen.
-            const double budget = 1.0 / 60.0;
-            static double lastFrame = 0.0;
-            const double now = glfwGetTime();
-            const double remain = budget - (now - lastFrame);
-            if (remain > 0.0008)
-                glfwWaitEventsTimeout(remain);
-            else
-                glfwPollEvents();
-            lastFrame = glfwGetTime();
-        }
+        else
+            // Always wait — never glfwPollEvents() alone. When vsync is ignored
+            // (common on Linux/Wayland) PollEvents busy-spins at 100% CPU and the
+            // UI looks frozen on the first frame, especially while Discover is heavy.
+            glfwWaitEventsTimeout(1.0 / 60.0);
 
         if (quitting.load() && tray::isHidden())
             tray::showFromTray();

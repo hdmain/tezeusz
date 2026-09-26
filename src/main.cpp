@@ -15,6 +15,7 @@
 #include "imgcache.hpp"
 #include "svgicons.hpp"
 #include "util.hpp"
+#include "ytplayer.hpp"
 #include "stack.hpp"
 #include "core.hpp"
 #include "localdb.hpp"
@@ -476,6 +477,7 @@ int main() {
             core::tick();
             stack::tick();
             subs::tick();
+            ytplayer::tick();
             player::tick();
         }
 

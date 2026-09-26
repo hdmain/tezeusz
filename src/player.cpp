@@ -78,6 +78,7 @@ LibHandle g_mod = nullptr;
 libvlc_instance_t* (*p_libvlc_new)(int, const char* const*) = nullptr;
 void (*p_libvlc_release)(libvlc_instance_t*) = nullptr;
 libvlc_media_t* (*p_libvlc_media_new_path)(libvlc_instance_t*, const char*) = nullptr;
+libvlc_media_t* (*p_libvlc_media_new_location)(libvlc_instance_t*, const char*) = nullptr;
 void (*p_libvlc_media_release)(libvlc_media_t*) = nullptr;
 libvlc_media_player_t* (*p_libvlc_media_player_new_from_media)(libvlc_media_t*) = nullptr;
 void (*p_libvlc_media_player_release)(libvlc_media_player_t*) = nullptr;
@@ -267,6 +268,7 @@ bool loadVlc(std::string* err) {
     if (!g_mod) { if (err) *err = i18n::tr("player.vlc_load_failed"); return false; }
 #define L(n) do { p_##n = (decltype(p_##n))getSym(g_mod, #n); if (!p_##n) { if (err) *err = "brak " #n; closeLib(g_mod); g_mod = nullptr; return false; } } while (0)
     L(libvlc_new); L(libvlc_release); L(libvlc_media_new_path); L(libvlc_media_release);
+    p_libvlc_media_new_location = (decltype(p_libvlc_media_new_location))getSym(g_mod, "libvlc_media_new_location");
     L(libvlc_media_player_new_from_media); L(libvlc_media_player_release);
     L(libvlc_media_player_play); L(libvlc_media_player_stop); L(libvlc_media_player_set_pause);
     L(libvlc_media_player_is_playing); L(libvlc_media_player_set_position); L(libvlc_media_player_get_position);
@@ -575,14 +577,15 @@ void startOpenJob(uint64_t gen, std::string path, int volume) {
 
         std::string err;
         if (!loadVlc(&err)) { fail(err); return; }
+
+        const bool remote = path.rfind("http://", 0) == 0 || path.rfind("https://", 0) == 0;
         std::error_code ec;
-        if (!fs::exists(path, ec)) { fail(i18n::tr("player.file_missing")); return; }
+        if (!remote && !fs::exists(path, ec)) { fail(i18n::tr("player.file_missing")); return; }
 
         std::string pref = util::lower(stack::StackConfig::get().subsPreferredLang);
         if (pref.empty()) pref = "pl";
         std::string subLangArg = "--sub-language=" + pref + ",en";
-        // Sidecar SRTs are normalized to UTF-8 on download; force decoder so ó/ł work.
-        const char* args[] = {
+        const char* argsLocal[] = {
             "--no-video-title-show",
             "--quiet",
             "--network-caching=300",
@@ -592,13 +595,22 @@ void startOpenJob(uint64_t gen, std::string path, int volume) {
             "--subsdec-encoding=UTF-8",
             subLangArg.c_str(),
         };
-        auto* vlc = p_libvlc_new((int)(sizeof(args) / sizeof(args[0])), args);
+        const char* argsRemote[] = {
+            "--no-video-title-show",
+            "--quiet",
+            "--network-caching=3000",
+            "--http-reconnect",
+            "--no-sub-autodetect-file",
+        };
+        const char* const* args = remote ? argsRemote : argsLocal;
+        int nargs = remote ? (int)(sizeof(argsRemote) / sizeof(argsRemote[0]))
+                           : (int)(sizeof(argsLocal) / sizeof(argsLocal[0]));
+        auto* vlc = p_libvlc_new(nargs, args);
         if (!vlc) vlc = p_libvlc_new(0, nullptr);
         if (!vlc) { fail("libvlc_new failed"); return; }
         out.vlc = vlc;
 
-        // Fix legacy Windows-1250 .srt next to the video (already-downloaded Polish subs).
-        {
+        if (!remote) {
             std::error_code ec2;
             fs::path dir = fs::path(path).parent_path();
             if (fs::exists(dir, ec2)) {
@@ -614,7 +626,13 @@ void startOpenJob(uint64_t gen, std::string path, int volume) {
 
         if (gen != g_openGen.load()) { releaseVlcObjects(nullptr, vlc); return; }
 
-        auto* media = p_libvlc_media_new_path(vlc, path.c_str());
+        libvlc_media_t* media = nullptr;
+        if (remote) {
+            if (!p_libvlc_media_new_location) { fail("libvlc_media_new_location missing"); return; }
+            media = p_libvlc_media_new_location(vlc, path.c_str());
+        } else {
+            media = p_libvlc_media_new_path(vlc, path.c_str());
+        }
         if (!media) { fail(i18n::tr("player.file_open_failed")); return; }
         auto* mp = p_libvlc_media_player_new_from_media(media);
         p_libvlc_media_release(media);
@@ -661,7 +679,11 @@ bool open(const std::string& path, const std::string& title) {
     g_st = State{};
     g_st.open = true;
     g_st.loading = true;
-    g_st.title = title.empty() ? fs::path(path).stem().string() : title;
+    g_st.title = title.empty()
+        ? ((path.rfind("http://", 0) == 0 || path.rfind("https://", 0) == 0)
+               ? std::string("Stream")
+               : fs::path(path).stem().string())
+        : title;
     g_st.path = path;
     g_st.volume = 80;
     g_showControls = true;

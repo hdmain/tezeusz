@@ -109,19 +109,89 @@ bool tryInnerTube(const std::string& videoId, std::string* videoUrl, std::string
             if (!j.contains("streamingData") || !j["streamingData"].is_object()) continue;
             auto& sd = j["streamingData"];
 
-            // 1) Muxed progressive (single URL with audio) — best for libVLC.
+            // Prefer adaptive 720p (video + audio). Muxed progressives are often only 360p.
+            constexpr int kTargetH = 720;
+
+            auto pickAudio = [&](std::string* outAud) {
+                if (!outAud || !sd.contains("adaptiveFormats") || !sd["adaptiveFormats"].is_array())
+                    return;
+                int bestAudBr = -1;
+                for (auto& f : sd["adaptiveFormats"]) {
+                    if (!f.is_object() || !isAudioOnly(f)) continue;
+                    std::string url = f.value("url", "");
+                    if (!looksLikeUrl(url)) continue;
+                    int br = f.value("bitrate", f.value("averageBitrate", 0));
+                    std::string mime = util::lower(f.value("mimeType", ""));
+                    // Prefer m4a/mp4a for libVLC + mp4 video
+                    if (br > bestAudBr ||
+                        (br == bestAudBr && mime.find("mp4a") != std::string::npos)) {
+                        bestAudBr = br;
+                        *outAud = url;
+                    }
+                }
+            };
+
+            auto pickAdaptiveVideo = [&](bool require720, std::string* outVid) -> bool {
+                if (!sd.contains("adaptiveFormats") || !sd["adaptiveFormats"].is_array())
+                    return false;
+                std::string bestVid;
+                int bestScore = -1;
+                for (auto& f : sd["adaptiveFormats"]) {
+                    if (!f.is_object() || !isVideo(f)) continue;
+                    std::string url = f.value("url", "");
+                    if (!looksLikeUrl(url)) continue;
+                    int h = heightOf(f);
+                    if (h <= 0) continue;
+                    if (require720 && h != kTargetH) continue;
+                    if (!require720 && h > kTargetH) continue; // never above target unless exact-720 pass
+                    // Exact 720 wins; otherwise highest below 720.
+                    int score = (h == kTargetH) ? 100000 + h : h;
+                    std::string mime = util::lower(f.value("mimeType", ""));
+                    bool avc = mime.find("avc1") != std::string::npos;
+                    if (score > bestScore || (score == bestScore && avc)) {
+                        bestScore = score;
+                        bestVid = url;
+                    }
+                }
+                if (bestVid.empty()) return false;
+                *outVid = bestVid;
+                return true;
+            };
+
+            // 1) Exact 720p adaptive + audio
+            {
+                std::string vid, aud;
+                if (pickAdaptiveVideo(true, &vid)) {
+                    pickAudio(&aud);
+                    *videoUrl = vid;
+                    if (audioUrl) *audioUrl = aud;
+                    return true;
+                }
+            }
+            // 2) Best adaptive ≤720p + audio
+            {
+                std::string vid, aud;
+                if (pickAdaptiveVideo(false, &vid)) {
+                    pickAudio(&aud);
+                    *videoUrl = vid;
+                    if (audioUrl) *audioUrl = aud;
+                    return true;
+                }
+            }
+            // 3) Muxed progressive (often 360p only) — last resort single URL
             if (sd.contains("formats") && sd["formats"].is_array()) {
                 std::string best;
-                int bestH = -1;
+                int bestScore = -1;
                 for (auto& f : sd["formats"]) {
                     if (!f.is_object()) continue;
                     std::string url = f.value("url", "");
                     if (!looksLikeUrl(url)) continue;
                     int h = heightOf(f);
                     if (h <= 0) h = 360;
-                    int score = h <= 720 ? h : (720 - (h - 720));
-                    if (score > bestH) {
-                        bestH = score;
+                    int score = (h == kTargetH) ? 100000 + h : (h <= kTargetH ? h : -1);
+                    if (score < 0) continue;
+                    if (score > bestScore) {
+                        bestScore = score;
                         best = url;
                     }
                 }
@@ -131,42 +201,7 @@ bool tryInnerTube(const std::string& videoId, std::string* videoUrl, std::string
                 }
             }
 
-            // 2) Adaptive: separate video + audio (both with clear urls).
-            if (sd.contains("adaptiveFormats") && sd["adaptiveFormats"].is_array()) {
-                std::string bestVid, bestAud;
-                int bestH = -1;
-                int bestAudBr = -1;
-                for (auto& f : sd["adaptiveFormats"]) {
-                    if (!f.is_object()) continue;
-                    std::string url = f.value("url", "");
-                    if (!looksLikeUrl(url)) continue;
-                    if (isAudioOnly(f)) {
-                        int br = f.value("bitrate", f.value("averageBitrate", 0));
-                        if (br > bestAudBr) {
-                            bestAudBr = br;
-                            bestAud = url;
-                        }
-                    } else if (isVideo(f)) {
-                        int h = heightOf(f);
-                        if (h <= 0) continue;
-                        int score = h <= 720 ? h : (720 - (h - 720));
-                        // Prefer mp4/avc when scores tie
-                        std::string mime = util::lower(f.value("mimeType", ""));
-                        if (score > bestH ||
-                            (score == bestH && mime.find("avc1") != std::string::npos)) {
-                            bestH = score;
-                            bestVid = url;
-                        }
-                    }
-                }
-                if (!bestVid.empty()) {
-                    *videoUrl = bestVid;
-                    if (audioUrl && !bestAud.empty()) *audioUrl = bestAud;
-                    return true;
-                }
-            }
-
-            // 3) HLS manifest if present
+            // 4) HLS manifest if present
             std::string hls = sd.value("hlsManifestUrl", "");
             if (looksLikeUrl(hls)) {
                 *videoUrl = hls;

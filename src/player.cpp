@@ -102,6 +102,7 @@ int (*p_libvlc_audio_set_track)(libvlc_media_player_t*, int) = nullptr;
 void (*p_libvlc_track_description_list_release)(libvlc_track_description_t*) = nullptr;
 libvlc_event_manager_t* (*p_libvlc_media_player_event_manager)(libvlc_media_player_t*) = nullptr;
 int (*p_libvlc_event_attach)(libvlc_event_manager_t*, libvlc_event_e, libvlc_callback_t, void*) = nullptr;
+int (*p_libvlc_event_detach)(libvlc_event_manager_t*, libvlc_event_e, libvlc_callback_t, void*) = nullptr;
 libvlc_media_t* (*p_libvlc_media_player_get_media)(libvlc_media_player_t*) = nullptr;
 float (*p_libvlc_media_player_get_rate)(libvlc_media_player_t*) = nullptr;
 float (*p_libvlc_media_player_get_fps)(libvlc_media_player_t*) = nullptr;
@@ -137,6 +138,14 @@ std::atomic<bool> g_tracksDirty{true};
 std::atomic<bool> g_cbEnabled{false}; // video/event callbacks must no-op when false
 std::atomic<uint64_t> g_openGen{0};
 std::atomic<uint64_t> g_framesDisplayed{0};
+// Event bits from VLC thread — applied on UI thread (avoid touching g_st from callbacks).
+enum : unsigned {
+    EvPlaying = 1u << 0,
+    EvPaused = 1u << 1,
+    EvStopped = 1u << 2,
+    EvError = 1u << 3,
+};
+std::atomic<unsigned> g_vlcEvents{0};
 libvlc_instance_t* g_vlc = nullptr;
 libvlc_media_player_t* g_mp = nullptr;
 GLFWwindow* g_host = nullptr;
@@ -267,6 +276,7 @@ bool loadVlc(std::string* err) {
     L(libvlc_video_get_spu); L(libvlc_video_set_spu); L(libvlc_video_get_spu_description);
     L(libvlc_audio_get_track_description); L(libvlc_audio_get_track); L(libvlc_audio_set_track);
     L(libvlc_track_description_list_release); L(libvlc_media_player_event_manager); L(libvlc_event_attach);
+    p_libvlc_event_detach = (decltype(p_libvlc_event_detach))getSym(g_mod, "libvlc_event_detach");
 #undef L
     // Optional symbols for Stats for nerds
     p_libvlc_media_player_get_media = (decltype(p_libvlc_media_player_get_media))getSym(g_mod, "libvlc_media_player_get_media");
@@ -277,13 +287,34 @@ bool loadVlc(std::string* err) {
     return true;
 }
 
+void onEvent(const libvlc_event_t* ev, void*);
+
 void releaseVlcObjects(libvlc_media_player_t* mp, libvlc_instance_t* vlc) {
-    // stop is idempotent; may already have been stopped on the UI thread
-    if (mp && p_libvlc_media_player_stop) {
-        try { p_libvlc_media_player_stop(mp); } catch (...) {}
-    }
-    if (mp && p_libvlc_media_player_release) {
-        try { p_libvlc_media_player_release(mp); } catch (...) {}
+    if (mp) {
+        // Stop first while our callbacks still exist but are no-ops (g_cbEnabled=false).
+        // Nulling callbacks before stop can crash inside libVLC mid-decode.
+        if (p_libvlc_media_player_stop) {
+            try { p_libvlc_media_player_stop(mp); } catch (...) {}
+        }
+        if (p_libvlc_media_player_event_manager && p_libvlc_event_detach) {
+            try {
+                auto* em = p_libvlc_media_player_event_manager(mp);
+                if (em) {
+                    p_libvlc_event_detach(em, libvlc_MediaPlayerPlaying, onEvent, nullptr);
+                    p_libvlc_event_detach(em, libvlc_MediaPlayerPaused, onEvent, nullptr);
+                    p_libvlc_event_detach(em, libvlc_MediaPlayerStopped, onEvent, nullptr);
+                    p_libvlc_event_detach(em, libvlc_MediaPlayerEndReached, onEvent, nullptr);
+                    p_libvlc_event_detach(em, libvlc_MediaPlayerEncounteredError, onEvent, nullptr);
+                }
+            } catch (...) {}
+        }
+        if (p_libvlc_video_set_callbacks)
+            try { p_libvlc_video_set_callbacks(mp, nullptr, nullptr, nullptr, nullptr); } catch (...) {}
+        if (p_libvlc_video_set_format_callbacks)
+            try { p_libvlc_video_set_format_callbacks(mp, nullptr, nullptr); } catch (...) {}
+        if (p_libvlc_media_player_release) {
+            try { p_libvlc_media_player_release(mp); } catch (...) {}
+        }
     }
     if (vlc && p_libvlc_release) {
         try { p_libvlc_release(vlc); } catch (...) {}
@@ -293,20 +324,24 @@ void releaseVlcObjects(libvlc_media_player_t* mp, libvlc_instance_t* vlc) {
 // Valid plane pointer even when callbacks are disabled (VLC must not get nullptr).
 alignas(16) static uint8_t g_dummyPlane[64];
 
+// Hold g_frameMu from lock→unlock so close() cannot free the buffer while VLC writes.
 void* vlcLock(void*, void** planes) {
     if (!g_cbEnabled.load(std::memory_order_acquire)) {
         *planes = g_dummyPlane;
         return nullptr;
     }
-    std::lock_guard<std::mutex> lk(g_frameMu);
+    g_frameMu.lock();
     if (!g_cbEnabled.load(std::memory_order_relaxed) || g_pixels.empty()) {
+        g_frameMu.unlock();
         *planes = g_dummyPlane;
         return nullptr;
     }
     *planes = g_pixels.data();
-    return nullptr;
+    return (void*)1; // non-null ⇒ unlock must release the mutex
 }
-void vlcUnlock(void*, void*, void* const*) {}
+void vlcUnlock(void*, void* id, void* const*) {
+    if (id) g_frameMu.unlock();
+}
 void vlcDisplay(void*, void*) {
     if (!g_cbEnabled.load(std::memory_order_acquire)) return;
     std::lock_guard<std::mutex> lk(g_frameMu);
@@ -346,12 +381,10 @@ unsigned vlcFormat(void**, char* chroma, unsigned* width, unsigned* height, unsi
     size_t need = (size_t)g_pixW * g_pixH * 4u;
     g_pixels.assign(need, 0);
     g_pixelsUpload.assign(need, 0);
-    g_st.videoW = (int)g_pixW;
-    g_st.videoH = (int)g_pixH;
+    // Do not touch g_st here — VLC thread; uploadFrame copies size on UI thread.
     return 1;
 }
 void vlcCleanup(void*) {
-    // Only wipe buffers while playback owns them — close() clears under the same lock.
     if (!g_cbEnabled.load(std::memory_order_acquire)) return;
     std::lock_guard<std::mutex> lk(g_frameMu);
     if (!g_cbEnabled.load(std::memory_order_relaxed)) return;
@@ -360,11 +393,16 @@ void vlcCleanup(void*) {
     g_pixW = g_pixH = 0;
 }
 void onEvent(const libvlc_event_t* ev, void*) {
+    // Never touch g_st (strings) from the VLC thread — only atomics.
     if (!ev || !g_cbEnabled.load(std::memory_order_acquire)) return;
-    if (ev->type == libvlc_MediaPlayerPlaying) { g_st.playing = true; g_st.paused = false; g_st.ready = true; g_st.loading = false; g_tracksDirty = true; }
-    if (ev->type == libvlc_MediaPlayerPaused) g_st.paused = true;
-    if (ev->type == libvlc_MediaPlayerStopped || ev->type == libvlc_MediaPlayerEndReached) { g_st.playing = false; g_st.paused = true; }
-    if (ev->type == libvlc_MediaPlayerEncounteredError) { g_st.failed = true; g_st.loading = false; g_st.error = i18n::tr("player.error"); }
+    if (ev->type == libvlc_MediaPlayerPlaying)
+        g_vlcEvents.fetch_or(EvPlaying, std::memory_order_relaxed);
+    else if (ev->type == libvlc_MediaPlayerPaused)
+        g_vlcEvents.fetch_or(EvPaused, std::memory_order_relaxed);
+    else if (ev->type == libvlc_MediaPlayerStopped || ev->type == libvlc_MediaPlayerEndReached)
+        g_vlcEvents.fetch_or(EvStopped, std::memory_order_relaxed);
+    else if (ev->type == libvlc_MediaPlayerEncounteredError)
+        g_vlcEvents.fetch_or(EvError, std::memory_order_relaxed);
 }
 void refreshTracks() {
     if (!g_mp) return;
@@ -508,6 +546,7 @@ void applyPendingOpen() {
     }
     g_vlc = p.vlc;
     g_mp = p.mp;
+    g_vlcEvents.store(0, std::memory_order_relaxed);
     g_cbEnabled.store(true, std::memory_order_release);
     g_st.loading = false;
     g_st.playing = true;
@@ -665,7 +704,6 @@ bool open(const std::string& path, const std::string& title) {
 
 void close() {
     platform::setIdleInhibit(false);
-    // Save progress before tearing down (also saved continuously in tick).
     if (g_st.open && !g_st.path.empty() && g_st.durationMs > 0)
         persistProgress(true);
 
@@ -673,6 +711,7 @@ void close() {
     g_openGen.fetch_add(1);
     g_cbEnabled.store(false, std::memory_order_release);
     g_frameReady.store(false);
+    g_vlcEvents.store(0, std::memory_order_relaxed);
 
     if (g_host) glfwSetInputMode(g_host, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     g_cursorHidden = false;
@@ -684,11 +723,11 @@ void close() {
     g_mp = nullptr;
     g_vlc = nullptr;
 
-    // Stop on the UI thread so decoder callbacks finish before we free frame buffers.
-    if (mp && p_libvlc_media_player_stop) {
-        try { p_libvlc_media_player_stop(mp); } catch (...) {}
-    }
+    // Detach callbacks, stop, release — releaseVlcObjects waits for the decoder.
+    if (mp || vlc)
+        releaseVlcObjects(mp, vlc);
 
+    // Decoder is gone: safe to free frame buffers.
     {
         std::lock_guard<std::mutex> lk(g_frameMu);
         g_pixels.clear();
@@ -710,17 +749,10 @@ void close() {
         if (g_pending.ready) {
             auto stale = g_pending;
             g_pending = PendingOpen{};
-            // Drop stale open on this thread — no decoder left running after stop above
-            // for the active player; pending one was never handed to UI.
             if (stale.mp || stale.vlc)
                 releaseVlcObjects(stale.mp, stale.vlc);
         }
     }
-
-    // Release synchronously after stop. Async release raced with late VLC callbacks
-    // and caused intermittent crashes when leaving a movie.
-    if (mp || vlc)
-        releaseVlcObjects(mp, vlc);
 
     if (wasFs && g_host) {
         glfwSetWindowMonitor(g_host, nullptr, g_prevX, g_prevY,
@@ -845,6 +877,29 @@ void tick() {
     }
     applyPendingOpen();
     if (!g_st.open) return; // closed while applying / discarded
+
+    // Apply VLC events on the UI thread (callbacks only set atomics).
+    if (const unsigned ev = g_vlcEvents.exchange(0, std::memory_order_relaxed)) {
+        if (ev & EvPlaying) {
+            g_st.playing = true;
+            g_st.paused = false;
+            g_st.ready = true;
+            g_st.loading = false;
+            g_tracksDirty = true;
+        }
+        if (ev & EvPaused)
+            g_st.paused = true;
+        if (ev & EvStopped) {
+            g_st.playing = false;
+            g_st.paused = true;
+        }
+        if (ev & EvError) {
+            g_st.failed = true;
+            g_st.loading = false;
+            g_st.error = i18n::tr("player.error");
+        }
+    }
+
     uploadFrame();
     if (g_mp && !g_st.loading && g_cbEnabled.load(std::memory_order_acquire)) {
         g_st.position = p_libvlc_media_player_get_position(g_mp);

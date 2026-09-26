@@ -332,6 +332,7 @@ bool tryTheSubDb(const Job& job, const std::string& lang) {
     std::string content = gunzip(d.body);
     if (content.empty()) content = d.body;
     if (!looksLikeSrt(content)) return false;
+    content = util::toUtf8(content);
     std::string outPath = sidecarPath(job.videoPath, "en");
     if (!util::writeFile(outPath, content)) return false;
     setStatus(std::string(i18n::tr("subs.saved")) + fs::path(outPath).filename().string() + " (TheSubDB)");
@@ -353,6 +354,8 @@ bool tryNapiProjekt(const Job& job, const std::string& lang) {
     std::string content = gunzip(r.body);
     if (content.empty()) content = r.body;
     if (!looksLikeSrt(content)) return false;
+    // NapiProjekt ships Windows-1250 — normalize so VLC shows ó/ł/ą correctly.
+    content = util::toUtf8(content);
     std::string outPath = sidecarPath(job.videoPath, "pl");
     if (!util::writeFile(outPath, content)) return false;
     setStatus(std::string(i18n::tr("subs.saved")) + fs::path(outPath).filename().string() + " (NapiProjekt)");
@@ -967,6 +970,7 @@ bool downloadOne(const Job& job, const std::string& lang, const Snap& cfg) {
         setStatus(i18n::tr("subs.not_srt"));
         return false;
     }
+    content = util::toUtf8(content);
 
     std::string outPath = sidecarPath(video, lang);
     if (!util::writeFile(outPath, content)) {

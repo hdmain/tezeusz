@@ -542,6 +542,7 @@ void startOpenJob(uint64_t gen, std::string path, int volume) {
         std::string pref = util::lower(stack::StackConfig::get().subsPreferredLang);
         if (pref.empty()) pref = "pl";
         std::string subLangArg = "--sub-language=" + pref + ",en";
+        // Sidecar SRTs are normalized to UTF-8 on download; force decoder so ó/ł work.
         const char* args[] = {
             "--no-video-title-show",
             "--quiet",
@@ -549,12 +550,28 @@ void startOpenJob(uint64_t gen, std::string path, int volume) {
             "--file-caching=300",
             "--sub-autodetect-file",
             "--sub-autodetect-fuzzy=1",
+            "--subsdec-encoding=UTF-8",
             subLangArg.c_str(),
         };
-        auto* vlc = p_libvlc_new(7, args);
+        auto* vlc = p_libvlc_new((int)(sizeof(args) / sizeof(args[0])), args);
         if (!vlc) vlc = p_libvlc_new(0, nullptr);
         if (!vlc) { fail("libvlc_new failed"); return; }
         out.vlc = vlc;
+
+        // Fix legacy Windows-1250 .srt next to the video (already-downloaded Polish subs).
+        {
+            std::error_code ec2;
+            fs::path dir = fs::path(path).parent_path();
+            if (fs::exists(dir, ec2)) {
+                for (auto& ent : fs::directory_iterator(dir, ec2)) {
+                    if (ec2) { ec2.clear(); continue; }
+                    if (!ent.is_regular_file(ec2)) continue;
+                    auto ext = util::lower(ent.path().extension().string());
+                    if (ext == ".srt" || ext == ".vtt" || ext == ".sub")
+                        util::ensureUtf8File(ent.path().string());
+                }
+            }
+        }
 
         if (gen != g_openGen.load()) { releaseVlcObjects(nullptr, vlc); return; }
 

@@ -44,6 +44,13 @@ std::string lower(std::string s);
 std::string appDataPath(const std::string& file);
 std::string readFile(const std::string& path);
 bool writeFile(const std::string& path, const std::string& data);
+
+// Normalize text to UTF-8 (NapiProjekt / legacy SRT are often Windows-1250).
+// Returns true if the string was converted (or already valid UTF-8).
+bool isValidUtf8(const std::string& s);
+std::string toUtf8(const std::string& bytes);
+// Rewrite path in place when it is not UTF-8. Returns true if changed.
+bool ensureUtf8File(const std::string& path);
 std::string exeDir();
 
 // Shared data root (fonts, icons, images). Resolves installed /usr/share/seerr

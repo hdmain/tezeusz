@@ -477,7 +477,6 @@ int main() {
             core::tick();
             stack::tick();
             subs::tick();
-            ytplayer::tick();
             player::tick();
         }
 

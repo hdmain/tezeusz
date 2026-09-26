@@ -2,7 +2,6 @@
 #include "widgets.hpp"
 #include "imgcache.hpp"
 #include "util.hpp"
-#include "ytplayer.hpp"
 #include "stack.hpp"
 #include "localdb.hpp"
 #include "platform.hpp"
@@ -817,7 +816,7 @@ void renderDetails(MediaType type, int id) {
             if (w::button(dl, "##dtr", ImVec2(bx, btnY), ImVec2(bx + 130, btnY + 38), i18n::tr("details.trailer"),
                           theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), theme::c("#4b5563"),
                           TXT, G.m18, 15))
-                ytplayer::open(d.bestTrailer()->key, appMainHwnd());
+                platform::openUrl("https://www.youtube.com/watch?v=" + d.bestTrailer()->key);
             bx += 142;
         }
         if (!d.imdbId.empty()) {

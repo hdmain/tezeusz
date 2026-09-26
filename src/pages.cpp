@@ -12,6 +12,7 @@
 #include "subs.hpp"
 #include "i18n.hpp"
 #include "updater.hpp"
+#include "core.hpp"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <algorithm>
@@ -24,6 +25,8 @@
 #include <filesystem>
 #include <future>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <set>
 #include <vector>
 
@@ -1323,6 +1326,14 @@ void renderLibrary() {
     static std::string deleteErr;
     static std::string archiveErr;
     static std::string archiveOkPath;
+    struct ArchiveJob {
+        std::mutex mu;
+        bool done = false;
+        std::string zip;
+        std::string err;
+        std::string itemId;
+    };
+    static std::shared_ptr<ArchiveJob> archiveJob;
 
     double now = ImGui::GetTime();
     if (items.empty() || now - lastScan > 3.0) {
@@ -1488,7 +1499,7 @@ void renderLibrary() {
             if (ImGui::MenuItem(i18n::tr("common.properties")))
                 openProps = true;
             ImGui::Separator();
-            if (ImGui::MenuItem(i18n::tr("library.archive"))) {
+            if (ImGui::MenuItem(i18n::tr("library.archive"), nullptr, false, !archiveJob)) {
                 archiveErr.clear();
                 archiveOkPath.clear();
                 openArchive = true;
@@ -1648,11 +1659,29 @@ void renderLibrary() {
         ImGui::EndPopup();
     }
 
-    // ---- Archive ----
+    // ---- Archive (ZIP runs on a worker thread — UI stays responsive) ----
     if (openArchive) {
         ImGui::OpenPopup("##lib_archive");
         openArchive = false;
     }
+    if (archiveJob) {
+        std::lock_guard<std::mutex> lk(archiveJob->mu);
+        if (archiveJob->done) {
+            if (!archiveJob->zip.empty()) {
+                archiveOkPath = archiveJob->zip;
+                archiveErr = archiveJob->err;
+                items = library::scan();
+                lastScan = ImGui::GetTime();
+                posterPaths.erase(archiveJob->itemId);
+                posterReqs.erase(archiveJob->itemId);
+            } else {
+                archiveErr = archiveJob->err.empty() ? i18n::tr("library.archive_failed")
+                                                     : archiveJob->err;
+            }
+            archiveJob.reset();
+        }
+    }
+    const bool archiveBusy = (bool)archiveJob;
     if (ImGui::BeginPopupModal("##lib_archive", nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.65f, 0.78f, 0.98f, 1));
@@ -1664,6 +1693,12 @@ void renderLibrary() {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.61f, 0.64f, 0.69f, 1));
         ImGui::TextWrapped("%s", i18n::tr("library.archive_hint"));
         ImGui::PopStyleColor();
+        if (archiveBusy) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.75f, 0.82f, 0.95f, 1), "%s",
+                               i18n::tr("library.archive_working"));
+            ImGui::TextDisabled("%s", i18n::tr("library.archive_working_hint"));
+        }
         if (!archiveOkPath.empty()) {
             ImGui::Spacing();
             ImGui::TextColored(ImVec4(0.4f, 0.85f, 0.55f, 1), "%s",
@@ -1677,20 +1712,26 @@ void renderLibrary() {
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
-        if (archiveOkPath.empty()) {
+        if (archiveBusy) {
+            ImGui::BeginDisabled();
+            ImGui::Button(i18n::tr("library.archive_working"), ImVec2(180, 32));
+            ImGui::EndDisabled();
+        } else if (archiveOkPath.empty()) {
             if (ImGui::Button(i18n::tr("library.archive"), ImVec2(140, 32))) {
-                std::string err;
-                std::string zip = library::archiveItem(ctxItem, &err);
-                if (!zip.empty()) {
-                    archiveOkPath = zip;
-                    archiveErr = err; // may warn if originals linger
-                    items = library::scan();
-                    lastScan = ImGui::GetTime();
-                    posterPaths.erase(ctxItem.id);
-                    posterReqs.erase(ctxItem.id);
-                } else {
-                    archiveErr = err.empty() ? i18n::tr("library.archive_failed") : err;
-                }
+                archiveErr.clear();
+                archiveOkPath.clear();
+                auto job = std::make_shared<ArchiveJob>();
+                job->itemId = ctxItem.id;
+                archiveJob = job;
+                library::Item itemCopy = ctxItem;
+                core::enqueue([itemCopy, job]() {
+                    std::string err;
+                    std::string zip = library::archiveItem(itemCopy, &err);
+                    std::lock_guard<std::mutex> lk(job->mu);
+                    job->zip = std::move(zip);
+                    job->err = std::move(err);
+                    job->done = true;
+                });
             }
             ImGui::SameLine();
             if (ImGui::Button(i18n::tr("common.cancel"), ImVec2(120, 32)))

@@ -188,9 +188,11 @@ void seedEnglish() {
     g_en["library.archive"] = "Archive";
     g_en["library.archive_title"] = "Archive to ZIP";
     g_en["library.archive_confirm"] =
-        "Compress “%s” and remove the original from the library?";
+        "Pack “%s” into a ZIP and remove the original from the library?";
     g_en["library.archive_hint"] =
-        "Creates a ZIP under Archives/ next to your movies/TV folder, then deletes the original files.";
+        "Creates a ZIP under Archives/ (video is stored as-is, not re-compressed), then deletes the originals.";
+    g_en["library.archive_working"] = "Archiving…";
+    g_en["library.archive_working_hint"] = "You can keep using the app — this runs in the background.";
     g_en["library.archive_done"] = "Archived to:";
     g_en["library.archive_failed"] = "Archive failed";
     g_en["library.size"] = "Size";

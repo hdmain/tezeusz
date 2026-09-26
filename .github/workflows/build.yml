@@ -268,10 +268,11 @@ jobs:
           ### Downloads
           - **Windows portable** — unzip and run \`seerr.exe\` (auto-updates in the background)
           - **Linux portable** — unzip and run \`./seerr\` (auto-updates when folder is writable)
-          - **Linux .deb** — \`sudo apt install ./seerr_*.deb\` (system install; auto-update needs a writable copy)
+          - **Linux .deb** — \`sudo apt install ./seerr_*.deb\` (system install; auto-updates via pkexec permission prompt)
           - **Linux binary** — raw ELF (needs system GLFW/CURL/libtorrent)
 
           Updates download **only changed files** (SHA-256) from the \`continuous\` channel and restart automatically.
+          On system installs Seerr asks for admin permission before writing to \`/usr\`.
           EOF
           )"
           if gh release view continuous >/dev/null 2>&1; then

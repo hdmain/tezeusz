@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -27,6 +28,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <spawn.h>
 #include <fcntl.h>
 extern char** environ;
@@ -59,7 +61,10 @@ std::atomic<bool> g_checkRequested{false};
 std::atomic<bool> g_workerBusy{false};
 double g_readySince = 0;
 std::string g_stageDir;
-std::string g_installDir;
+std::string g_installDir;   // directory containing the seerr binary
+std::string g_shareDir;     // assets root (may equal installDir for portable)
+bool g_systemLayout = false; // binary and assets live in different dirs (.deb)
+bool g_needsElevation = false;
 
 std::string currentVersion() { return SEERR_VERSION; }
 
@@ -100,6 +105,41 @@ bool dirWritable(const std::string& dir) {
     }
     fs::remove(probe, ec);
     return true;
+}
+
+// Resolve where a manifest-relative path lives on disk.
+std::string localPathFor(const std::string& rel) {
+    if (g_systemLayout) {
+        if (rel == "seerr"
+#ifdef _WIN32
+            || rel == "seerr.exe"
+#endif
+        )
+            return (fs::path(g_installDir) / rel).string();
+        return (fs::path(g_shareDir) / rel).string();
+    }
+    return (fs::path(g_installDir) / rel).string();
+}
+
+#ifndef _WIN32
+bool canElevate() {
+    return access("/usr/bin/pkexec", X_OK) == 0 || access("/usr/bin/sudo", X_OK) == 0;
+}
+#endif
+
+bool installWritable() {
+    if (!dirWritable(g_installDir)) return false;
+    if (g_systemLayout && !dirWritable(g_shareDir)) return false;
+    return true;
+}
+
+bool updatesSupported() {
+#ifdef _WIN32
+    return installWritable();
+#else
+    if (installWritable()) return true;
+    return canElevate();
+#endif
 }
 
 std::string normalizeRel(std::string p) {
@@ -234,25 +274,95 @@ bool writeApplyScript(const std::string& path) {
     return util::writeFile(path, body);
 }
 #else
-bool spawnApplyScript(const std::string& script, const std::string& pid,
-                      const std::string& stage, const std::string& dest) {
-    std::string bash = "/bin/bash";
-    std::string scriptCopy = script, pidCopy = pid, stageCopy = stage, destCopy = dest;
-    char* argv[] = {
-        bash.data(), scriptCopy.data(), pidCopy.data(), stageCopy.data(), destCopy.data(), nullptr
-    };
+bool spawnArgs(char* const argv[]) {
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
     posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
     posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
     posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
     pid_t child = 0;
-    int rc = posix_spawn(&child, bash.c_str(), &actions, nullptr, argv, environ);
+    int rc = posix_spawn(&child, argv[0], &actions, nullptr, argv, environ);
     posix_spawn_file_actions_destroy(&actions);
     return rc == 0;
 }
 
+bool spawnAndWait(char* const argv[], int* exitCode) {
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    // Keep stdio so pkexec can talk to the session / show a dialog.
+    pid_t child = 0;
+    int rc = posix_spawn(&child, argv[0], &actions, nullptr, argv, environ);
+    posix_spawn_file_actions_destroy(&actions);
+    if (rc != 0) return false;
+    int status = 0;
+    if (waitpid(child, &status, 0) < 0) return false;
+    if (exitCode) *exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+bool writeInstallOnlyScript(const std::string& path) {
+    // Runs as root via pkexec/sudo. Copies staged files into system paths.
+    const char* body =
+        "#!/bin/bash\n"
+        "set -e\n"
+        "STAGE=\"$1\"; BINDIR=\"$2\"; SHARE=\"$3\"\n"
+        "LOG=\"${TMPDIR:-/tmp}/seerr-update-install.log\"\n"
+        "echo \"install start $(date)\" > \"$LOG\"\n"
+        "echo \"STAGE=$STAGE BINDIR=$BINDIR SHARE=$SHARE\" >> \"$LOG\"\n"
+        "if [ ! -d \"$STAGE\" ]; then echo missing STAGE >> \"$LOG\"; exit 1; fi\n"
+        "if [ -z \"$SHARE\" ] || [ \"$SHARE\" = \"$BINDIR\" ]; then\n"
+        "  cp -a \"$STAGE\"/. \"$BINDIR\"/\n"
+        "  chmod +x \"$BINDIR/seerr\" 2>/dev/null || true\n"
+        "else\n"
+        "  if [ -f \"$STAGE/seerr\" ]; then\n"
+        "    install -D -m 755 \"$STAGE/seerr\" \"$BINDIR/seerr\"\n"
+        "  fi\n"
+        "  mkdir -p \"$SHARE\"\n"
+        "  for d in fonts icons locales; do\n"
+        "    if [ -d \"$STAGE/$d\" ]; then\n"
+        "      mkdir -p \"$SHARE/$d\"\n"
+        "      cp -a \"$STAGE/$d\"/. \"$SHARE/$d\"/\n"
+        "    fi\n"
+        "  done\n"
+        "  for f in \"$STAGE\"/*; do\n"
+        "    [ -e \"$f\" ] || continue\n"
+        "    base=$(basename \"$f\")\n"
+        "    case \"$base\" in\n"
+        "      seerr|.seerr-update-version|fonts|icons|locales) continue ;;\n"
+        "    esac\n"
+        "    if [ -f \"$f\" ]; then cp -f \"$f\" \"$SHARE\"/\n"
+        "    elif [ -d \"$f\" ]; then mkdir -p \"$SHARE/$base\"; cp -a \"$f\"/. \"$SHARE/$base\"/\n"
+        "    fi\n"
+        "  done\n"
+        "fi\n"
+        "if [ ! -x \"$BINDIR/seerr\" ]; then echo missing seerr >> \"$LOG\"; exit 1; fi\n"
+        "echo ok >> \"$LOG\"\n"
+        "exit 0\n";
+    if (!util::writeFile(path, body)) return false;
+    chmod(path.c_str(), 0755);
+    return true;
+}
+
+bool writeRestartScript(const std::string& path) {
+    const char* body =
+        "#!/bin/bash\n"
+        "PID=\"$1\"; BINDIR=\"$2\"; STAGE=\"$3\"\n"
+        "LOG=\"${TMPDIR:-/tmp}/seerr-update-apply.log\"\n"
+        "echo \"restart wait $(date) PID=$PID\" > \"$LOG\"\n"
+        "while kill -0 \"$PID\" 2>/dev/null; do sleep 0.4; done\n"
+        "sleep 0.6\n"
+        "rm -rf \"$STAGE\" 2>/dev/null || true\n"
+        "echo ok, restarting >> \"$LOG\"\n"
+        "nohup \"$BINDIR/seerr\" >/dev/null 2>&1 &\n"
+        "rm -f \"$0\"\n"
+        "exit 0\n";
+    if (!util::writeFile(path, body)) return false;
+    chmod(path.c_str(), 0755);
+    return true;
+}
+
 bool writeApplyScript(const std::string& path) {
+    // Portable / writable install: wait for exit, copy, restart (no elevation).
     const char* body =
         "#!/bin/bash\n"
         "PID=\"$1\"; STAGE=\"$2\"; DEST=\"$3\"\n"
@@ -273,24 +383,102 @@ bool writeApplyScript(const std::string& path) {
     chmod(path.c_str(), 0755);
     return true;
 }
+
+bool spawnApplyScript(const std::string& script, const std::string& pid,
+                      const std::string& stage, const std::string& dest) {
+    std::string bash = "/bin/bash";
+    std::string scriptCopy = script, pidCopy = pid, stageCopy = stage, destCopy = dest;
+    char* argv[] = {
+        bash.data(), scriptCopy.data(), pidCopy.data(), stageCopy.data(), destCopy.data(), nullptr
+    };
+    return spawnArgs(argv);
+}
+
+bool spawnRestartScript(const std::string& script, const std::string& pid,
+                        const std::string& bindir, const std::string& stage) {
+    std::string bash = "/bin/bash";
+    std::string scriptCopy = script, pidCopy = pid, binCopy = bindir, stageCopy = stage;
+    char* argv[] = {
+        bash.data(), scriptCopy.data(), pidCopy.data(), binCopy.data(), stageCopy.data(), nullptr
+    };
+    return spawnArgs(argv);
+}
+
+bool runElevatedInstall(const std::string& stage, const std::string& bindir,
+                        const std::string& share) {
+    std::string script = (fs::path(util::appDataPath("update")) / "install-update.sh").string();
+    fs::create_directories(fs::path(script).parent_path());
+    if (!writeInstallOnlyScript(script)) return false;
+
+    std::string stageCopy = stage, binCopy = bindir, shareCopy = share;
+    std::string bash = "/bin/bash";
+    int exitCode = -1;
+
+    if (access("/usr/bin/pkexec", X_OK) == 0) {
+        std::string pkexec = "/usr/bin/pkexec";
+        char* argv[] = {
+            pkexec.data(), bash.data(), script.data(),
+            stageCopy.data(), binCopy.data(), shareCopy.data(), nullptr
+        };
+        // Do not fall through to sudo on cancel — polkit already prompted.
+        return spawnAndWait(argv, &exitCode);
+    }
+    if (access("/usr/bin/sudo", X_OK) == 0) {
+        std::string sudo = "/usr/bin/sudo";
+        char* argv[] = {
+            sudo.data(), bash.data(), script.data(),
+            stageCopy.data(), binCopy.data(), shareCopy.data(), nullptr
+        };
+        return spawnAndWait(argv, &exitCode);
+    }
+    return false;
+}
 #endif
 
 void beginApply() {
     if (g_stageDir.empty() || g_installDir.empty()) return;
-    setStatus(State::Applying, i18n::tr("update.applying"));
 #ifdef _WIN32
+    setStatus(State::Applying, i18n::tr("update.applying"));
     std::string script = (fs::path(util::appDataPath("update")) / "apply-update.bat").string();
     std::string pid = std::to_string(GetCurrentProcessId());
-#else
-    std::string script = (fs::path(util::appDataPath("update")) / "apply-update.sh").string();
-    std::string pid = std::to_string(getpid());
-#endif
     fs::create_directories(fs::path(script).parent_path());
     if (!writeApplyScript(script) || !spawnApplyScript(script, pid, g_stageDir, g_installDir)) {
         setStatus(State::Error, i18n::tr("update.apply_failed"));
         return;
     }
     g_wantQuit.store(true);
+#else
+    std::string pid = std::to_string(getpid());
+    std::string updateDir = util::appDataPath("update");
+    fs::create_directories(updateDir);
+
+    if (g_needsElevation) {
+        // Ask for permission while the app is still open (pkexec/polkit dialog).
+        setStatus(State::Applying, i18n::tr("update.requesting_permission"));
+        std::string share = g_systemLayout ? g_shareDir : g_installDir;
+        if (!runElevatedInstall(g_stageDir, g_installDir, share)) {
+            setStatus(State::Error, i18n::tr("update.permission_denied"));
+            return;
+        }
+        setStatus(State::Applying, i18n::tr("update.applying"));
+        std::string restart = (fs::path(updateDir) / "restart-after-update.sh").string();
+        if (!writeRestartScript(restart) ||
+            !spawnRestartScript(restart, pid, g_installDir, g_stageDir)) {
+            setStatus(State::Error, i18n::tr("update.apply_failed"));
+            return;
+        }
+        g_wantQuit.store(true);
+        return;
+    }
+
+    setStatus(State::Applying, i18n::tr("update.applying"));
+    std::string script = (fs::path(updateDir) / "apply-update.sh").string();
+    if (!writeApplyScript(script) || !spawnApplyScript(script, pid, g_stageDir, g_installDir)) {
+        setStatus(State::Error, i18n::tr("update.apply_failed"));
+        return;
+    }
+    g_wantQuit.store(true);
+#endif
 }
 
 void workerCheckAndDownload() {
@@ -324,10 +512,10 @@ void workerCheckAndDownload() {
         return;
     }
 
-    // Diff against local install dir
+    // Diff against local install (system layout maps seerr → bindir, rest → share)
     std::vector<RemoteFile> need;
     for (auto& f : man.files) {
-        fs::path local = fs::path(g_installDir) / f.path;
+        fs::path local = localPathFor(f.path);
         std::error_code ec;
         if (!fs::exists(local, ec)) {
             need.push_back(f);
@@ -404,7 +592,8 @@ void workerCheckAndDownload() {
     util::writeFile((fs::path(g_stageDir) / ".seerr-update-version").string(), man.version);
     g_dlPercent = 100;
     g_readySince = 0;
-    setStatus(State::Ready, i18n::tr("update.ready"));
+    setStatus(State::Ready,
+              i18n::tr(g_needsElevation ? "update.ready_permission" : "update.ready"));
 }
 
 void enqueueCheck() {
@@ -422,6 +611,9 @@ void init() {
     g_wantQuit.store(false);
     g_checkRequested.store(false);
     g_installDir = util::exeDir();
+    g_shareDir = util::assetDir();
+    g_systemLayout = (g_shareDir != g_installDir);
+    g_needsElevation = !installWritable();
     g_stageDir = util::appDataPath("update-stage");
 
     if (const char* dis = std::getenv("SEERR_DISABLE_UPDATE"); dis && dis[0] && dis[0] != '0') {
@@ -432,11 +624,12 @@ void init() {
         setStatus(State::Disabled, i18n::tr("update.disabled_user"));
         return;
     }
-    if (!dirWritable(g_installDir)) {
+    if (!updatesSupported()) {
         setStatus(State::Disabled, i18n::tr("update.not_writable"));
         return;
     }
-    setStatus(State::Idle, i18n::tr("update.idle"));
+    setStatus(State::Idle,
+              i18n::tr(g_needsElevation ? "update.idle_permission" : "update.idle"));
     // First check shortly after start (background).
     g_checkRequested.store(true);
 }
@@ -450,7 +643,7 @@ void checkNow() {
         setStatus(State::Disabled, i18n::tr("update.disabled"));
         return;
     }
-    if (!dirWritable(g_installDir)) {
+    if (!updatesSupported()) {
         setStatus(State::Disabled, i18n::tr("update.not_writable"));
         return;
     }
@@ -478,11 +671,13 @@ void setAutoEnabled(bool on) {
         setStatus(State::Disabled, i18n::tr("update.disabled"));
         return;
     }
-    if (!dirWritable(g_installDir)) {
+    if (!updatesSupported()) {
         setStatus(State::Disabled, i18n::tr("update.not_writable"));
         return;
     }
-    setStatus(State::Idle, i18n::tr("update.idle"));
+    g_needsElevation = !installWritable();
+    setStatus(State::Idle,
+              i18n::tr(g_needsElevation ? "update.idle_permission" : "update.idle"));
     g_checkRequested.store(true);
 }
 

@@ -211,7 +211,8 @@ void seedEnglish() {
         "When off, requests stay queued until you start them from Requests.";
     g_en["settings.auto_update"] = "Download app updates automatically";
     g_en["settings.auto_update_hint"] =
-        "When off, Seerr will not check or install updates in the background. You can still check manually.";
+        "When off, Seerr will not check or install updates in the background. You can still check "
+        "manually. System (.deb) installs will ask for permission before applying an update.";
     g_en["settings.min_seeders"] = "Minimum seeders";
     g_en["settings.default_quality"] = "Default quality";
     g_en["settings.quality_any"] = "Any";
@@ -232,16 +233,23 @@ void seedEnglish() {
     g_en["settings.scan_library"] = "Scan library";
     g_en["update.settings_title"] = "Updates";
     g_en["update.settings_hint"] =
-        "Checks GitHub in the background and downloads only changed files (SHA-256).";
+        "Checks GitHub in the background and downloads only changed files (SHA-256). "
+        "System installs ask for permission before writing.";
     g_en["update.check_now"] = "Check for updates";
     g_en["update.current"] = "Installed:";
     g_en["update.remote"] = "Available:";
     g_en["update.idle"] = "Automatic updates enabled";
+    g_en["update.idle_permission"] =
+        "Automatic updates enabled — will ask for permission to install";
     g_en["update.checking"] = "Checking for updates…";
     g_en["update.up_to_date"] = "You are up to date";
     g_en["update.downloading"] = "Downloading update";
     g_en["update.ready"] = "Update ready — restarting…";
+    g_en["update.ready_permission"] =
+        "Update ready — you'll be asked for permission, then Seerr restarts…";
     g_en["update.applying"] = "Applying update…";
+    g_en["update.requesting_permission"] = "Requesting permission to install update…";
+    g_en["update.permission_denied"] = "Permission denied — update not installed";
     g_en["update.disabled"] = "Updates disabled";
     g_en["update.disabled_user"] = "Automatic updates are off";
     g_en["update.not_writable"] = "Install folder is not writable — auto-update unavailable";

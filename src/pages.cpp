@@ -91,12 +91,18 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
     float rowH = CARD_H;
     // Always reserve layout space; skip draw work when the row is off-screen
     ImGui::Dummy(ImVec2(0, 36 + rowH + 16));
+    // Dummy advances the layout cursor — restore it after absolute card draws or the
+    // next row starts too high and cards overlap (esp. while scrolling vertically).
+    const float layoutYAfter = ImGui::GetCursorPosY();
     ImGui::SetCursorPosX(contentX);
 
     float viewTop = wpos.y;
     float viewBot = wpos.y + ImGui::GetWindowHeight();
     bool rowVisible = (rowY + rowH > viewTop - 40.0f) && (rowY < viewBot + 40.0f);
-    if (!rowVisible) return;
+    if (!rowVisible) {
+        ImGui::SetCursorPos(ImVec2(contentX, layoutYAfter));
+        return;
+    }
 
     dl->AddText(G.b28, 20, ImVec2(cur.x, cur.y + 4), SLIDER_TITLE, title.c_str());
 
@@ -189,6 +195,7 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
                 dl->AddRectFilled(p, ImVec2(p.x + CARD_W, p.y + rowH), theme::c("#1f2937"), 16);
             }
         }
+        ImGui::SetCursorPos(ImVec2(contentX, layoutYAfter));
         return;
     }
 
@@ -233,7 +240,7 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
             if (r) handleCardClick(it, r);
     }
     dl->PopClipRect();
-    ImGui::SetCursorPosX(contentX);
+    ImGui::SetCursorPos(ImVec2(contentX, layoutYAfter));
 }
 
 // ------------------------------------------------------------------ grid

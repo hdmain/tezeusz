@@ -456,6 +456,7 @@ std::string exportItem(const Item& item, std::string* err) {
             c = '_';
     }
     fs::path zipPath = exportRoot / zipName;
+    fs::create_directories(exportRoot, ec);
 
     json manifest{
         {"seerrExportVersion", 1},
@@ -467,18 +468,35 @@ std::string exportItem(const Item& item, std::string* err) {
         {"imdbId", imdbId},
         {"folderName", titleDir.filename().string()}
     };
-    fs::path manifestPath = titleDir / "seerr-export.json";
+
+    // Write manifest outside the title folder (some libraries are read-only /
+    // OneDrive-locked) and inject it into the ZIP as an extra entry.
+    fs::path manifestPath = exportRoot / (zipName + ".seerr-meta.tmp");
     {
-        std::ofstream mf(manifestPath.string(), std::ios::binary | std::ios::trunc);
+        std::ofstream mf(manifestPath, std::ios::binary | std::ios::trunc);
         if (!mf) {
+            // Fallback to system temp if Exports isn't writable either.
+            manifestPath = fs::temp_directory_path(ec) / ("seerr-export-" + zipName + ".json");
+            mf.open(manifestPath, std::ios::binary | std::ios::trunc);
+            if (!mf) {
+                if (err) *err = i18n::tr("library.export_manifest_failed");
+                return {};
+            }
+        }
+        mf << manifest.dump(2);
+        if (!mf) {
+            mf.close();
+            fs::remove(manifestPath, ec);
             if (err) *err = i18n::tr("library.export_manifest_failed");
             return {};
         }
-        mf << manifest.dump(2);
     }
 
+    std::vector<zipwrite::ExtraFile> extras = {
+        { manifestPath, "seerr-export.json" }
+    };
     std::string zipErr;
-    const bool ok = zipwrite::zipDirectory(titleDir, zipPath, &zipErr);
+    const bool ok = zipwrite::zipDirectory(titleDir, zipPath, &zipErr, &extras);
     fs::remove(manifestPath, ec);
     if (!ok) {
         if (err) *err = zipErr.empty() ? i18n::tr("library.export_failed") : zipErr;

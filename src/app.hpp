@@ -26,8 +26,8 @@ struct App {
     std::string lastQuery;
     SearchFilter searchFilter = SearchFilter::All;
     AsyncReq<PagedResult> searchReq;
-    bool focusSearchInput = false; // reclaim focus after home→search mid-typing
-    bool focusHomeSearch = false;  // reclaim focus after search→home when cleared
+    bool focusSearchInput = false; // fallback focus if ActiveId was lost
+    bool focusHomeSearch = false;  // fallback focus after clear→home if ActiveId was lost
 
     // watchlist (tmdb id set per type), requests status (0 unknown..3 available)
     std::set<std::string> watchlist;              // key "movie:123"

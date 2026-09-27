@@ -33,6 +33,21 @@
 
 App& app() { static App a; return a; }
 
+// Shared ID for Discover + Search bars so ActiveId (and cursor) survive the
+// home→search page switch. Re-focusing with SetKeyboardFocusHere selects-all
+// and the next keystroke replaces the first character.
+static const char* kSearchInputId = "##seerr_search";
+
+// If we must reclaim focus, clear the auto-select immediately (not via
+// ReloadUserBufAndMoveToEnd — that only applies on the next frame).
+static void searchInputCursorToEnd() {
+    if (ImGuiInputTextState* st = ImGui::GetInputTextState(ImGui::GetItemID())) {
+        // SelectAll leaves cursor at TextLen; ClearSelection collapses to that.
+        st->ClearSelection();
+        st->CursorAnimReset();
+    }
+}
+
 // ------------------------------------------------------------------ layout metrics
 static const float CARD_W = 160.0f;
 static const float CARD_H = 240.0f; // 2:3 poster
@@ -417,18 +432,16 @@ void renderSearch() {
         ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0, 0, 0, 0));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.72f, 0.76f, 0.85f, 1.0f));
-        const bool reclaimFocus = a.focusSearchInput;
-        if (reclaimFocus) {
+        // Only force-focus when ActiveId was lost (e.g. click-away). Prefer keeping
+        // the shared ##seerr_search ActiveId from the Discover bar.
+        const bool reclaimFocus = a.focusSearchInput && !ImGui::IsAnyItemActive();
+        if (reclaimFocus)
             ImGui::SetKeyboardFocusHere();
-            a.focusSearchInput = false;
-        }
-        ImGui::InputTextWithHint("##search_page", i18n::tr("search.hint"), buf, sizeof(buf));
-        // SetKeyboardFocusHere selects all — clear that so the next keystroke
-        // appends instead of replacing the character that triggered home→search.
-        if (reclaimFocus) {
-            if (ImGuiInputTextState* st = ImGui::GetInputTextState(ImGui::GetItemID()))
-                st->ReloadUserBufAndMoveToEnd();
-        }
+        a.focusSearchInput = false;
+        ImGui::InputTextWithHint(kSearchInputId, i18n::tr("search.hint"), buf, sizeof(buf),
+                                 ImGuiInputTextFlags_EnterReturnsTrue);
+        if (reclaimFocus)
+            searchInputCursorToEnd();
         ImGui::PopStyleColor(5);
         ImGui::PopItemWidth();
         std::string prev = a.searchInput;
@@ -603,26 +616,23 @@ void renderDiscover() {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.72f, 0.76f, 0.85f, 1.0f));
         ImGui::PushFont(G.m18 ? G.m18 : ImGui::GetFont());
-        const bool reclaimHome = a.focusHomeSearch;
-        if (reclaimHome) {
+        const bool reclaimHome = a.focusHomeSearch && !ImGui::IsAnyItemActive();
+        if (reclaimHome)
             ImGui::SetKeyboardFocusHere();
-            a.focusHomeSearch = false;
-        }
-        bool enter = ImGui::InputTextWithHint("##home_search", i18n::tr("search.hint"),
+        a.focusHomeSearch = false;
+        bool enter = ImGui::InputTextWithHint(kSearchInputId, i18n::tr("search.hint"),
                                               buf, sizeof(buf), ImGuiInputTextFlags_EnterReturnsTrue);
-        if (reclaimHome) {
-            if (ImGuiInputTextState* st = ImGui::GetInputTextState(ImGui::GetItemID()))
-                st->ReloadUserBufAndMoveToEnd();
-        }
+        if (reclaimHome)
+            searchInputCursorToEnd();
         ImGui::PopFont();
         ImGui::PopStyleColor(5);
         ImGui::PopItemWidth();
 
         std::string prev = a.searchInput;
         a.searchInput = buf;
-        // Typing on home jumps to Search — reclaim keyboard focus on the next page's field.
+        // Typing on home jumps to Search. Same input ID keeps ActiveId + cursor
+        // so we must NOT SetKeyboardFocusHere (that select-alls and eats the next char).
         if (!a.searchInput.empty() && (a.searchInput != prev || enter)) {
-            a.focusSearchInput = true;
             a.navigate(Page::Search);
         }
 

@@ -470,17 +470,22 @@ int main() {
         if (tray::consumeShowRequest())
             tray::showFromTray();
 
+        const bool hidden = tray::isHidden();
+        const bool focused = glfwGetWindowAttrib(win, GLFW_FOCUSED) != 0;
+
         if (quitting.load())
             glfwWaitEventsTimeout(1.0 / 60.0);
-        else if (tray::isHidden())
+        else if (hidden)
             glfwWaitEventsTimeout(0.25);
-        else if (!glfwGetWindowAttrib(win, GLFW_FOCUSED))
+        else if (!focused)
             glfwWaitEventsTimeout(1.0 / 30.0);
         else
-            // Always wait — never glfwPollEvents() alone. When vsync is ignored
-            // (common on Linux/Wayland) PollEvents busy-spins at 100% CPU and the
-            // UI looks frozen on the first frame, especially while Discover is heavy.
-            glfwWaitEventsTimeout(1.0 / 60.0);
+            // Drain input only — do NOT wait a full frame here. Waiting before
+            // render + SwapInterval vsync stacked to ~30fps with uneven Δt
+            // (Discover row scroll felt stuttery / "przycinany").
+            glfwPollEvents();
+
+        const double frameStart = glfwGetTime();
 
         if (quitting.load() && tray::isHidden())
             tray::showFromTray();
@@ -657,6 +662,16 @@ int main() {
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(win);
+
+        // If vsync (SwapInterval) works, SwapBuffers already paced us.
+        // If the driver ignores it (common on Linux/Wayland), sleep the remainder
+        // so we stay ~60fps without a PollEvents busy-spin (100% CPU / freeze).
+        if (!quitting.load() && !hidden && focused) {
+            const double budget = 1.0 / 60.0;
+            const double remain = budget - (glfwGetTime() - frameStart);
+            if (remain > 0.001)
+                glfwWaitEventsTimeout(remain);
+        }
     }
 
     return 0;

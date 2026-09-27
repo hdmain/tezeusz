@@ -8,7 +8,7 @@ if ! command -v pacman >/dev/null 2>&1; then
   exit 1
 fi
 
-# Keep this list in sync with .github/workflows/build.yml "Windows setup".
+# Keep this list in sync with .github/workflows/build.yml Windows job packages.
 PACKAGES=(
   mingw-w64-x86_64-gcc
   mingw-w64-x86_64-cmake
@@ -20,6 +20,7 @@ PACKAGES=(
   mingw-w64-x86_64-curl
   mingw-w64-x86_64-ntldd
   mingw-w64-x86_64-openssl
+  mingw-w64-x86_64-nsis
   zip
   unzip
   curl
@@ -33,6 +34,7 @@ echo "Windows (MSYS2/MINGW64) deps OK."
 echo "Build with:"
 echo "  cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSEERR_BUNDLED_DEPS=OFF"
 echo "  cmake --build build"
-echo "Portable + update pack:"
+echo "Portable + setup.exe + update pack:"
 echo "  bash packaging/make-windows-portable.sh build/seerr.exe build/seerr-portable"
+echo "  bash packaging/make-windows-setup.sh build/seerr-portable build/seerr-windows-setup.exe"
 echo "  bash packaging/make-update-manifest.sh build/seerr-portable windows-x64 0.1.0-dev build/update-windows"

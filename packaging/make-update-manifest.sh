@@ -46,6 +46,8 @@ trap 'rm -f "$TMP_FILES"' EXIT
     ! -name 'check-deps.bat' \
     ! -name '.seerr-write-test' \
     ! -name '*.tmp' \
+    ! -iname 'Uninstall.exe' \
+    ! -iname 'uninstall.exe' \
     | sed 's|^\./||' | sort
 ) > "$TMP_FILES"
 

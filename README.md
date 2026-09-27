@@ -25,24 +25,24 @@ Playback needs VLC (`libvlc5` / `vlc`) — installed by `linux-deps.sh`.
 
 ## Windows (MinGW / MSYS2)
 
-In an **MSYS2 MINGW64** shell:
-
 ```bash
-./scripts/windows-deps.sh    # once (pacman)
+./scripts/windows-deps.sh   # once, inside MINGW64 shell
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSEERR_BUNDLED_DEPS=OFF
 cmake --build build
 ```
 
-Without MSYS2 packages (FetchContent Boost + libtorrent):
+Or with FetchContent deps (no MSYS2 libtorrent):
 
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSEERR_BUNDLED_DEPS=ON
 cmake --build build
 ```
 
-CI publishes a **Windows portable zip** (exe + MinGW DLLs + bundled libVLC),
-differential **auto-update** manifests (`windows-x64` / `linux-x64`), and a
-**Linux .deb** on the `continuous` release.
+CI publishes on the `continuous` release:
+- **`seerr-windows-setup.exe`** — NSIS installer → `%LOCALAPPDATA%\Programs\Seerr`
+  (per-user, writable → in-app auto-update works)
+- **Windows portable zip** — exe + MinGW DLLs + bundled libVLC
+- **Linux .deb** / portable zip
 
 ## Layout
 
@@ -50,7 +50,7 @@ differential **auto-update** manifests (`windows-x64` / `linux-x64`), and a
 |------|------|
 | `src/` | Application code |
 | `cmake/` | CMake modules (deps, imgui, packaging) |
-| `scripts/` | Linux/WSL + Windows (MSYS2) build helpers |
+| `scripts/` | Linux/WSL build & run helpers |
 | `packaging/` | Desktop entry, Windows portable packager |
 | `locales/` | UI translations (`en`, `pl`) |
 | `vendor/` | ImGui, GLFW (Win), fonts, icons |

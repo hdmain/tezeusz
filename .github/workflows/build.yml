@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   windows:
-    name: Windows portable
+    name: Windows portable + setup
     runs-on: windows-latest
     defaults:
       run:
@@ -43,6 +43,7 @@ jobs:
             mingw-w64-x86_64-curl
             mingw-w64-x86_64-ntldd
             mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-nsis
             zip
             unzip
             curl
@@ -65,11 +66,18 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
-      - name: Package portable + update manifest
+      - name: Package portable + setup.exe
         run: |
           set -euo pipefail
           VER="${{ steps.ver.outputs.version }}"
           bash packaging/make-windows-portable.sh build/seerr.exe "build/seerr-portable" "$VER"
+          # Same tree as portable — install under %LOCALAPPDATA%\Programs\Seerr
+          # so the folder stays writable and in-app auto-update keeps working.
+          bash packaging/make-windows-setup.sh \
+            build/seerr-portable \
+            "build/seerr-windows-setup.exe" \
+            "$VER"
+          test -f build/seerr-windows-setup.exe
           bash packaging/make-update-manifest.sh build/seerr-portable windows-x64 "$VER" build/update-windows
           # Auto-update must be able to find the Windows binary + libVLC core.
           MAN=build/update-windows/update-manifest-windows-x64.json
@@ -86,7 +94,12 @@ jobs:
             zip -r "seerr-windows-portable-${VER}.zip" seerr-portable
             rm -f "seerr-update-windows-${VER}.zip"
             zip -r "seerr-update-windows-${VER}.zip" update-windows
-            ls -lah "seerr-windows-portable-${VER}.zip" "seerr-update-windows-${VER}.zip"
+            # Stable + versioned setup names for the release page
+            cp -f seerr-windows-setup.exe "seerr-windows-setup-${VER}.exe"
+            ls -lah "seerr-windows-portable-${VER}.zip" \
+                    "seerr-update-windows-${VER}.zip" \
+                    seerr-windows-setup.exe \
+                    "seerr-windows-setup-${VER}.exe"
           )
 
       - name: Upload portable zip
@@ -94,6 +107,15 @@ jobs:
         with:
           name: seerr-windows-portable
           path: build/seerr-windows-portable-*.zip
+          if-no-files-found: error
+
+      - name: Upload Windows setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: seerr-windows-setup
+          path: |
+            build/seerr-windows-setup.exe
+            build/seerr-windows-setup-*.exe
           if-no-files-found: error
 
       - name: Upload update pack
@@ -246,8 +268,12 @@ jobs:
           VER="${{ needs.linux.outputs.version }}"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           mkdir -p release
-          find dist -type f \( -name '*.zip' -o -name '*.deb' -o -name 'seerr' \) -print
-          # Portable Windows zip (required for auto-update channel)
+          find dist -type f \( -name '*.zip' -o -name '*.deb' -o -name '*.exe' -o -name 'seerr' \) -print
+          # Windows setup.exe (preferred — per-user install, auto-updates without elevation)
+          test -f dist/seerr-windows-setup/seerr-windows-setup.exe
+          cp -f dist/seerr-windows-setup/seerr-windows-setup.exe release/
+          cp -f dist/seerr-windows-setup/seerr-windows-setup-*.exe release/ 2>/dev/null || true
+          # Portable Windows zip (same auto-update channel)
           test -n "$(ls -A dist/seerr-windows-portable/*.zip 2>/dev/null)"
           cp -f dist/seerr-windows-portable/*.zip release/
           # Linux portable zip (self-updating layout)
@@ -273,6 +299,7 @@ jobs:
           ls -lah release
           ls -lah update-publish
           test -n "$(ls -A release)"
+          test -f release/seerr-windows-setup.exe
 
       - name: Publish continuous release
         env:
@@ -286,13 +313,15 @@ jobs:
           Automated build from \`main\` (\`${GITHUB_SHA:0:7}\`).
 
           ### Downloads
-          - **Windows portable** — unzip and run \`seerr.exe\` (auto-updates in the background)
+          - **Windows setup** — \`seerr-windows-setup.exe\` (installs to \`%LOCALAPPDATA%\\Programs\\Seerr\`, auto-updates in the background)
+          - **Windows portable** — unzip and run \`seerr.exe\` (same auto-update channel)
           - **Linux portable** — unzip and run \`./seerr\` (auto-updates when folder is writable)
           - **Linux .deb** — \`sudo apt install ./seerr_*.deb\` (system install; auto-updates via pkexec permission prompt)
           - **Linux binary** — raw ELF (needs system GLFW/CURL/libtorrent)
 
           Updates download **only changed files** (SHA-256) from the \`continuous\` channel and restart automatically.
-          On system installs Seerr asks for admin permission before writing to \`/usr\`.
+          The Windows installer uses a per-user folder so updates never need elevation.
+          On Linux system installs Seerr asks for admin permission before writing to \`/usr\`.
           EOF
           )"
           if gh release view continuous >/dev/null 2>&1; then

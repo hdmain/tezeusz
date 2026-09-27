@@ -120,7 +120,9 @@ struct YtSession {
 // Fetch watch page cookies + InnerTube key / visitorData (needed after YT hardened ANDROID).
 YtSession bootstrapSession(const std::string& videoId) {
     YtSession s;
-    s.apiKey = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w"; // ANDROID fallback key
+    // API key comes from the watch page (INNERTUBE_API_KEY). No hardcoded AIza…
+    // keys — GitHub secret scanning treats those as credentials even when they are
+    // public YouTube client keys shared by every InnerTube client.
 
     const std::string ua =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -306,8 +308,9 @@ bool tryInnerTube(const std::string& videoId, std::string* videoUrl, std::string
         if (!sess.visitorData.empty())
             headers += "X-Goog-Visitor-Id: " + sess.visitorData + "\r\n";
 
-        std::string url =
-            "https://www.youtube.com/youtubei/v1/player?prettyPrint=false&key=" + sess.apiKey;
+        std::string url = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
+        if (!sess.apiKey.empty())
+            url += "&key=" + sess.apiKey;
         auto r = http::post(url, body.dump(), "application/json", headers);
         if (!r.ok()) continue;
 

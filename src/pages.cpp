@@ -2240,6 +2240,25 @@ void renderSettings() {
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
         ImGui::TextWrapped("%s", i18n::tr("settings.image_p2p_hint"));
         ImGui::PopStyleColor();
+        if (cfg.imageP2p) {
+            ImGui::Dummy(ImVec2(1, 6));
+            fieldLabel(i18n::tr("settings.image_fetch_priority"));
+            {
+                const char* priLabels[] = {
+                    i18n::tr("settings.image_fetch_http_first"),
+                    i18n::tr("settings.image_fetch_p2p_first")
+                };
+                int priIdx = cfg.imageFetchPreferP2p ? 1 : 0;
+                ImGui::SetNextItemWidth(fieldW);
+                if (ImGui::Combo("##imgfetchpri", &priIdx, priLabels, 2)) {
+                    cfg.imageFetchPreferP2p = (priIdx == 1);
+                    cfg.save();
+                }
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+                ImGui::TextWrapped("%s", i18n::tr("settings.image_fetch_priority_hint"));
+                ImGui::PopStyleColor();
+            }
+        }
         {
             auto ps = imgswarm::stats();
             ImGui::Dummy(ImVec2(1, 6));

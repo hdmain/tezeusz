@@ -67,6 +67,7 @@ struct StackConfig {
     bool showFpsOverlay = false;
     bool showDebugHud = false;  // FPS + Δt + jobs + peers
     bool imageP2p = true;       // poster P2P swarm (imgswarm)
+    bool imageFetchPreferP2p = false; // false = HTTP first, true = P2P first (when imageP2p on)
     uint64_t imageP2pSentTotal = 0; // lifetime posters fully uploaded to peers
 
     static StackConfig& get();

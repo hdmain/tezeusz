@@ -241,6 +241,11 @@ void seedEnglish() {
     g_en["settings.image_p2p_hint"] =
         "Share/fetch poster images over BitTorrent DHT between Seerr clients. Disable if you only "
         "want plain HTTP downloads (or set SEERR_DISABLE_IMGSWARM=1).";
+    g_en["settings.image_fetch_priority"] = "Poster download priority";
+    g_en["settings.image_fetch_http_first"] = "HTTP first, then P2P";
+    g_en["settings.image_fetch_p2p_first"] = "P2P first, then HTTP";
+    g_en["settings.image_fetch_priority_hint"] =
+        "Which source to try first for missing posters. The other is used as fallback.";
     g_en["settings.image_p2p_sent"] = "Posters sent to others:";
     g_en["settings.image_p2p_sent_hint"] =
         "How many full posters this app has uploaded to other Seerr peers (lifetime).";

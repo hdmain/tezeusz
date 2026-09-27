@@ -3,7 +3,7 @@
 #include <string>
 
 // Optional BitTorrent swarm for poster/backdrop images (TMDB CDN URLs).
-// Primary fetch stays HTTP; this only seeds after cache and retries via peers if HTTP fails.
+// Fetch order (HTTP vs P2P) is controlled by StackConfig::imageFetchPreferP2p.
 namespace imgswarm {
 
 struct Stats {

@@ -2,6 +2,7 @@
 #include "http.hpp"
 #include "util.hpp"
 #include "imgswarm.hpp"
+#include "stack.hpp"
 #include "gl_compat.hpp"
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -262,20 +263,30 @@ void ImageCache::workerLoop() {
         }
 
         if (!fromDisk) {
-            std::string err;
-            // Primary: normal CDN / HTTP
-            bytes = http::getBinary(item.url, &err);
-            bool badData = (!bytes.empty() && bytes.size() < 4000);
-            if (bytes.empty() || badData) {
-                // Secondary: BitTorrent swarm between Seerr users
-                if (imgswarm::tryFetch(item.url, path, 3000) && readBinaryFile(path, &bytes) && bytes.size() >= 64) {
-                    if (!decodeImageBytes(bytes, &out.rgba, &out.w, &out.h))
-                        out.failed = true;
-                    else
-                        imgswarm::offer(item.url, path);
-                } else {
-                    out.failed = true;
-                }
+            const auto& cfg = stack::StackConfig::get();
+            const bool preferP2p = cfg.imageP2p && cfg.imageFetchPreferP2p;
+
+            auto fetchHttp = [&]() -> bool {
+                std::string err;
+                auto b = http::getBinary(item.url, &err);
+                const bool badData = (!b.empty() && b.size() < 4000);
+                if (b.empty() || badData) return false;
+                bytes = std::move(b);
+                return true;
+            };
+            auto fetchP2p = [&]() -> bool {
+                if (!cfg.imageP2p) return false;
+                if (imgswarm::tryFetch(item.url, path, 3000)
+                    && readBinaryFile(path, &bytes) && bytes.size() >= 64)
+                    return true;
+                bytes.clear();
+                return false;
+            };
+
+            const bool got = preferP2p ? (fetchP2p() || fetchHttp())
+                                       : (fetchHttp() || fetchP2p());
+            if (!got) {
+                out.failed = true;
             } else if (!decodeImageBytes(bytes, &out.rgba, &out.w, &out.h)) {
                 out.failed = true;
             } else {

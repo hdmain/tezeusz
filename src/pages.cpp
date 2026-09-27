@@ -869,8 +869,7 @@ void renderDetails(MediaType type, int id) {
             ImGui::OpenPopup("##issue_modal");
         }
 
-        if (ImGui::BeginPopupModal("##issue_modal", nullptr,
-                                   ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+        if (w::beginQuestionModal("##issue_modal", 480.f)) {
             ImGui::TextUnformatted(i18n::tr("details.report"));
             ImGui::Separator();
             static int issueType = 1;
@@ -881,7 +880,7 @@ void renderDetails(MediaType type, int id) {
             ImGui::RadioButton(i18n::tr("issue.subtitles"), &issueType, 3); ImGui::SameLine();
             ImGui::RadioButton(i18n::tr("issue.other"), &issueType, 4);
             ImGui::TextUnformatted(i18n::tr("common.description"));
-            ImGui::InputTextMultiline("##imsg", msgBuf, sizeof(msgBuf), ImVec2(420, 90));
+            ImGui::InputTextMultiline("##imsg", msgBuf, sizeof(msgBuf), ImVec2(-1, 90));
             if (ImGui::Button(i18n::tr("common.submit"), ImVec2(120, 32))) {
                 localdb::addIssue(type, id, d.title, d.year(), d.posterPath,
                                   (localdb::IssueType)issueType, msgBuf);
@@ -891,7 +890,7 @@ void renderDetails(MediaType type, int id) {
             }
             ImGui::SameLine();
             if (ImGui::Button(i18n::tr("common.cancel"), ImVec2(120, 32))) ImGui::CloseCurrentPopup();
-            ImGui::EndPopup();
+            w::endQuestionModal();
         }
     }
 
@@ -1579,9 +1578,7 @@ void renderLibrary() {
         ImGui::OpenPopup("##lib_props");
         openProps = false;
     }
-    ImGui::SetNextWindowSize(ImVec2(520, 0), ImGuiCond_Appearing);
-    if (ImGui::BeginPopupModal("##lib_props", nullptr,
-                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+    if (w::beginQuestionModal("##lib_props", 520.f)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.91f, 0.93f, 1));
         ImGui::TextUnformatted(i18n::tr("common.properties"));
         ImGui::PopStyleColor();
@@ -1654,7 +1651,7 @@ void renderLibrary() {
         ImGui::SameLine();
         if (ImGui::Button(i18n::tr("common.close"), ImVec2(120, 32)))
             ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
+        w::endQuestionModal();
     }
 
     // ---- Usuń ----
@@ -1662,8 +1659,7 @@ void renderLibrary() {
         ImGui::OpenPopup("##lib_delete");
         openDelete = false;
     }
-    if (ImGui::BeginPopupModal("##lib_delete", nullptr,
-                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+    if (w::beginQuestionModal("##lib_delete", 460.f)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.96f, 0.55f, 0.55f, 1));
         ImGui::TextUnformatted(i18n::tr("library.delete_title"));
         ImGui::PopStyleColor();
@@ -1701,7 +1697,7 @@ void renderLibrary() {
         ImGui::SameLine();
         if (ImGui::Button(i18n::tr("common.cancel"), ImVec2(120, 32)))
             ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
+        w::endQuestionModal();
     }
 
     // ---- Archive (ZIP runs on a worker thread — UI stays responsive) ----
@@ -1727,8 +1723,7 @@ void renderLibrary() {
         }
     }
     const bool archiveBusy = (bool)archiveJob;
-    if (ImGui::BeginPopupModal("##lib_archive", nullptr,
-                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+    if (w::beginQuestionModal("##lib_archive", 480.f)) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.65f, 0.78f, 0.98f, 1));
         ImGui::TextUnformatted(i18n::tr("library.archive_title"));
         ImGui::PopStyleColor();
@@ -1790,7 +1785,7 @@ void renderLibrary() {
             if (ImGui::Button(i18n::tr("common.close"), ImVec2(120, 32)))
                 ImGui::CloseCurrentPopup();
         }
-        ImGui::EndPopup();
+        w::endQuestionModal();
     }
 }
 
@@ -2557,19 +2552,8 @@ void renderRequestQualityDialog() {
         d.pendingOpenInteractive = false;
     }
 
-    ImGuiViewport* vp = ImGui::GetMainViewport();
-
     // ── Quality / seasons / mode picker ───────────────────────────────
-    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(d.type == MediaType::TV ? 520.f : 460.f, 0), ImGuiCond_Appearing);
-
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 16.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24, 22));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10, 10));
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.0f);
-    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.10f, 0.12f, 0.18f, 0.98f));
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.29f, 0.33f, 0.39f, 0.55f));
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.90f, 0.91f, 0.93f, 1));
+    const float qCardW = d.type == MediaType::TV ? 520.f : 460.f;
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.31f, 0.27f, 0.90f, 1));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.39f, 0.40f, 0.95f, 1));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.26f, 0.22f, 0.79f, 1));
@@ -2577,9 +2561,7 @@ void renderRequestQualityDialog() {
     ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.12f, 0.16f, 0.22f, 1));
     ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.18f, 0.22f, 0.30f, 1));
 
-    if (ImGui::BeginPopupModal("##req_quality", nullptr,
-                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
-                               ImGuiWindowFlags_NoMove)) {
+    if (w::beginQuestionModal("##req_quality", qCardW)) {
         ImGui::PushFont(G.sb22 ? G.sb22 : ImGui::GetFont());
         ImGui::TextUnformatted(d.installMore ? i18n::tr("library.install_episodes_title")
                                              : i18n::tr("req.dialog_title"));
@@ -2797,22 +2779,11 @@ void renderRequestQualityDialog() {
         }
         ImGui::EndDisabled();
 
-        ImGui::EndPopup();
+        w::endQuestionModal();
     }
-    ImGui::PopStyleColor(9);
-    ImGui::PopStyleVar(4);
+    ImGui::PopStyleColor(6);
 
     // ── Interactive Search (Radarr-style) ─────────────────────────────
-    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(780, 540), ImGuiCond_Appearing);
-
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 16.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20, 18));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 8));
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f);
-    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.10f, 0.12f, 0.18f, 0.98f));
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.29f, 0.33f, 0.39f, 0.55f));
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.90f, 0.91f, 0.93f, 1));
     ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.12f, 0.23f, 0.37f, 1));
     ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.15f, 0.39f, 0.92f, 1));
     ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.11f, 0.30f, 0.85f, 1));
@@ -2824,8 +2795,7 @@ void renderRequestQualityDialog() {
     ImGui::PushStyleColor(ImGuiCol_TableRowBg, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, ImVec4(1, 1, 1, 0.02f));
 
-    if (ImGui::BeginPopupModal("##req_interactive", nullptr,
-                               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove)) {
+    if (w::beginQuestionModal("##req_interactive", 780.f, 540.f)) {
         ImGui::PushFont(G.sb22 ? G.sb22 : ImGui::GetFont());
         ImGui::TextUnformatted(i18n::tr("req.interactive_title"));
         ImGui::PopFont();
@@ -2850,6 +2820,7 @@ void renderRequestQualityDialog() {
         float listH = ImGui::GetContentRegionAvail().y - footerH - 4.0f;
         if (listH < 120.f) listH = 120.f;
 
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.07f, 0.09f, 0.14f, 1));
         ImGui::BeginChild("##is_list", ImVec2(0, listH), ImGuiChildFlags_Borders);
 
         if (d.searching) {
@@ -2901,6 +2872,7 @@ void renderRequestQualityDialog() {
             ImGui::EndTable();
         }
         ImGui::EndChild();
+        ImGui::PopStyleColor(); // ChildBg for ##is_list
 
         float btnW = 140.f;
         float gap = 10.f;
@@ -2925,10 +2897,9 @@ void renderRequestQualityDialog() {
         }
         ImGui::EndDisabled();
 
-        ImGui::EndPopup();
+        w::endQuestionModal();
     }
 
-    ImGui::PopStyleColor(13);
-    ImGui::PopStyleVar(4);
+    ImGui::PopStyleColor(10);
 }
 

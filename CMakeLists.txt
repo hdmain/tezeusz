@@ -34,6 +34,7 @@ set(SEERR_SOURCES
     src/i18n.cpp
     src/gl_load.cpp
     src/updater.cpp
+    src/modalblur.cpp
 )
 
 add_executable(seerr ${SEERR_SOURCES})

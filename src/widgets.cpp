@@ -3,10 +3,12 @@
 #include "svgicons.hpp"
 #include "util.hpp"
 #include "i18n.hpp"
+#include "modalblur.hpp"
 #include <cmath>
 #include <cstdio>
 #include <algorithm>
 #include <unordered_map>
+#include <string>
 
 Fonts G;
 
@@ -441,6 +443,86 @@ void w::gradientRect(ImDrawList* dl, ImVec2 min, ImVec2 max, ImU32 topCol, ImU32
         int a = (int)(a0 + da * t);
         v->col = IM_COL32(r, g, b, a);
     }
+}
+
+// --------------------------------------------------------------------- question modals
+
+namespace {
+std::unordered_map<std::string, float> g_questionCardH;
+const char* g_questionModalId = nullptr;
+}
+
+bool w::beginQuestionModal(const char* id, float cardWidth, float cardHeight) {
+    ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->Pos);
+    ImGui::SetNextWindowSize(vp->Size);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0, 0, 0, 0));
+
+    if (!ImGui::BeginPopupModal(id, nullptr,
+                                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+                                ImGuiWindowFlags_NoScrollWithMouse)) {
+        ImGui::PopStyleColor(3);
+        ImGui::PopStyleVar(3);
+        return false;
+    }
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 wp = ImGui::GetWindowPos();
+    const ImVec2 ws = ImGui::GetWindowSize();
+    modalblur::draw(dl, wp, ImVec2(wp.x + ws.x, wp.y + ws.y));
+
+    const float useH = cardHeight > 0.f
+        ? cardHeight
+        : (g_questionCardH.count(id) ? g_questionCardH[id] : 220.f);
+    if (cardHeight > 0.f)
+        g_questionCardH[id] = cardHeight;
+
+    const float cx = wp.x + (ws.x - cardWidth) * 0.5f;
+    const float cy = wp.y + (ws.y - useH) * 0.5f;
+    ImGui::SetCursorScreenPos(ImVec2(cx, cy));
+
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 16.f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(32, 30));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(12, 14));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.f);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.10f, 0.12f, 0.18f, 0.96f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.29f, 0.33f, 0.39f, 0.55f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.90f, 0.91f, 0.93f, 1));
+
+    ImGuiChildFlags childFlags = ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding;
+    ImGuiWindowFlags childWin = ImGuiWindowFlags_NoScrollbar;
+    ImVec2 childSize(cardWidth, cardHeight > 0.f ? cardHeight : 0.f);
+    if (cardHeight <= 0.f)
+        childFlags |= ImGuiChildFlags_AutoResizeY;
+    else
+        childWin = ImGuiWindowFlags_None;
+
+    ImGui::BeginChild("##qcard", childSize, childFlags, childWin);
+
+    g_questionModalId = id;
+    return true;
+}
+
+void w::endQuestionModal() {
+    const float h = ImGui::GetWindowSize().y;
+    ImGui::EndChild();
+
+    if (g_questionModalId && g_questionModalId[0])
+        g_questionCardH[g_questionModalId] = h;
+    g_questionModalId = nullptr;
+
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar(4);
+    ImGui::EndPopup();
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar(3);
 }
 
 // --------------------------------------------------------------------- small widgets

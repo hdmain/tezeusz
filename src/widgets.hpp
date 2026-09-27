@@ -50,6 +50,12 @@ namespace w {
 // Indigo orbiting-dots spinner (used on quit / player loading)
 void orbitSpinner(ImDrawList* dl, ImVec2 ctr, float radius = 14.f, float dotR = 3.2f);
 
+// Centered confirm/question modal with frosted-blur scrim + roomy padding.
+// If cardHeight > 0, uses a fixed-height card (e.g. interactive search).
+// If true, draw content then call endQuestionModal().
+bool beginQuestionModal(const char* id, float cardWidth = 460.f, float cardHeight = 0.f);
+void endQuestionModal();
+
 // returns drawn height; wraps text, clamps to maxLines with ellipsis
 float textClamped(ImDrawList* dl, ImVec2 pos, float maxW, const std::string& text,
                   ImFont* font, float fontSize, ImU32 col, int maxLines, float lineH = 0);

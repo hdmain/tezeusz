@@ -27,6 +27,7 @@
 #include "tray.hpp"
 #include "updater.hpp"
 #include "imgswarm.hpp"
+#include "modalblur.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -427,6 +428,7 @@ int main() {
     st.Colors[ImGuiCol_WindowBg] = ImVec4(0, 0, 0, 0);
     st.Colors[ImGuiCol_FrameBg] = ImVec4(0, 0, 0, 0);
     st.Colors[ImGuiCol_PopupBg] = ImVec4(0.10f, 0.12f, 0.18f, 0.98f);
+    st.Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.02f, 0.03f, 0.06f, 0.55f);
     st.Colors[ImGuiCol_Border] = ImVec4(0.29f, 0.33f, 0.39f, 0.55f);
     st.Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.067f, 0.094f, 0.157f, 1.0f);      // #111827
     st.Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.294f, 0.337f, 0.392f, 0.75f);   // #4b5563
@@ -567,6 +569,7 @@ int main() {
                 try { updater::shutdown(); } catch (...) {}
                 try { tray::shutdown(); } catch (...) {}
                 try { svgicon::shutdown(); } catch (...) {}
+                try { modalblur::shutdown(); } catch (...) {}
                 ImGui_ImplOpenGL3_Shutdown();
                 ImGui_ImplGlfw_Shutdown();
                 ImGui::DestroyContext();
@@ -692,6 +695,12 @@ int main() {
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        {
+            int fbw = 0, fbh = 0;
+            glfwGetFramebufferSize(win, &fbw, &fbh);
+            const bool anyModal = ImGui::GetTopMostPopupModal() != nullptr;
+            modalblur::onFrameEnd(fbw, fbh, anyModal);
+        }
         glfwSwapBuffers(win);
 
         // Apply Advanced display prefs (cheap; only touches GLFW when changed).

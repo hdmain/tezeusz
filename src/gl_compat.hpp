@@ -50,6 +50,12 @@ using GLboolean = unsigned char;
 #ifndef GL_COLOR_BUFFER_BIT
 #define GL_COLOR_BUFFER_BIT 0x00004000
 #endif
+#ifndef GL_PACK_ALIGNMENT
+#define GL_PACK_ALIGNMENT 0x0D05
+#endif
+#ifndef GL_RGB
+#define GL_RGB 0x1907
+#endif
 
 bool seerrLoadGL();
 
@@ -64,6 +70,7 @@ extern void (*seerr_glViewport)(GLint, GLint, GLsizei, GLsizei);
 extern void (*seerr_glClearColor)(GLfloat, GLfloat, GLfloat, GLfloat);
 extern void (*seerr_glClear)(GLbitfield);
 extern void (*seerr_glGetTexImage)(GLenum, GLint, GLenum, GLenum, void*);
+extern void (*seerr_glReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*);
 
 #define glGenTextures    seerr_glGenTextures
 #define glDeleteTextures seerr_glDeleteTextures
@@ -76,3 +83,4 @@ extern void (*seerr_glGetTexImage)(GLenum, GLint, GLenum, GLenum, void*);
 #define glClearColor     seerr_glClearColor
 #define glClear          seerr_glClear
 #define glGetTexImage    seerr_glGetTexImage
+#define glReadPixels     seerr_glReadPixels

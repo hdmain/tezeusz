@@ -23,6 +23,7 @@ void (*seerr_glViewport)(GLint, GLint, GLsizei, GLsizei) = nullptr;
 void (*seerr_glClearColor)(GLfloat, GLfloat, GLfloat, GLfloat) = nullptr;
 void (*seerr_glClear)(GLbitfield) = nullptr;
 void (*seerr_glGetTexImage)(GLenum, GLint, GLenum, GLenum, void*) = nullptr;
+void (*seerr_glReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*) = nullptr;
 
 #ifdef _WIN32
 static void* loadSym(const char* name) {
@@ -106,10 +107,12 @@ bool seerrLoadGL() {
     seerr_glClearColor = (decltype(seerr_glClearColor))loadSym("glClearColor");
     seerr_glClear = (decltype(seerr_glClear))loadSym("glClear");
     seerr_glGetTexImage = (decltype(seerr_glGetTexImage))loadSym("glGetTexImage");
+    seerr_glReadPixels = (decltype(seerr_glReadPixels))loadSym("glReadPixels");
 
     const bool ok = seerr_glGenTextures && seerr_glDeleteTextures && seerr_glBindTexture &&
                     seerr_glTexParameteri && seerr_glTexImage2D && seerr_glTexSubImage2D &&
-                    seerr_glPixelStorei && seerr_glViewport && seerr_glClearColor && seerr_glClear;
+                    seerr_glPixelStorei && seerr_glViewport && seerr_glClearColor && seerr_glClear &&
+                    seerr_glReadPixels;
     if (!ok)
         fprintf(stderr, "seerr: OpenGL entry points missing (glGenTextures=%p glClear=%p)\n",
                 (void*)seerr_glGenTextures, (void*)seerr_glClear);

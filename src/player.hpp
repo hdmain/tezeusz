@@ -23,6 +23,7 @@ struct State {
     bool failed = false;
     std::string title;
     std::string path;
+    std::string externalUrl; // if set, "Open externally" uses this (e.g. YouTube watch URL)
     std::string error;
     double position = 0;
     int64_t timeMs = 0;
@@ -41,6 +42,9 @@ void bindWindow(GLFWwindow* w);
 bool open(const std::string& path, const std::string& title);
 // Optional second HTTP URL (e.g. YouTube audio) merged via libVLC :input-slave=
 bool open(const std::string& path, const std::string& title, const std::string& audioSlaveUrl);
+// externalOpenUrl: browser fallback on error (YouTube watch page, not googlevideo CDN)
+bool open(const std::string& path, const std::string& title, const std::string& audioSlaveUrl,
+          const std::string& externalOpenUrl);
 void close();
 bool isOpen();
 

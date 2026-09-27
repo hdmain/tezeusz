@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <cfloat>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -37,6 +38,9 @@ std::shared_ptr<PendingPlay> g_pending;
 std::atomic<bool> g_busy{false};
 std::string g_activeVideoId; // for overlay / Go to YouTube while resolving
 
+std::string watchUrl(const std::string& videoId) {
+    return "https://www.youtube.com/watch?v=" + videoId;
+}
 
 bool looksLikeUrl(const std::string& s) {
     return s.rfind("http://", 0) == 0 || s.rfind("https://", 0) == 0;
@@ -64,47 +68,247 @@ bool isVideo(const json& f) {
     return mime.rfind("video/", 0) == 0;
 }
 
-// Lightweight YouTube InnerTube (ANDROID client) — returns direct stream URLs,
-// no JS signature decrypt, no yt-dlp, no browser.
+std::string extractBetween(const std::string& s, const char* key, char end) {
+    auto p = s.find(key);
+    if (p == std::string::npos) return {};
+    p += std::strlen(key);
+    auto e = s.find(end, p);
+    if (e == std::string::npos || e <= p) return {};
+    return s.substr(p, e - p);
+}
+
+// Turn raw Set-Cookie blob(s) into a Cookie request header (name=value; …).
+std::string cookieHeaderFromSetCookie(const std::string& raw) {
+    if (raw.empty()) return {};
+    std::string out;
+    size_t i = 0;
+    while (i < raw.size()) {
+        // Each Set-Cookie may be joined with "; " — keep only name=value pairs
+        // that look like cookies (skip Path=, Domain=, Expires=, Secure, HttpOnly…).
+        size_t eq = raw.find('=', i);
+        if (eq == std::string::npos) break;
+        size_t nameStart = i;
+        while (nameStart < eq && (raw[nameStart] == ' ' || raw[nameStart] == ';' ||
+                                  raw[nameStart] == '\r' || raw[nameStart] == '\n'))
+            ++nameStart;
+        std::string name = raw.substr(nameStart, eq - nameStart);
+        while (!name.empty() && (name.back() == ' ' || name.back() == '\t')) name.pop_back();
+        size_t valStart = eq + 1;
+        size_t semi = raw.find(';', valStart);
+        size_t valEnd = (semi == std::string::npos) ? raw.size() : semi;
+        std::string value = raw.substr(valStart, valEnd - valStart);
+
+        const std::string lower = util::lower(name);
+        bool attr = (lower == "path" || lower == "domain" || lower == "expires" ||
+                     lower == "max-age" || lower == "samesite" || lower == "secure" ||
+                     lower == "httponly" || lower == "priority" || lower.empty());
+        if (!attr && !name.empty()) {
+            if (!out.empty()) out += "; ";
+            out += name + "=" + value;
+        }
+        i = (semi == std::string::npos) ? raw.size() : semi + 1;
+    }
+    return out;
+}
+
+struct YtSession {
+    std::string apiKey;
+    std::string visitorData;
+    std::string cookie; // Cookie: header value
+};
+
+// Fetch watch page cookies + InnerTube key / visitorData (needed after YT hardened ANDROID).
+YtSession bootstrapSession(const std::string& videoId) {
+    YtSession s;
+    s.apiKey = "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w"; // ANDROID fallback key
+
+    const std::string ua =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    std::string headers =
+        std::string("User-Agent: ") + ua + "\r\n"
+        "Accept-Language: en-US,en;q=0.9\r\n";
+
+    auto r = http::get(watchUrl(videoId), "text/html,*/*", headers);
+    if (!r.setCookie.empty())
+        s.cookie = cookieHeaderFromSetCookie(r.setCookie);
+
+    // Consent / SOCS — many regions block player without these.
+    if (s.cookie.find("CONSENT=") == std::string::npos)
+        s.cookie += (s.cookie.empty() ? "" : "; ") + std::string("CONSENT=YES+");
+    if (s.cookie.find("SOCS=") == std::string::npos)
+        s.cookie += (s.cookie.empty() ? "" : "; ") + std::string("SOCS=CAI");
+
+    if (!r.body.empty()) {
+        if (auto k = extractBetween(r.body, "\"INNERTUBE_API_KEY\":\"", '"'); !k.empty())
+            s.apiKey = k;
+        if (auto v = extractBetween(r.body, "\"VISITOR_DATA\":\"", '"'); !v.empty())
+            s.visitorData = v;
+        else if (auto v = extractBetween(r.body, "\"visitorData\":\"", '"'); !v.empty())
+            s.visitorData = v;
+    }
+    return s;
+}
+
+bool pickFromStreamingData(const json& sd, std::string* videoUrl, std::string* audioUrl) {
+    constexpr int kTargetH = 720;
+
+    auto pickAudio = [&](std::string* outAud) {
+        if (!outAud || !sd.contains("adaptiveFormats") || !sd["adaptiveFormats"].is_array())
+            return;
+        int bestAudBr = -1;
+        for (auto& f : sd["adaptiveFormats"]) {
+            if (!f.is_object() || !isAudioOnly(f)) continue;
+            std::string url = f.value("url", "");
+            if (!looksLikeUrl(url)) continue;
+            int br = f.value("bitrate", f.value("averageBitrate", 0));
+            std::string mime = util::lower(f.value("mimeType", ""));
+            if (br > bestAudBr ||
+                (br == bestAudBr && mime.find("mp4a") != std::string::npos)) {
+                bestAudBr = br;
+                *outAud = url;
+            }
+        }
+    };
+
+    auto pickAdaptiveVideo = [&](bool require720, std::string* outVid) -> bool {
+        if (!sd.contains("adaptiveFormats") || !sd["adaptiveFormats"].is_array())
+            return false;
+        std::string bestVid;
+        int bestScore = -1;
+        for (auto& f : sd["adaptiveFormats"]) {
+            if (!f.is_object() || !isVideo(f)) continue;
+            std::string url = f.value("url", "");
+            if (!looksLikeUrl(url)) continue;
+            int h = heightOf(f);
+            if (h <= 0) continue;
+            if (require720 && h != kTargetH) continue;
+            if (!require720 && h > kTargetH) continue;
+            int score = (h == kTargetH) ? 100000 + h : h;
+            std::string mime = util::lower(f.value("mimeType", ""));
+            bool avc = mime.find("avc1") != std::string::npos;
+            if (score > bestScore || (score == bestScore && avc)) {
+                bestScore = score;
+                bestVid = url;
+            }
+        }
+        if (bestVid.empty()) return false;
+        *outVid = bestVid;
+        return true;
+    };
+
+    {
+        std::string vid, aud;
+        if (pickAdaptiveVideo(true, &vid)) {
+            pickAudio(&aud);
+            *videoUrl = vid;
+            if (audioUrl) *audioUrl = aud;
+            return true;
+        }
+    }
+    {
+        std::string vid, aud;
+        if (pickAdaptiveVideo(false, &vid)) {
+            pickAudio(&aud);
+            *videoUrl = vid;
+            if (audioUrl) *audioUrl = aud;
+            return true;
+        }
+    }
+    if (sd.contains("formats") && sd["formats"].is_array()) {
+        std::string best;
+        int bestScore = -1;
+        for (auto& f : sd["formats"]) {
+            if (!f.is_object()) continue;
+            std::string url = f.value("url", "");
+            if (!looksLikeUrl(url)) continue;
+            int h = heightOf(f);
+            if (h <= 0) h = 360;
+            int score = (h == kTargetH) ? 100000 + h : (h <= kTargetH ? h : -1);
+            if (score < 0) continue;
+            if (score > bestScore) {
+                bestScore = score;
+                best = url;
+            }
+        }
+        if (!best.empty()) {
+            *videoUrl = best;
+            return true;
+        }
+    }
+    std::string hls = sd.value("hlsManifestUrl", "");
+    if (looksLikeUrl(hls)) {
+        *videoUrl = hls;
+        return true;
+    }
+    return false;
+}
+
+// Lightweight YouTube InnerTube — prefers clients that still return clear `url` fields.
 bool tryInnerTube(const std::string& videoId, std::string* videoUrl, std::string* audioUrl) {
     if (videoUrl) videoUrl->clear();
     if (audioUrl) audioUrl->clear();
+
+    YtSession sess = bootstrapSession(videoId);
 
     struct Client {
         const char* name;
         const char* version;
         const char* ua;
-        const char* clientNameHeader; // X-YouTube-Client-Name
+        const char* clientNameHeader;
+        bool embedded = false;
     };
-    // ANDROID regularly exposes clear `url` fields (no signatureCipher).
     static const Client clients[] = {
         {"ANDROID", "20.10.38",
-         "com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip", "3"},
-        {"ANDROID", "19.29.37",
-         "com.google.android.youtube/19.29.37 (Linux; U; Android 11) gzip", "3"},
+         "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip", "3", false},
+        {"ANDROID", "19.35.36",
+         "com.google.android.youtube/19.35.36 (Linux; U; Android 14) gzip", "3", false},
+        {"IOS", "19.45.4",
+         "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)", "5", false},
+        {"TVHTML5_SIMPLY_EMBEDDED_PLAYER", "2.0",
+         "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version", "85", true},
+        {"ANDROID_VR", "1.60.19",
+         "com.google.android.apps.youtube.vr.oculus/1.60.19 (Linux; U; Android 12)", "28", false},
     };
 
     for (auto& c : clients) {
+        json clientObj = {
+            {"clientName", c.name},
+            {"clientVersion", c.version},
+            {"hl", "en"},
+            {"gl", "US"},
+            {"userAgent", c.ua},
+        };
+        if (std::string(c.name).find("ANDROID") != std::string::npos)
+            clientObj["androidSdkVersion"] = 34;
+        if (!sess.visitorData.empty())
+            clientObj["visitorData"] = sess.visitorData;
+
         json body = {
-            {"context",
-             {{"client",
-               {{"clientName", c.name},
-                {"clientVersion", c.version},
-                {"androidSdkVersion", 30},
-                {"hl", "en"},
-                {"gl", "US"},
-                {"userAgent", c.ua}}}}},
+            {"context", {{"client", clientObj}}},
             {"videoId", videoId},
             {"contentCheckOk", true},
             {"racyCheckOk", true},
         };
+        if (c.embedded) {
+            body["context"]["thirdParty"] = {{"embedUrl", "https://www.youtube.com"}};
+            body["playbackContext"] = {
+                {"contentPlaybackContext", {{"html5Preference", "HTML5_PREF_WANTS"}}}};
+        }
+
         std::string headers =
             std::string("User-Agent: ") + c.ua + "\r\n"
             "X-YouTube-Client-Name: " + c.clientNameHeader + "\r\n"
-            "X-YouTube-Client-Version: " + c.version + "\r\n";
+            "X-YouTube-Client-Version: " + c.version + "\r\n"
+            "Origin: https://www.youtube.com\r\n";
+        if (!sess.cookie.empty())
+            headers += "Cookie: " + sess.cookie + "\r\n";
+        if (!sess.visitorData.empty())
+            headers += "X-Goog-Visitor-Id: " + sess.visitorData + "\r\n";
 
-        auto r = http::post("https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
-                            body.dump(), "application/json", headers);
+        std::string url =
+            "https://www.youtube.com/youtubei/v1/player?prettyPrint=false&key=" + sess.apiKey;
+        auto r = http::post(url, body.dump(), "application/json", headers);
         if (!r.ok()) continue;
 
         try {
@@ -113,106 +317,8 @@ bool tryInnerTube(const std::string& videoId, std::string* videoUrl, std::string
             auto status = j.value("/playabilityStatus/status"_json_pointer, std::string{});
             if (status != "OK" && status != "LIVE_STREAM_OFFLINE") continue;
             if (!j.contains("streamingData") || !j["streamingData"].is_object()) continue;
-            auto& sd = j["streamingData"];
-
-            // Prefer adaptive 720p (video + audio). Muxed progressives are often only 360p.
-            constexpr int kTargetH = 720;
-
-            auto pickAudio = [&](std::string* outAud) {
-                if (!outAud || !sd.contains("adaptiveFormats") || !sd["adaptiveFormats"].is_array())
-                    return;
-                int bestAudBr = -1;
-                for (auto& f : sd["adaptiveFormats"]) {
-                    if (!f.is_object() || !isAudioOnly(f)) continue;
-                    std::string url = f.value("url", "");
-                    if (!looksLikeUrl(url)) continue;
-                    int br = f.value("bitrate", f.value("averageBitrate", 0));
-                    std::string mime = util::lower(f.value("mimeType", ""));
-                    // Prefer m4a/mp4a for libVLC + mp4 video
-                    if (br > bestAudBr ||
-                        (br == bestAudBr && mime.find("mp4a") != std::string::npos)) {
-                        bestAudBr = br;
-                        *outAud = url;
-                    }
-                }
-            };
-
-            auto pickAdaptiveVideo = [&](bool require720, std::string* outVid) -> bool {
-                if (!sd.contains("adaptiveFormats") || !sd["adaptiveFormats"].is_array())
-                    return false;
-                std::string bestVid;
-                int bestScore = -1;
-                for (auto& f : sd["adaptiveFormats"]) {
-                    if (!f.is_object() || !isVideo(f)) continue;
-                    std::string url = f.value("url", "");
-                    if (!looksLikeUrl(url)) continue;
-                    int h = heightOf(f);
-                    if (h <= 0) continue;
-                    if (require720 && h != kTargetH) continue;
-                    if (!require720 && h > kTargetH) continue; // never above target unless exact-720 pass
-                    // Exact 720 wins; otherwise highest below 720.
-                    int score = (h == kTargetH) ? 100000 + h : h;
-                    std::string mime = util::lower(f.value("mimeType", ""));
-                    bool avc = mime.find("avc1") != std::string::npos;
-                    if (score > bestScore || (score == bestScore && avc)) {
-                        bestScore = score;
-                        bestVid = url;
-                    }
-                }
-                if (bestVid.empty()) return false;
-                *outVid = bestVid;
+            if (pickFromStreamingData(j["streamingData"], videoUrl, audioUrl))
                 return true;
-            };
-
-            // 1) Exact 720p adaptive + audio
-            {
-                std::string vid, aud;
-                if (pickAdaptiveVideo(true, &vid)) {
-                    pickAudio(&aud);
-                    *videoUrl = vid;
-                    if (audioUrl) *audioUrl = aud;
-                    return true;
-                }
-            }
-            // 2) Best adaptive ≤720p + audio
-            {
-                std::string vid, aud;
-                if (pickAdaptiveVideo(false, &vid)) {
-                    pickAudio(&aud);
-                    *videoUrl = vid;
-                    if (audioUrl) *audioUrl = aud;
-                    return true;
-                }
-            }
-            // 3) Muxed progressive (often 360p only) — last resort single URL
-            if (sd.contains("formats") && sd["formats"].is_array()) {
-                std::string best;
-                int bestScore = -1;
-                for (auto& f : sd["formats"]) {
-                    if (!f.is_object()) continue;
-                    std::string url = f.value("url", "");
-                    if (!looksLikeUrl(url)) continue;
-                    int h = heightOf(f);
-                    if (h <= 0) h = 360;
-                    int score = (h == kTargetH) ? 100000 + h : (h <= kTargetH ? h : -1);
-                    if (score < 0) continue;
-                    if (score > bestScore) {
-                        bestScore = score;
-                        best = url;
-                    }
-                }
-                if (!best.empty()) {
-                    *videoUrl = best;
-                    return true;
-                }
-            }
-
-            // 4) HLS manifest if present
-            std::string hls = sd.value("hlsManifestUrl", "");
-            if (looksLikeUrl(hls)) {
-                *videoUrl = hls;
-                return true;
-            }
         } catch (...) {}
     }
     return false;
@@ -290,7 +396,7 @@ void openOnYoutube() {
     }
     cancel();
     if (!id.empty())
-        platform::openUrl("https://www.youtube.com/watch?v=" + id);
+        platform::openUrl(watchUrl(id));
 }
 
 void close() { player::close(); }
@@ -323,10 +429,12 @@ void tick() {
     }
     if (cancelled) return;
 
+    const std::string yt = watchUrl(videoId);
     if (ok && !url.empty()) {
-        player::open(url, title, audio);
+        // Pass watch URL so error → "Open externally" opens YouTube, not googlevideo CDN.
+        player::open(url, title, audio, yt);
     } else {
-        platform::openUrl("https://www.youtube.com/watch?v=" + videoId);
+        platform::openUrl(yt);
     }
 }
 
@@ -355,7 +463,6 @@ void drawOverlay() {
                 ImVec2(cardMin.x + (cardW - ts.x) * 0.5f, cardMin.y + 100.f),
                 IM_COL32(209, 213, 219, 255), msg);
 
-    // Full-screen input blocker + card button (ImGui — Windows and Linux)
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(dsp);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
@@ -366,7 +473,6 @@ void drawOverlay() {
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize |
                      ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoScrollWithMouse);
-    // Eat clicks on the dimmed backdrop
     ImGui::InvisibleButton("##yt_block", dsp);
 
     const float btnW = 200.f, btnH = 36.f;

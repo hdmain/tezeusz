@@ -690,10 +690,15 @@ void startOpenJob(uint64_t gen, std::string path, int volume, std::string audioS
 void bindWindow(GLFWwindow* w) { g_host = w; }
 
 bool open(const std::string& path, const std::string& title) {
-    return open(path, title, {});
+    return open(path, title, {}, {});
 }
 
 bool open(const std::string& path, const std::string& title, const std::string& audioSlaveUrl) {
+    return open(path, title, audioSlaveUrl, {});
+}
+
+bool open(const std::string& path, const std::string& title, const std::string& audioSlaveUrl,
+          const std::string& externalOpenUrl) {
     close();
     uint64_t gen = ++g_openGen;
     g_st = State{};
@@ -705,6 +710,7 @@ bool open(const std::string& path, const std::string& title, const std::string& 
                : fs::path(path).stem().string())
         : title;
     g_st.path = path;
+    g_st.externalUrl = externalOpenUrl;
     g_st.volume = 80;
     g_showControls = true;
     g_idleTimer = 0;
@@ -1105,7 +1111,13 @@ bool render() {
         dl->AddText(ImVec2(wpos.x + (wsize.x - ts.x) * 0.5f, wpos.y + (wsize.y - ts.y) * 0.5f),
                     IM_COL32(248, 113, 113, 255), msg);
         ImGui::SetCursorScreenPos(ImVec2(wpos.x + wsize.x * 0.5f - 110, wpos.y + wsize.y * 0.5f + 36));
-        if (ImGui::Button(i18n::tr("player.open_external"), ImVec2(200, 34))) platform::openPath(g_st.path);
+        if (ImGui::Button(i18n::tr("player.open_external"), ImVec2(200, 34))) {
+            const std::string& ext = !g_st.externalUrl.empty() ? g_st.externalUrl : g_st.path;
+            if (ext.rfind("http://", 0) == 0 || ext.rfind("https://", 0) == 0)
+                platform::openUrl(ext);
+            else
+                platform::openPath(ext);
+        }
         ImGui::SameLine();
         if (ImGui::Button(i18n::tr("common.close"), ImVec2(90, 34))) close();
     } else {

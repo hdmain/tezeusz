@@ -1062,6 +1062,7 @@ void StackConfig::load() {
             showFpsOverlay = j.value("showFpsOverlay", showFpsOverlay);
             showDebugHud = j.value("showDebugHud", showDebugHud);
             imageP2p = j.value("imageP2p", imageP2p);
+            imageP2pSentTotal = j.value("imageP2pSentTotal", imageP2pSentTotal);
             if (uiTargetFps != 0 && uiTargetFps != 30 && uiTargetFps != 60 && uiTargetFps != 120)
                 uiTargetFps = 60;
             if (j.contains("moviesPathsExtra") && j["moviesPathsExtra"].is_array()) {
@@ -1109,7 +1110,8 @@ void StackConfig::save() const {
         {"uiVsync", uiVsync},
         {"showFpsOverlay", showFpsOverlay},
         {"showDebugHud", showDebugHud},
-        {"imageP2p", imageP2p}
+        {"imageP2p", imageP2p},
+        {"imageP2pSentTotal", imageP2pSentTotal}
     };
     util::writeFile(cfgPath(), j.dump(2));
 }

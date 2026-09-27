@@ -241,6 +241,11 @@ void seedEnglish() {
     g_en["settings.image_p2p_hint"] =
         "Share/fetch poster images over BitTorrent DHT between Seerr clients. Disable if you only "
         "want plain HTTP downloads (or set SEERR_DISABLE_IMGSWARM=1).";
+    g_en["settings.image_p2p_sent"] = "Posters sent to others:";
+    g_en["settings.image_p2p_sent_hint"] =
+        "How many full posters this app has uploaded to other Seerr peers (lifetime).";
+    g_en["settings.image_p2p_sent_detail"] =
+        "This session: %llu sent · %llu offered · seeding %d now · %.2f MB uploaded";
     g_en["settings.diagnostics"] = "Diagnostics";
     g_en["settings.path_data"] = "Data:";
     g_en["settings.path_exe"] = "Exe:";

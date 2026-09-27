@@ -15,6 +15,7 @@
 #include <libtorrent/kademlia/ed25519.hpp>
 #include <libtorrent/kademlia/item.hpp>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -28,6 +29,7 @@
 #include <thread>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -44,6 +46,17 @@ std::atomic<bool> g_stop{true};
 std::unordered_map<std::string, lt::torrent_handle> g_seeds; // url -> handle
 std::deque<std::string> g_seedOrder;
 constexpr int kMaxSeeds = 48;
+
+// Per-seed upload tracking (estimate complete poster transfers to peers).
+struct SeedTrack {
+    std::int64_t fileSize = 0;
+    std::int64_t lastPayloadUpload = 0;
+};
+std::unordered_map<std::string, SeedTrack> g_seedTrack;
+std::atomic<uint64_t> g_offeredSession{0};
+std::atomic<uint64_t> g_sentSession{0};
+std::atomic<uint64_t> g_bytesUploaded{0};
+std::unordered_set<std::string> g_offeredUrls;
 
 bool isImageCdnUrl(const std::string& url) {
     return url.find("image.tmdb.org/") != std::string::npos
@@ -114,6 +127,64 @@ void trimSeedsLocked() {
             if (g_ses) g_ses->remove_torrent(it->second);
         } catch (...) {}
         g_seeds.erase(it);
+        g_seedTrack.erase(url);
+    }
+}
+
+// Count complete poster uploads: each time payload upload grows by ~fileSize, credit one send.
+void refreshUploadCountersLocked() {
+    std::int64_t totalBytes = 0;
+    uint64_t newSends = 0;
+    for (auto& kv : g_seeds) {
+        const std::string& url = kv.first;
+        lt::torrent_handle& h = kv.second;
+        if (!h.is_valid()) continue;
+        lt::torrent_status st;
+        try {
+            st = h.status();
+        } catch (...) {
+            continue;
+        }
+        std::int64_t up = st.total_payload_upload;
+        if (up < 0) up = 0;
+        totalBytes += up;
+
+        auto& tr = g_seedTrack[url];
+        if (tr.fileSize <= 0) {
+            try {
+                auto ti = h.torrent_file();
+                if (ti) tr.fileSize = ti->total_size();
+            } catch (...) {}
+        }
+        if (tr.fileSize < 64) {
+            tr.lastPayloadUpload = up;
+            continue;
+        }
+        if (up > tr.lastPayloadUpload) {
+            std::int64_t delta = up - tr.lastPayloadUpload;
+            // How many full poster copies did this delta cover?
+            std::int64_t adds = delta / tr.fileSize;
+            // Also count a near-complete remainder once (≥90% of one poster).
+            std::int64_t rem = delta % tr.fileSize;
+            if (rem >= (tr.fileSize * 9) / 10)
+                ++adds;
+            if (adds > 0)
+                newSends += (uint64_t)adds;
+            tr.lastPayloadUpload = up;
+        }
+    }
+    g_bytesUploaded.store((uint64_t)totalBytes);
+    if (newSends > 0) {
+        g_sentSession.fetch_add(newSends);
+        auto& cfg = stack::StackConfig::get();
+        cfg.imageP2pSentTotal += newSends;
+        // Persist occasionally so lifetime stats survive restarts.
+        static uint64_t sinceSave = 0;
+        sinceSave += newSends;
+        if (sinceSave >= 3) {
+            sinceSave = 0;
+            try { cfg.save(); } catch (...) {}
+        }
     }
 }
 
@@ -241,8 +312,11 @@ void shutdown() {
     g_cv.notify_all();
     if (g_alertThread.joinable()) g_alertThread.join();
     std::lock_guard<std::mutex> lk(g_mu);
+    refreshUploadCountersLocked();
+    try { stack::StackConfig::get().save(); } catch (...) {}
     g_seeds.clear();
     g_seedOrder.clear();
+    g_seedTrack.clear();
     g_ses.reset();
 }
 
@@ -274,6 +348,15 @@ void offer(const std::string& url, const std::string& filePath) {
         auto h = g_ses->add_torrent(std::move(atp));
         g_seeds[url] = h;
         g_seedOrder.push_back(url);
+        {
+            SeedTrack tr;
+            std::error_code ec;
+            tr.fileSize = (std::int64_t)fs::file_size(filePath, ec);
+            if (ec || tr.fileSize < 0) tr.fileSize = 0;
+            g_seedTrack[url] = tr;
+        }
+        if (g_offeredUrls.insert(url).second)
+            g_offeredSession.fetch_add(1);
         trimSeedsLocked();
         publishInfoHash(url, ti->info_hashes().get_best());
     } catch (...) {}
@@ -393,6 +476,15 @@ bool tryFetch(const std::string& url, const std::string& destPath, int timeoutMs
             std::lock_guard<std::mutex> lk(g_mu);
             g_seeds[url] = h;
             g_seedOrder.push_back(url);
+            {
+                SeedTrack tr;
+                std::error_code ec2;
+                tr.fileSize = (std::int64_t)fs::file_size(destPath, ec2);
+                if (ec2 || tr.fileSize < 0) tr.fileSize = 0;
+                g_seedTrack[url] = tr;
+            }
+            if (g_offeredUrls.insert(url).second)
+                g_offeredSession.fetch_add(1);
             trimSeedsLocked();
         }
         publishInfoHash(url, infoHash);
@@ -406,6 +498,21 @@ bool tryFetch(const std::string& url, const std::string& destPath, int timeoutMs
         }
     }
     return false;
+}
+
+Stats stats() {
+    Stats s;
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        if (g_ses)
+            refreshUploadCountersLocked();
+        s.activeSeeds = (int)g_seeds.size();
+    }
+    s.offeredSession = g_offeredSession.load();
+    s.sentSession = g_sentSession.load();
+    s.bytesUploaded = g_bytesUploaded.load();
+    s.sentTotal = stack::StackConfig::get().imageP2pSentTotal;
+    return s;
 }
 
 } // namespace imgswarm

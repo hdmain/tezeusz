@@ -26,6 +26,7 @@
 #include "gl_compat.hpp"
 #include "tray.hpp"
 #include "updater.hpp"
+#include "imgswarm.hpp"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -651,10 +652,12 @@ int main() {
                 char line[192];
                 if (cfg.showDebugHud) {
                     auto st = core::stats();
+                    auto ps = imgswarm::stats();
                     std::snprintf(line, sizeof(line),
-                                  "%.0f FPS  ·  %.1f ms  ·  jobs %d/%d  ·  peers %d  ·  vsync %s  ·  cap %d",
+                                  "%.0f FPS  ·  %.1f ms  ·  jobs %d/%d  ·  peers %d  ·  "
+                                  "posters sent %llu (seed %d)",
                                   fps, dtMs, st.jobsRunning, st.jobsPending, st.peers,
-                                  cfg.uiVsync ? "on" : "off", cfg.uiTargetFps);
+                                  (unsigned long long)ps.sentTotal, ps.activeSeeds);
                 } else {
                     std::snprintf(line, sizeof(line), "%.0f FPS  ·  %.1f ms", fps, dtMs);
                 }

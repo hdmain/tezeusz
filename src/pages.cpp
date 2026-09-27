@@ -13,6 +13,7 @@
 #include "i18n.hpp"
 #include "updater.hpp"
 #include "core.hpp"
+#include "imgswarm.hpp"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include <algorithm>
@@ -2232,6 +2233,25 @@ void renderSettings() {
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
         ImGui::TextWrapped("%s", i18n::tr("settings.image_p2p_hint"));
         ImGui::PopStyleColor();
+        {
+            auto ps = imgswarm::stats();
+            ImGui::Dummy(ImVec2(1, 6));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(TXT));
+            ImGui::Text("%s %llu", i18n::tr("settings.image_p2p_sent"),
+                        (unsigned long long)ps.sentTotal);
+            ImGui::PopStyleColor();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+            ImGui::TextWrapped("%s", i18n::tr("settings.image_p2p_sent_hint"));
+            char detail[160];
+            const double mb = (double)ps.bytesUploaded / (1024.0 * 1024.0);
+            std::snprintf(detail, sizeof(detail),
+                          i18n::tr("settings.image_p2p_sent_detail"),
+                          (unsigned long long)ps.sentSession,
+                          (unsigned long long)ps.offeredSession,
+                          ps.activeSeeds, mb);
+            ImGui::TextWrapped("%s", detail);
+            ImGui::PopStyleColor();
+        }
         ImGui::Dummy(ImVec2(1, 14));
 
         fieldLabel(i18n::tr("settings.diagnostics"));

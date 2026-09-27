@@ -417,11 +417,18 @@ void renderSearch() {
         ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0, 0, 0, 0));
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.72f, 0.76f, 0.85f, 1.0f));
-        if (a.focusSearchInput) {
+        const bool reclaimFocus = a.focusSearchInput;
+        if (reclaimFocus) {
             ImGui::SetKeyboardFocusHere();
             a.focusSearchInput = false;
         }
         ImGui::InputTextWithHint("##search_page", i18n::tr("search.hint"), buf, sizeof(buf));
+        // SetKeyboardFocusHere selects all — clear that so the next keystroke
+        // appends instead of replacing the character that triggered home→search.
+        if (reclaimFocus) {
+            if (ImGuiInputTextState* st = ImGui::GetInputTextState(ImGui::GetItemID()))
+                st->ReloadUserBufAndMoveToEnd();
+        }
         ImGui::PopStyleColor(5);
         ImGui::PopItemWidth();
         std::string prev = a.searchInput;
@@ -596,12 +603,17 @@ void renderDiscover() {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.72f, 0.76f, 0.85f, 1.0f));
         ImGui::PushFont(G.m18 ? G.m18 : ImGui::GetFont());
-        if (a.focusHomeSearch) {
+        const bool reclaimHome = a.focusHomeSearch;
+        if (reclaimHome) {
             ImGui::SetKeyboardFocusHere();
             a.focusHomeSearch = false;
         }
         bool enter = ImGui::InputTextWithHint("##home_search", i18n::tr("search.hint"),
                                               buf, sizeof(buf), ImGuiInputTextFlags_EnterReturnsTrue);
+        if (reclaimHome) {
+            if (ImGuiInputTextState* st = ImGui::GetInputTextState(ImGui::GetItemID()))
+                st->ReloadUserBufAndMoveToEnd();
+        }
         ImGui::PopFont();
         ImGui::PopStyleColor(5);
         ImGui::PopItemWidth();

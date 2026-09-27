@@ -1425,4 +1425,53 @@ void onLibraryArchived(const std::string& videoPath, const std::string& folderPa
     }
 }
 
+void onLibraryImported(MediaType type, int tmdbId, const std::string& title,
+                       const std::string& year, const std::string& imdbId,
+                       const std::string& originalTitle, const std::string& libraryPath) {
+    if (libraryPath.empty()) return;
+    std::lock_guard<std::recursive_mutex> lk(g_mu);
+    MediaRequest* hit = nullptr;
+    if (tmdbId > 0) {
+        for (auto& r : g_reqs) {
+            if (r.mediaType == type && r.tmdbId == tmdbId) { hit = &r; break; }
+        }
+    }
+    if (!hit && !title.empty()) {
+        for (auto& r : g_reqs) {
+            if (r.mediaType != type) continue;
+            if (!util::iequals(r.title, title)) continue;
+            if (!year.empty() && !r.year.empty() && r.year != year) continue;
+            hit = &r;
+            break;
+        }
+    }
+    if (!hit) {
+        MediaRequest r;
+        r.id = newId();
+        r.mediaType = type;
+        r.tmdbId = tmdbId;
+        r.title = title;
+        r.originalTitle = originalTitle;
+        r.year = year;
+        r.imdbId = imdbId;
+        r.libraryPath = libraryPath;
+        r.progress = 1.0;
+        r.status = ReqStatus::Available;
+        r.message = i18n::tr("library.import_status");
+        r.createdAt = r.updatedAt = nowMs();
+        g_reqs.push_back(std::move(r));
+    } else {
+        if (!title.empty()) hit->title = title;
+        if (!originalTitle.empty()) hit->originalTitle = originalTitle;
+        if (!year.empty()) hit->year = year;
+        if (!imdbId.empty()) hit->imdbId = imdbId;
+        if (tmdbId > 0) hit->tmdbId = tmdbId;
+        hit->libraryPath = libraryPath;
+        hit->progress = 1.0;
+        setStatus(*hit, ReqStatus::Available, i18n::tr("library.import_status"));
+    }
+    saveRequestsLocked();
+    syncAppStatuses();
+}
+
 } // namespace stack

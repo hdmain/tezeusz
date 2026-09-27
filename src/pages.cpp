@@ -1355,17 +1355,24 @@ void renderLibrary() {
     static bool openProps = false;
     static bool openDelete = false;
     static bool openArchive = false;
+    static bool openExport = false;
     static std::string deleteErr;
     static std::string archiveErr;
     static std::string archiveOkPath;
-    struct ArchiveJob {
+    static std::string exportErr;
+    static std::string exportOkPath;
+    static std::string importErr;
+    static std::string importOkPath;
+    struct ZipJob {
         std::mutex mu;
         bool done = false;
         std::string zip;
         std::string err;
         std::string itemId;
     };
-    static std::shared_ptr<ArchiveJob> archiveJob;
+    static std::shared_ptr<ZipJob> archiveJob;
+    static std::shared_ptr<ZipJob> exportJob;
+    static std::shared_ptr<ZipJob> importJob;
 
     double now = ImGui::GetTime();
     if (items.empty() || now - lastScan > 3.0) {
@@ -1377,6 +1384,31 @@ void renderLibrary() {
     if (ImGui::Button(i18n::tr("common.refresh"), ImVec2(100, 28))) {
         items = library::scan();
         lastScan = now;
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled((bool)importJob);
+    if (ImGui::Button(importJob ? i18n::tr("library.import_working") : i18n::tr("library.import"),
+                      ImVec2(importJob ? 140.f : 120.f, 28))) {
+        importErr.clear();
+        importOkPath.clear();
+        std::string pick = platform::pickOpenFile(
+            i18n::tr("library.import"), i18n::tr("library.import_pick"), "*.zip");
+        if (!pick.empty()) {
+            auto job = std::make_shared<ZipJob>();
+            importJob = job;
+            core::enqueue([pick, job]() {
+                std::string err;
+                std::string path = library::importExportZip(pick, &err);
+                std::lock_guard<std::mutex> lk(job->mu);
+                job->zip = std::move(path);
+                job->err = std::move(err);
+                job->done = true;
+            });
+        }
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("%s", i18n::tr("library.import_hint"));
     }
     ImGui::SameLine();
     {
@@ -1553,6 +1585,11 @@ void renderLibrary() {
                 openProps = true;
             ImGui::Separator();
             if (!it.archived) {
+                if (ImGui::MenuItem(i18n::tr("library.export"), nullptr, false, !exportJob)) {
+                    exportErr.clear();
+                    exportOkPath.clear();
+                    openExport = true;
+                }
                 if (ImGui::MenuItem(i18n::tr("library.archive"), nullptr, false, !archiveJob)) {
                     archiveErr.clear();
                     archiveOkPath.clear();
@@ -1782,7 +1819,7 @@ void renderLibrary() {
             if (ImGui::Button(i18n::tr("library.archive"), ImVec2(140, 32))) {
                 archiveErr.clear();
                 archiveOkPath.clear();
-                auto job = std::make_shared<ArchiveJob>();
+                auto job = std::make_shared<ZipJob>();
                 job->itemId = ctxItem.id;
                 archiveJob = job;
                 library::Item itemCopy = ctxItem;
@@ -1807,6 +1844,126 @@ void renderLibrary() {
             if (ImGui::Button(i18n::tr("common.close"), ImVec2(120, 32)))
                 ImGui::CloseCurrentPopup();
         }
+        w::endQuestionModal();
+    }
+
+    // ---- Export (transfer ZIP — originals kept) ----
+    if (openExport) {
+        ImGui::OpenPopup("##lib_export");
+        openExport = false;
+    }
+    if (exportJob) {
+        std::lock_guard<std::mutex> lk(exportJob->mu);
+        if (exportJob->done) {
+            if (!exportJob->zip.empty()) {
+                exportOkPath = exportJob->zip;
+                exportErr = exportJob->err;
+            } else {
+                exportErr = exportJob->err.empty() ? i18n::tr("library.export_failed")
+                                                   : exportJob->err;
+            }
+            exportJob.reset();
+        }
+    }
+    const bool exportBusy = (bool)exportJob;
+    if (w::beginQuestionModal("##lib_export", 480.f)) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.65f, 0.88f, 0.72f, 1));
+        ImGui::TextUnformatted(i18n::tr("library.export_title"));
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::TextWrapped(i18n::tr("library.export_confirm"), ctxItem.title.c_str());
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.61f, 0.64f, 0.69f, 1));
+        ImGui::TextWrapped("%s", i18n::tr("library.export_hint"));
+        ImGui::PopStyleColor();
+        if (exportBusy) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.75f, 0.90f, 0.80f, 1), "%s",
+                               i18n::tr("library.export_working"));
+            ImGui::TextDisabled("%s", i18n::tr("library.export_working_hint"));
+        }
+        if (!exportOkPath.empty()) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.4f, 0.85f, 0.55f, 1), "%s",
+                               i18n::tr("library.export_done"));
+            ImGui::TextWrapped("%s", exportOkPath.c_str());
+        }
+        if (!exportErr.empty()) {
+            ImGui::Spacing();
+            ImGui::TextColored(ImVec4(0.96f, 0.4f, 0.4f, 1), "%s", exportErr.c_str());
+        }
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        if (exportBusy) {
+            ImGui::BeginDisabled();
+            ImGui::Button(i18n::tr("library.export_working"), ImVec2(180, 32));
+            ImGui::EndDisabled();
+        } else if (exportOkPath.empty()) {
+            if (ImGui::Button(i18n::tr("library.export"), ImVec2(140, 32))) {
+                exportErr.clear();
+                exportOkPath.clear();
+                auto job = std::make_shared<ZipJob>();
+                job->itemId = ctxItem.id;
+                exportJob = job;
+                library::Item itemCopy = ctxItem;
+                core::enqueue([itemCopy, job]() {
+                    std::string err;
+                    std::string zip = library::exportItem(itemCopy, &err);
+                    std::lock_guard<std::mutex> lk(job->mu);
+                    job->zip = std::move(zip);
+                    job->err = std::move(err);
+                    job->done = true;
+                });
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(i18n::tr("common.cancel"), ImVec2(120, 32)))
+                ImGui::CloseCurrentPopup();
+        } else {
+            if (ImGui::Button(i18n::tr("common.open_folder"), ImVec2(140, 32))) {
+                std::filesystem::path zp(exportOkPath);
+                platform::openPath(zp.parent_path().string());
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(i18n::tr("common.close"), ImVec2(120, 32)))
+                ImGui::CloseCurrentPopup();
+        }
+        w::endQuestionModal();
+    }
+
+    // ---- Import job completion toast-ish modal ----
+    if (importJob) {
+        std::lock_guard<std::mutex> lk(importJob->mu);
+        if (importJob->done) {
+            if (!importJob->zip.empty()) {
+                importOkPath = importJob->zip;
+                importErr.clear();
+                items = library::scan();
+                lastScan = ImGui::GetTime();
+                ImGui::OpenPopup("##lib_import_done");
+            } else {
+                importErr = importJob->err.empty() ? i18n::tr("library.import_failed")
+                                                   : importJob->err;
+                ImGui::OpenPopup("##lib_import_done");
+            }
+            importJob.reset();
+        }
+    }
+    if (w::beginQuestionModal("##lib_import_done", 480.f)) {
+        ImGui::TextUnformatted(i18n::tr("library.import"));
+        ImGui::Separator();
+        ImGui::Spacing();
+        if (!importOkPath.empty()) {
+            ImGui::TextColored(ImVec4(0.4f, 0.85f, 0.55f, 1), "%s",
+                               i18n::tr("library.import_done"));
+            ImGui::TextWrapped("%s", importOkPath.c_str());
+        }
+        if (!importErr.empty()) {
+            ImGui::TextColored(ImVec4(0.96f, 0.4f, 0.4f, 1), "%s", importErr.c_str());
+        }
+        ImGui::Spacing();
+        if (ImGui::Button(i18n::tr("common.close"), ImVec2(120, 32)))
+            ImGui::CloseCurrentPopup();
         w::endQuestionModal();
     }
 }

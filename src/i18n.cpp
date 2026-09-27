@@ -197,6 +197,31 @@ void seedEnglish() {
     g_en["library.archive_failed"] = "Archive failed";
     g_en["library.archived_badge"] = "Archived";
     g_en["library.archived_status"] = "Archived";
+    g_en["library.export"] = "Export";
+    g_en["library.export_title"] = "Export for transfer";
+    g_en["library.export_confirm"] =
+        "Pack \"%s\" into a ZIP you can copy to another device?";
+    g_en["library.export_hint"] =
+        "Creates a ZIP under Exports/ (video stored as-is). Originals stay in the library. On the "
+        "other PC use Import ZIP.";
+    g_en["library.export_working"] = "Exporting…";
+    g_en["library.export_working_hint"] =
+        "You can keep using the app — this runs in the background.";
+    g_en["library.export_done"] = "Exported to:";
+    g_en["library.export_failed"] = "Export failed";
+    g_en["library.export_no_folder"] = "Title folder not found";
+    g_en["library.export_root_denied"] = "Cannot export the library root";
+    g_en["library.export_manifest_failed"] = "Could not write export metadata";
+    g_en["library.import"] = "Import ZIP";
+    g_en["library.import_hint"] =
+        "Choose a ZIP exported from another Seerr — unpacked into your library without downloading.";
+    g_en["library.import_working"] = "Importing…";
+    g_en["library.import_done"] = "Imported:";
+    g_en["library.import_failed"] = "Import failed";
+    g_en["library.import_missing"] = "ZIP file not found";
+    g_en["library.import_no_video"] = "No video found in the ZIP";
+    g_en["library.import_status"] = "Imported from ZIP";
+    g_en["library.import_pick"] = "ZIP archives";
     g_en["library.size"] = "Size";
     g_en["library.container"] = "Container";
     g_en["library.modified"] = "Modified";

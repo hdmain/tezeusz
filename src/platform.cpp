@@ -13,6 +13,7 @@
 #endif
 #include <windows.h>
 #include <shellapi.h>
+#include <commdlg.h>
 #include <dwmapi.h>
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
@@ -29,6 +30,7 @@
 #else
 #include <dlfcn.h>
 #include <unistd.h>
+#include <cstdio>
 #endif
 
 namespace platform {
@@ -295,6 +297,59 @@ void openPath(const std::string& path) {
 #else
     std::string cmd = "xdg-open \"" + path + "\" >/dev/null 2>&1 &";
     (void)std::system(cmd.c_str());
+#endif
+}
+
+std::string pickOpenFile(const char* title, const char* filterLabel, const char* filterPattern) {
+#ifdef _WIN32
+    char file[MAX_PATH] = {};
+    char filter[256] = {};
+    // OPENFILENAME wants "Label\0pattern\0All\0*.*\0\0"
+    std::string label = filterLabel && filterLabel[0] ? filterLabel : "Files";
+    std::string pattern = filterPattern && filterPattern[0] ? filterPattern : "*.*";
+    size_t n = 0;
+    auto append = [&](const std::string& s) {
+        for (char c : s) {
+            if (n + 2 >= sizeof(filter)) return;
+            filter[n++] = c;
+        }
+        if (n + 1 < sizeof(filter)) filter[n++] = '\0';
+    };
+    append(label);
+    append(pattern);
+    append("All files");
+    append("*.*");
+    if (n < sizeof(filter)) filter[n] = '\0';
+
+    OPENFILENAMEA ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFilter = filter;
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrTitle = title ? title : "Open";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_EXPLORER | OFN_NOCHANGEDIR;
+    if (!GetOpenFileNameA(&ofn)) return {};
+    return std::string(file);
+#else
+    (void)filterLabel;
+    std::string pattern = filterPattern && filterPattern[0] ? filterPattern : "*";
+    std::string t = title ? title : "Open file";
+    // Prefer zenity, then kdialog.
+    auto run = [&](const std::string& cmd) -> std::string {
+        FILE* f = popen(cmd.c_str(), "r");
+        if (!f) return {};
+        char buf[1024] = {};
+        if (!fgets(buf, sizeof(buf), f)) { pclose(f); return {}; }
+        pclose(f);
+        std::string out = buf;
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+        return out;
+    };
+    std::string path = run("zenity --file-selection --title=\"" + t + "\" --file-filter=\"" +
+                           pattern + "\" 2>/dev/null");
+    if (path.empty())
+        path = run("kdialog --getopenfilename . \"" + pattern + "\" 2>/dev/null");
+    return path;
 #endif
 }
 

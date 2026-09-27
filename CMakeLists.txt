@@ -65,7 +65,7 @@ target_link_libraries(seerr PRIVATE imgui ${SEERR_TORRENT_TARGET} Boost::headers
 
 if(WIN32)
     target_link_libraries(seerr PRIVATE
-        winhttp shell32 ole32 oleaut32 gdi32 user32 winmm version uuid opengl32 shlwapi advapi32 psapi
+        winhttp shell32 ole32 oleaut32 gdi32 user32 winmm version uuid opengl32 shlwapi advapi32 psapi comdlg32
         ws2_32 iphlpapi dwmapi
         z
     )

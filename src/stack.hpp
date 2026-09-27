@@ -150,6 +150,10 @@ void onLibraryRemoved(const std::string& pathOrFolder);
 // Point request at the ZIP after archiving (keeps Available + TMDB for library posters).
 void onLibraryArchived(const std::string& videoPath, const std::string& folderPath,
                        const std::string& zipPath);
+// Register (or refresh) an Available library entry after importing an export ZIP.
+void onLibraryImported(MediaType type, int tmdbId, const std::string& title,
+                       const std::string& year, const std::string& imdbId,
+                       const std::string& originalTitle, const std::string& libraryPath);
 void syncAppStatuses();
 
 } // namespace stack

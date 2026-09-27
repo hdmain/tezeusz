@@ -229,4 +229,177 @@ inline bool zipDirectory(const fs::path& folder, const fs::path& zipPath, std::s
     return true;
 }
 
+// Extract a ZIP produced by zipDirectory (STORE only; ZIP64 OK). Streams large files.
+inline bool unzipToDirectory(const fs::path& zipPath, const fs::path& destDir, std::string* err) {
+    std::ifstream in(zipPath.string(), std::ios::binary);
+    if (!in) {
+        if (err) *err = "cannot open zip";
+        return false;
+    }
+    in.seekg(0, std::ios::end);
+    const auto fileSize = (uint64_t)in.tellg();
+    if (fileSize < 22) {
+        if (err) *err = "zip too small";
+        return false;
+    }
+
+    auto readAt = [&](uint64_t off, char* buf, size_t n) -> bool {
+        in.clear();
+        in.seekg((std::streamoff)off);
+        in.read(buf, (std::streamsize)n);
+        return (size_t)in.gcount() == n;
+    };
+    auto u16 = [](const char* p) -> uint16_t {
+        return (uint16_t)((uint8_t)p[0] | ((uint16_t)(uint8_t)p[1] << 8));
+    };
+    auto u32 = [](const char* p) -> uint32_t {
+        return (uint32_t)(uint8_t)p[0] | ((uint32_t)(uint8_t)p[1] << 8) |
+               ((uint32_t)(uint8_t)p[2] << 16) | ((uint32_t)(uint8_t)p[3] << 24);
+    };
+    auto u64 = [&](const char* p) -> uint64_t {
+        return (uint64_t)u32(p) | ((uint64_t)u32(p + 4) << 32);
+    };
+
+    // Find EOCD (last 64 KiB search window).
+    const uint64_t scan = std::min<uint64_t>(fileSize, 65536 + 22);
+    std::vector<char> tail((size_t)scan);
+    if (!readAt(fileSize - scan, tail.data(), (size_t)scan)) {
+        if (err) *err = "read eocd failed";
+        return false;
+    }
+    int64_t eocdRel = -1;
+    for (int64_t i = (int64_t)scan - 22; i >= 0; --i) {
+        if (u32(&tail[(size_t)i]) == 0x06054b50u) { eocdRel = i; break; }
+    }
+    if (eocdRel < 0) {
+        if (err) *err = "eocd not found";
+        return false;
+    }
+    const char* eocd = &tail[(size_t)eocdRel];
+    uint64_t cdSize = u32(eocd + 12);
+    uint64_t cdOffset = u32(eocd + 16);
+    uint64_t entryCount = u16(eocd + 10);
+
+    if (cdOffset == 0xffffffffu || cdSize == 0xffffffffu || entryCount == 0xffffu) {
+        // ZIP64 end locator sits before EOCD
+        if (eocdRel < 20) {
+            if (err) *err = "zip64 locator missing";
+            return false;
+        }
+        const char* loc = eocd - 20;
+        if (u32(loc) != 0x07064b50u) {
+            if (err) *err = "zip64 locator missing";
+            return false;
+        }
+        const uint64_t zip64EocdOff = u64(loc + 8);
+        char z64[56];
+        if (!readAt(zip64EocdOff, z64, 56) || u32(z64) != 0x06064b50u) {
+            if (err) *err = "zip64 eocd missing";
+            return false;
+        }
+        entryCount = u64(z64 + 32);
+        cdSize = u64(z64 + 40);
+        cdOffset = u64(z64 + 48);
+    }
+
+    std::vector<char> cd((size_t)cdSize);
+    if (!readAt(cdOffset, cd.data(), (size_t)cdSize)) {
+        if (err) *err = "central directory read failed";
+        return false;
+    }
+
+    std::error_code ec;
+    fs::create_directories(destDir, ec);
+    std::vector<uint8_t> buf(1 << 20);
+    size_t pos = 0;
+    size_t extracted = 0;
+
+    for (uint64_t n = 0; n < entryCount; ++n) {
+        if (pos + 46 > cd.size() || u32(&cd[pos]) != 0x02014b50u) {
+            if (err) *err = "bad central directory entry";
+            return false;
+        }
+        const uint16_t method = u16(&cd[pos + 10]);
+        uint64_t compSize = u32(&cd[pos + 20]);
+        uint64_t uncompSize = u32(&cd[pos + 24]);
+        const uint16_t nameLen = u16(&cd[pos + 28]);
+        const uint16_t extraLen = u16(&cd[pos + 30]);
+        const uint16_t commentLen = u16(&cd[pos + 32]);
+        uint64_t localOff = u32(&cd[pos + 42]);
+        if (pos + 46 + nameLen > cd.size()) {
+            if (err) *err = "bad name length";
+            return false;
+        }
+        std::string name(&cd[pos + 46], &cd[pos + 46] + nameLen);
+
+        // ZIP64 extra in central directory
+        const char* extra = &cd[pos + 46 + nameLen];
+        size_t ex = 0;
+        while (ex + 4 <= extraLen) {
+            uint16_t id = u16(extra + ex);
+            uint16_t sz = u16(extra + ex + 2);
+            if (ex + 4 + sz > extraLen) break;
+            if (id == 0x0001) {
+                size_t o = 0;
+                if (uncompSize == 0xffffffffu && o + 8 <= sz) { uncompSize = u64(extra + ex + 4 + o); o += 8; }
+                if (compSize == 0xffffffffu && o + 8 <= sz) { compSize = u64(extra + ex + 4 + o); o += 8; }
+                if (o + 8 <= sz && localOff == 0xffffffffu) localOff = u64(extra + ex + 4 + o);
+            }
+            ex += 4 + sz;
+        }
+
+        pos += 46 + nameLen + extraLen + commentLen;
+
+        if (name.empty() || name.back() == '/') continue; // directory
+        if (name.find("..") != std::string::npos) {
+            if (err) *err = "unsafe path in zip";
+            return false;
+        }
+        if (method != 0) {
+            if (err) *err = "unsupported compression (need STORE)";
+            return false;
+        }
+
+        char local[30];
+        if (!readAt(localOff, local, 30) || u32(local) != 0x04034b50u) {
+            if (err) *err = "bad local header: " + name;
+            return false;
+        }
+        const uint16_t lName = u16(local + 26);
+        const uint16_t lExtra = u16(local + 28);
+        uint64_t dataOff = localOff + 30 + lName + lExtra;
+
+        fs::path outPath = destDir / fs::path(name);
+        fs::create_directories(outPath.parent_path(), ec);
+        std::ofstream out(outPath.string(), std::ios::binary | std::ios::trunc);
+        if (!out) {
+            if (err) *err = "cannot write: " + name;
+            return false;
+        }
+        uint64_t left = uncompSize;
+        in.clear();
+        in.seekg((std::streamoff)dataOff);
+        while (left) {
+            const size_t want = (size_t)std::min<uint64_t>(buf.size(), left);
+            in.read((char*)buf.data(), (std::streamsize)want);
+            const auto got = (size_t)in.gcount();
+            if (!got) {
+                out.close();
+                if (err) *err = "truncated read: " + name;
+                return false;
+            }
+            out.write((const char*)buf.data(), (std::streamsize)got);
+            left -= got;
+        }
+        out.close();
+        ++extracted;
+    }
+
+    if (!extracted) {
+        if (err) *err = "zip empty";
+        return false;
+    }
+    return true;
+}
+
 } // namespace zipwrite

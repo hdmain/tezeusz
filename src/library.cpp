@@ -1,11 +1,17 @@
 #include "library.hpp"
 #include "stack.hpp"
 #include "util.hpp"
+#include "i18n.hpp"
 #include "zipwrite.hpp"
+#include "json.hpp"
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
+#include <fstream>
+
+using json = nlohmann::json;
 
 namespace fs = std::filesystem;
 
@@ -402,6 +408,176 @@ std::string archiveItem(const Item& item, std::string* err) {
     stack::onLibraryArchived(item.path, titleDir.empty() ? item.folder : titleDir.string(),
                              zipPath.string());
     return zipPath.string();
+}
+
+std::string exportItem(const Item& item, std::string* err) {
+    std::error_code ec;
+    fs::path titleDir = resolveTitleDir(item);
+    if (titleDir.empty() || !fs::is_directory(titleDir, ec)) {
+        if (err) *err = i18n::tr("library.export_no_folder");
+        return {};
+    }
+    for (auto& root : allRoots()) {
+        if (samePath(titleDir, root)) {
+            if (err) *err = i18n::tr("library.export_root_denied");
+            return {};
+        }
+    }
+
+    // Match request for richer metadata (imdb / original title).
+    std::string originalTitle, imdbId;
+    int tmdbId = item.tmdbId;
+    for (auto& r : stack::listRequests()) {
+        if (r.mediaType != item.mediaType) continue;
+        bool hit = (tmdbId > 0 && r.tmdbId == tmdbId) ||
+                   (util::iequals(r.title, item.title) &&
+                    (item.year.empty() || r.year.empty() || r.year == item.year));
+        if (!hit) continue;
+        if (tmdbId <= 0 && r.tmdbId > 0) tmdbId = r.tmdbId;
+        if (originalTitle.empty()) originalTitle = r.originalTitle;
+        if (imdbId.empty()) imdbId = r.imdbId;
+        break;
+    }
+
+    fs::path exportRoot;
+    for (auto& root : allRoots()) {
+        if (pathUnder(root, titleDir)) {
+            exportRoot = fs::path(root) / "Exports";
+            break;
+        }
+    }
+    if (exportRoot.empty())
+        exportRoot = titleDir.parent_path() / "Exports";
+
+    std::string zipName = titleDir.filename().string() + ".zip";
+    for (char& c : zipName) {
+        if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' ||
+            c == '>' || c == '|')
+            c = '_';
+    }
+    fs::path zipPath = exportRoot / zipName;
+
+    json manifest{
+        {"seerrExportVersion", 1},
+        {"title", item.title},
+        {"originalTitle", originalTitle},
+        {"year", item.year},
+        {"mediaType", item.mediaType == MediaType::TV ? "tv" : "movie"},
+        {"tmdbId", tmdbId},
+        {"imdbId", imdbId},
+        {"folderName", titleDir.filename().string()}
+    };
+    fs::path manifestPath = titleDir / "seerr-export.json";
+    {
+        std::ofstream mf(manifestPath.string(), std::ios::binary | std::ios::trunc);
+        if (!mf) {
+            if (err) *err = i18n::tr("library.export_manifest_failed");
+            return {};
+        }
+        mf << manifest.dump(2);
+    }
+
+    std::string zipErr;
+    const bool ok = zipwrite::zipDirectory(titleDir, zipPath, &zipErr);
+    fs::remove(manifestPath, ec);
+    if (!ok) {
+        if (err) *err = zipErr.empty() ? i18n::tr("library.export_failed") : zipErr;
+        return {};
+    }
+    return zipPath.string();
+}
+
+std::string importExportZip(const std::string& zipPath, std::string* err) {
+    std::error_code ec;
+    if (zipPath.empty() || !fs::exists(zipPath, ec)) {
+        if (err) *err = i18n::tr("library.import_missing");
+        return {};
+    }
+
+    fs::path staging = fs::temp_directory_path(ec) / ("seerr-import-" + std::to_string(
+        (unsigned long long)std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directories(staging, ec);
+
+    std::string unzipErr;
+    if (!zipwrite::unzipToDirectory(zipPath, staging, &unzipErr)) {
+        fs::remove_all(staging, ec);
+        if (err) *err = unzipErr.empty() ? i18n::tr("library.import_failed") : unzipErr;
+        return {};
+    }
+
+    json manifest = json::object();
+    fs::path manifestPath = staging / "seerr-export.json";
+    if (fs::exists(manifestPath, ec)) {
+        try {
+            std::ifstream mf(manifestPath.string(), std::ios::binary);
+            manifest = json::parse(mf, nullptr, false);
+            if (manifest.is_discarded()) manifest = json::object();
+        } catch (...) { manifest = json::object(); }
+    }
+
+    std::string title = manifest.value("title", "");
+    std::string year = manifest.value("year", "");
+    std::string originalTitle = manifest.value("originalTitle", "");
+    std::string imdbId = manifest.value("imdbId", "");
+    std::string folderName = manifest.value("folderName", "");
+    int tmdbId = manifest.value("tmdbId", 0);
+    MediaType type = (manifest.value("mediaType", "movie") == "tv") ? MediaType::TV
+                                                                    : MediaType::Movie;
+
+    if (folderName.empty()) {
+        // Fall back to zip stem or first directory inside staging.
+        folderName = fs::path(zipPath).stem().string();
+        for (auto& ent : fs::directory_iterator(staging, ec)) {
+            if (ent.is_directory(ec) && ent.path().filename() != "." &&
+                ent.path().filename().string() != "seerr-export.json") {
+                // keep flat zip contents; folderName from zip stem
+                break;
+            }
+        }
+    }
+    if (title.empty()) {
+        parseFolderName(folderName, title, year);
+    }
+
+    auto& cfg = stack::StackConfig::get();
+    fs::path destRoot = (type == MediaType::TV) ? fs::path(cfg.tvPath) : fs::path(cfg.moviesPath);
+    fs::path destDir = destRoot / folderName;
+    if (fs::exists(destDir, ec)) {
+        // Avoid clobbering — add suffix.
+        for (int i = 2; i < 50; ++i) {
+            fs::path alt = destRoot / (folderName + " (" + std::to_string(i) + ")");
+            if (!fs::exists(alt, ec)) { destDir = alt; break; }
+        }
+    }
+    fs::create_directories(destRoot, ec);
+
+    // Move extracted files into destDir (skip the manifest).
+    fs::create_directories(destDir, ec);
+    for (auto it = fs::recursive_directory_iterator(staging, fs::directory_options::skip_permission_denied, ec);
+         it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) { ec.clear(); continue; }
+        if (!it->is_regular_file(ec)) continue;
+        if (it->path().filename() == "seerr-export.json") continue;
+        fs::path rel = fs::relative(it->path(), staging, ec);
+        if (ec) { rel = it->path().filename(); ec.clear(); }
+        fs::path out = destDir / rel;
+        fs::create_directories(out.parent_path(), ec);
+        fs::rename(it->path(), out, ec);
+        if (ec) {
+            ec.clear();
+            fs::copy_file(it->path(), out, fs::copy_options::overwrite_existing, ec);
+        }
+    }
+    fs::remove_all(staging, ec);
+
+    std::string video = biggestVideoIn(destDir);
+    if (video.empty()) {
+        if (err) *err = i18n::tr("library.import_no_video");
+        return {};
+    }
+
+    stack::onLibraryImported(type, tmdbId, title, year, imdbId, originalTitle, video);
+    return video;
 }
 
 } // namespace library

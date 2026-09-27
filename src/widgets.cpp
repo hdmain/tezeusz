@@ -450,6 +450,9 @@ void w::gradientRect(ImDrawList* dl, ImVec2 min, ImVec2 max, ImU32 topCol, ImU32
 namespace {
 std::unordered_map<std::string, float> g_questionCardH;
 const char* g_questionModalId = nullptr;
+ImVec2 g_questionCardMin{};
+ImVec2 g_questionCardMax{};
+bool g_questionBackdropClicked = false;
 }
 
 bool w::beginQuestionModal(const char* id, float cardWidth, float cardHeight) {
@@ -478,6 +481,11 @@ bool w::beginQuestionModal(const char* id, float cardWidth, float cardHeight) {
     const ImVec2 ws = ImGui::GetWindowSize();
     modalblur::draw(dl, wp, ImVec2(wp.x + ws.x, wp.y + ws.y));
 
+    // Fullscreen hit-target behind the card — clicks here dismiss the dialog.
+    ImGui::SetCursorScreenPos(wp);
+    ImGui::InvisibleButton("##qbackdrop", ws);
+    const bool backdropClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+
     const float useH = cardHeight > 0.f
         ? cardHeight
         : (g_questionCardH.count(id) ? g_questionCardH[id] : 220.f);
@@ -486,6 +494,8 @@ bool w::beginQuestionModal(const char* id, float cardWidth, float cardHeight) {
 
     const float cx = wp.x + (ws.x - cardWidth) * 0.5f;
     const float cy = wp.y + (ws.y - useH) * 0.5f;
+    g_questionCardMin = ImVec2(cx, cy);
+    g_questionCardMax = ImVec2(cx + cardWidth, cy + useH);
     ImGui::SetCursorScreenPos(ImVec2(cx, cy));
 
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 16.f);
@@ -507,6 +517,7 @@ bool w::beginQuestionModal(const char* id, float cardWidth, float cardHeight) {
     ImGui::BeginChild("##qcard", childSize, childFlags, childWin);
 
     g_questionModalId = id;
+    g_questionBackdropClicked = backdropClicked;
     return true;
 }
 
@@ -516,6 +527,14 @@ void w::endQuestionModal() {
 
     if (g_questionModalId && g_questionModalId[0])
         g_questionCardH[g_questionModalId] = h;
+    g_questionCardMax.y = g_questionCardMin.y + h;
+
+    // Skip the appearing frame so the click that opened the popup doesn't dismiss it.
+    if (g_questionBackdropClicked && !ImGui::IsWindowAppearing() &&
+        !ImGui::IsMouseHoveringRect(g_questionCardMin, g_questionCardMax, false)) {
+        ImGui::CloseCurrentPopup();
+    }
+    g_questionBackdropClicked = false;
     g_questionModalId = nullptr;
 
     ImGui::PopStyleColor(3);

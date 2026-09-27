@@ -61,6 +61,13 @@ struct StackConfig {
     std::string subsUsername;
     std::string subsPassword;
 
+    // Advanced (nerds)
+    int uiTargetFps = 60;       // 30 / 60 / 120 / 0 = uncapped
+    bool uiVsync = true;        // glfwSwapInterval
+    bool showFpsOverlay = false;
+    bool showDebugHud = false;  // FPS + Δt + jobs + peers
+    bool imageP2p = true;       // poster P2P swarm (imgswarm)
+
     static StackConfig& get();
     void load();
     void save() const;

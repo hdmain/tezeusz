@@ -1057,6 +1057,13 @@ void StackConfig::load() {
             subsApiKey = j.value("subsApiKey", subsApiKey);
             subsUsername = j.value("subsUsername", subsUsername);
             subsPassword = j.value("subsPassword", subsPassword);
+            uiTargetFps = j.value("uiTargetFps", uiTargetFps);
+            uiVsync = j.value("uiVsync", uiVsync);
+            showFpsOverlay = j.value("showFpsOverlay", showFpsOverlay);
+            showDebugHud = j.value("showDebugHud", showDebugHud);
+            imageP2p = j.value("imageP2p", imageP2p);
+            if (uiTargetFps != 0 && uiTargetFps != 30 && uiTargetFps != 60 && uiTargetFps != 120)
+                uiTargetFps = 60;
             if (j.contains("moviesPathsExtra") && j["moviesPathsExtra"].is_array()) {
                 for (auto& x : j["moviesPathsExtra"])
                     if (x.is_string()) pushUniquePath(moviesPathsExtra, x.get<std::string>());
@@ -1097,7 +1104,12 @@ void StackConfig::save() const {
         {"uiLanguage", uiLanguage},
         {"subsAuto", subsAuto}, {"subsPreferredLang", subsPreferredLang},
         {"subsApiKey", subsApiKey}, {"subsUsername", subsUsername},
-        {"subsPassword", subsPassword}
+        {"subsPassword", subsPassword},
+        {"uiTargetFps", uiTargetFps},
+        {"uiVsync", uiVsync},
+        {"showFpsOverlay", showFpsOverlay},
+        {"showDebugHud", showDebugHud},
+        {"imageP2p", imageP2p}
     };
     util::writeFile(cfgPath(), j.dump(2));
 }

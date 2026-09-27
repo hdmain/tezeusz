@@ -218,7 +218,38 @@ void seedEnglish() {
     g_en["settings.tab_downloads"] = "Downloads";
     g_en["settings.tab_subs"] = "Subtitles";
     g_en["settings.tab_updates"] = "Updates";
+    g_en["settings.tab_advanced"] = "Advanced";
     g_en["settings.general_hint"] = "Language and app preferences.";
+    g_en["settings.advanced_hint"] =
+        "For nerds. Frame pacing, debug HUD, and diagnostic tools. Wrong settings can make the UI "
+        "feel choppy — 60 FPS + vsync is the safe default.";
+    g_en["settings.ui_target_fps"] = "UI frame cap";
+    g_en["settings.ui_target_fps_hint"] =
+        "Used when the GPU driver ignores vsync (common on Linux). Uncapped can spin a CPU core.";
+    g_en["settings.fps_30"] = "30 FPS";
+    g_en["settings.fps_60"] = "60 FPS (recommended)";
+    g_en["settings.fps_120"] = "120 FPS";
+    g_en["settings.fps_uncapped"] = "Uncapped";
+    g_en["settings.ui_vsync"] = "VSync";
+    g_en["settings.ui_vsync_hint"] =
+        "Syncs redraw to the display refresh. Turn off only if you know you need it.";
+    g_en["settings.show_fps"] = "Show FPS overlay";
+    g_en["settings.show_debug_hud"] = "Show debug HUD";
+    g_en["settings.show_debug_hud_hint"] =
+        "Top-right overlay: FPS, frame time, worker jobs, torrent peers, vsync/cap.";
+    g_en["settings.image_p2p"] = "Poster P2P swarm";
+    g_en["settings.image_p2p_hint"] =
+        "Share/fetch poster images over BitTorrent DHT between Seerr clients. Disable if you only "
+        "want plain HTTP downloads (or set SEERR_DISABLE_IMGSWARM=1).";
+    g_en["settings.diagnostics"] = "Diagnostics";
+    g_en["settings.path_data"] = "Data:";
+    g_en["settings.path_exe"] = "Exe:";
+    g_en["settings.path_vlc"] = "libVLC:";
+    g_en["settings.path_vlc_system"] = "(system)";
+    g_en["settings.open_data_folder"] = "Open data folder";
+    g_en["settings.clear_image_cache"] = "Clear image cache";
+    g_en["settings.clear_image_cache_hint"] =
+        "Drops in-memory poster textures and re-downloads what is on screen.";
     g_en["settings.library_hint"] =
         "Choose which disk new movies save to. The previous folder stays as a second library — both "
         "are scanned.";

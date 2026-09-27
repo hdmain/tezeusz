@@ -1,4 +1,6 @@
 #include "imgswarm.hpp"
+#include "stack.hpp"
+#include "util.hpp"
 
 #include <libtorrent/session.hpp>
 #include <libtorrent/add_torrent_params.hpp>
@@ -191,6 +193,8 @@ void alertLoop() {
 void init() {
     if (const char* dis = std::getenv("SEERR_DISABLE_IMGSWARM"); dis && dis[0] && dis[0] != '0')
         return;
+    if (!stack::StackConfig::get().imageP2p)
+        return;
     std::lock_guard<std::mutex> lk(g_mu);
     if (g_ses) return;
     g_stop = false;
@@ -243,6 +247,7 @@ void shutdown() {
 }
 
 void offer(const std::string& url, const std::string& filePath) {
+    if (!stack::StackConfig::get().imageP2p) return;
     if (url.empty() || filePath.empty() || !isImageCdnUrl(url)) return;
     if (g_stop.load()) return;
     init();
@@ -275,6 +280,7 @@ void offer(const std::string& url, const std::string& filePath) {
 }
 
 bool tryFetch(const std::string& url, const std::string& destPath, int timeoutMs) {
+    if (!stack::StackConfig::get().imageP2p) return false;
     if (url.empty() || destPath.empty() || !isImageCdnUrl(url)) return false;
     if (timeoutMs < 200) return false;
     init();

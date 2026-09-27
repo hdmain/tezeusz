@@ -1810,11 +1810,11 @@ void renderSettings() {
         loaded = true;
     }
 
-    enum Tab { TabGeneral = 0, TabLibrary, TabDownloads, TabSubs, TabUpdates, TabCount };
+    enum Tab { TabGeneral = 0, TabLibrary, TabDownloads, TabSubs, TabUpdates, TabAdvanced, TabCount };
     static int tab = TabGeneral;
     static const char* tabKeys[] = {
         "settings.tab_general", "settings.tab_library", "settings.tab_downloads",
-        "settings.tab_subs", "settings.tab_updates"
+        "settings.tab_subs", "settings.tab_updates", "settings.tab_advanced"
     };
 
     const float navW = 168.f;
@@ -2181,6 +2181,87 @@ void renderSettings() {
         ImGui::Dummy(ImVec2(1, 8));
         if (ImGui::Button(i18n::tr("update.check_now"), ImVec2(200, 36)))
             updater::checkNow();
+    } else if (tab == TabAdvanced) {
+        sectionTitle(i18n::tr("settings.tab_advanced"), i18n::tr("settings.advanced_hint"));
+
+        fieldLabel(i18n::tr("settings.ui_target_fps"));
+        {
+            const char* fpsLabels[] = {
+                i18n::tr("settings.fps_30"),
+                i18n::tr("settings.fps_60"),
+                i18n::tr("settings.fps_120"),
+                i18n::tr("settings.fps_uncapped")
+            };
+            const int fpsVals[] = { 30, 60, 120, 0 };
+            int fpsIdx = 1;
+            for (int i = 0; i < 4; i++)
+                if (fpsVals[i] == cfg.uiTargetFps) { fpsIdx = i; break; }
+            ImGui::SetNextItemWidth(fieldW);
+            if (ImGui::Combo("##uifps", &fpsIdx, fpsLabels, 4)) {
+                cfg.uiTargetFps = fpsVals[fpsIdx];
+                cfg.save();
+            }
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+            ImGui::TextWrapped("%s", i18n::tr("settings.ui_target_fps_hint"));
+            ImGui::PopStyleColor();
+        }
+        ImGui::Dummy(ImVec2(1, 6));
+
+        if (ImGui::Checkbox(i18n::tr("settings.ui_vsync"), &cfg.uiVsync))
+            cfg.save();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::TextWrapped("%s", i18n::tr("settings.ui_vsync_hint"));
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(1, 6));
+
+        if (ImGui::Checkbox(i18n::tr("settings.show_fps"), &cfg.showFpsOverlay)) {
+            if (cfg.showFpsOverlay) cfg.showDebugHud = false;
+            cfg.save();
+        }
+        if (ImGui::Checkbox(i18n::tr("settings.show_debug_hud"), &cfg.showDebugHud)) {
+            if (cfg.showDebugHud) cfg.showFpsOverlay = true;
+            cfg.save();
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::TextWrapped("%s", i18n::tr("settings.show_debug_hud_hint"));
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(1, 10));
+
+        if (ImGui::Checkbox(i18n::tr("settings.image_p2p"), &cfg.imageP2p))
+            cfg.save();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::TextWrapped("%s", i18n::tr("settings.image_p2p_hint"));
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(1, 14));
+
+        fieldLabel(i18n::tr("settings.diagnostics"));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::Text("%s %s", i18n::tr("update.current"),
+#ifndef SEERR_VERSION
+                    "dev"
+#else
+                    SEERR_VERSION
+#endif
+        );
+        ImGui::TextWrapped("%s %s", i18n::tr("settings.path_data"), util::appDataPath("").c_str());
+        ImGui::TextWrapped("%s %s", i18n::tr("settings.path_exe"), util::exeDir().c_str());
+        {
+            const char* vlc = util::libvlcDir().c_str();
+            ImGui::TextWrapped("%s %s", i18n::tr("settings.path_vlc"),
+                               (vlc && vlc[0]) ? vlc : i18n::tr("settings.path_vlc_system"));
+        }
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(1, 8));
+
+        if (ImGui::Button(i18n::tr("settings.open_data_folder"), ImVec2(220, 36)))
+            platform::openPath(util::appDataPath(""));
+        ImGui::SameLine();
+        if (ImGui::Button(i18n::tr("settings.clear_image_cache"), ImVec2(220, 36)))
+            ImageCache::instance().purgeAll();
+        ImGui::Dummy(ImVec2(1, 4));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::TextWrapped("%s", i18n::tr("settings.clear_image_cache_hint"));
+        ImGui::PopStyleColor();
     }
 
     ImGui::Dummy(ImVec2(1, 16));

@@ -387,6 +387,7 @@ int main() {
     svgicon::init();
     core::init(3);
     stack::init();
+    glfwSwapInterval(stack::StackConfig::get().uiVsync ? 1 : 0);
     subs::init();
     localdb::init();
     localdb::loadWatchlist(app().watchlist);
@@ -640,6 +641,33 @@ int main() {
         // Trailer resolve overlay (ImGui — same on Windows and Linux)
         ytplayer::drawOverlay();
 
+        // FPS / debug HUD (Settings → Advanced)
+        {
+            auto& cfg = stack::StackConfig::get();
+            if ((cfg.showFpsOverlay || cfg.showDebugHud) && !quitting.load()) {
+                ImGuiIO& hudIo = ImGui::GetIO();
+                const float fps = hudIo.Framerate;
+                const float dtMs = hudIo.DeltaTime * 1000.f;
+                char line[192];
+                if (cfg.showDebugHud) {
+                    auto st = core::stats();
+                    std::snprintf(line, sizeof(line),
+                                  "%.0f FPS  ·  %.1f ms  ·  jobs %d/%d  ·  peers %d  ·  vsync %s  ·  cap %d",
+                                  fps, dtMs, st.jobsRunning, st.jobsPending, st.peers,
+                                  cfg.uiVsync ? "on" : "off", cfg.uiTargetFps);
+                } else {
+                    std::snprintf(line, sizeof(line), "%.0f FPS  ·  %.1f ms", fps, dtMs);
+                }
+                ImDrawList* fdl = ImGui::GetForegroundDrawList();
+                ImVec2 ts = ImGui::CalcTextSize(line);
+                ImVec2 pad(10, 6);
+                ImVec2 br(hudIo.DisplaySize.x - 12, 12 + ts.y + pad.y * 2);
+                ImVec2 tl(br.x - ts.x - pad.x * 2, 12);
+                fdl->AddRectFilled(tl, br, IM_COL32(17, 24, 39, 200), 8.f);
+                fdl->AddText(ImVec2(tl.x + pad.x, tl.y + pad.y), IM_COL32(167, 243, 208, 255), line);
+            }
+        }
+
         // Update toast (download / restart)
         {
             auto ust = updater::state();
@@ -663,14 +691,24 @@ int main() {
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(win);
 
-        // If vsync (SwapInterval) works, SwapBuffers already paced us.
-        // If the driver ignores it (common on Linux/Wayland), sleep the remainder
-        // so we stay ~60fps without a PollEvents busy-spin (100% CPU / freeze).
-        if (!quitting.load() && !hidden && focused) {
-            const double budget = 1.0 / 60.0;
-            const double remain = budget - (glfwGetTime() - frameStart);
-            if (remain > 0.001)
-                glfwWaitEventsTimeout(remain);
+        // Apply Advanced display prefs (cheap; only touches GLFW when changed).
+        {
+            auto& cfg = stack::StackConfig::get();
+            static int appliedVsync = -1;
+            const int wantVsync = cfg.uiVsync ? 1 : 0;
+            if (wantVsync != appliedVsync) {
+                glfwSwapInterval(wantVsync);
+                appliedVsync = wantVsync;
+            }
+
+            // If vsync works, SwapBuffers already paced us.
+            // If ignored (Linux/Wayland), sleep remainder to hit uiTargetFps.
+            if (!quitting.load() && !hidden && focused && cfg.uiTargetFps > 0) {
+                const double budget = 1.0 / (double)cfg.uiTargetFps;
+                const double remain = budget - (glfwGetTime() - frameStart);
+                if (remain > 0.001)
+                    glfwWaitEventsTimeout(remain);
+            }
         }
     }
 

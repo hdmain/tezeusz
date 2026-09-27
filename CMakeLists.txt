@@ -38,6 +38,12 @@ set(SEERR_SOURCES
 
 add_executable(seerr ${SEERR_SOURCES})
 
+# Embed application icon in the Windows PE (taskbar / Explorer / shortcuts).
+if(WIN32)
+    enable_language(RC)
+    target_sources(seerr PRIVATE "${CMAKE_SOURCE_DIR}/packaging/seerr.rc")
+endif()
+
 target_include_directories(seerr PRIVATE
     src
     ${CMAKE_SOURCE_DIR}/vendor

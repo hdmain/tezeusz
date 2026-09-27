@@ -30,8 +30,25 @@ install(FILES ${CMAKE_SOURCE_DIR}/packaging/seerr.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
 
+# Pixmaps (legacy) + hicolor theme (GNOME/KDE/taskbar look up Icon=seerr here).
 install(FILES ${CMAKE_SOURCE_DIR}/vendor/icon.png
     DESTINATION ${CMAKE_INSTALL_DATADIR}/pixmaps
+    RENAME seerr.png
+)
+install(FILES ${CMAKE_SOURCE_DIR}/vendor/icon.png
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps
+    RENAME seerr.png
+)
+install(FILES ${CMAKE_SOURCE_DIR}/vendor/icon.png
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/48x48/apps
+    RENAME seerr.png
+)
+install(FILES ${CMAKE_SOURCE_DIR}/vendor/icon.png
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps
+    RENAME seerr.png
+)
+install(FILES ${CMAKE_SOURCE_DIR}/vendor/icon.png
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/16x16/apps
     RENAME seerr.png
 )
 

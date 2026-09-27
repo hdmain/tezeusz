@@ -306,13 +306,28 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1);
 #endif
     glfwWindowHint(GLFW_SAMPLES, 0); // UI doesn't need MSAA — saves GPU fillrate
+    // Match packaging/seerr.desktop StartupWMClass / Icon=seerr (Linux taskbar).
+#if defined(GLFW_X11_CLASS_NAME)
+    glfwWindowHintString(GLFW_X11_CLASS_NAME, "seerr");
+    glfwWindowHintString(GLFW_X11_INSTANCE_NAME, "seerr");
+#endif
+#if defined(GLFW_WAYLAND_APP_ID)
+    glfwWindowHintString(GLFW_WAYLAND_APP_ID, "seerr");
+#endif
 
-    GLFWwindow* win = glfwCreateWindow(1500, 900, "Seerr C++ - Media Discovery", nullptr, nullptr);
+    GLFWwindow* win = glfwCreateWindow(1500, 900, "Seerr", nullptr, nullptr);
     if (!win) {
         // Some drivers reject Core 3.3 — fall back to any available OpenGL.
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_SAMPLES, 0);
-        win = glfwCreateWindow(1500, 900, "Seerr C++ - Media Discovery", nullptr, nullptr);
+#if defined(GLFW_X11_CLASS_NAME)
+        glfwWindowHintString(GLFW_X11_CLASS_NAME, "seerr");
+        glfwWindowHintString(GLFW_X11_INSTANCE_NAME, "seerr");
+#endif
+#if defined(GLFW_WAYLAND_APP_ID)
+        glfwWindowHintString(GLFW_WAYLAND_APP_ID, "seerr");
+#endif
+        win = glfwCreateWindow(1500, 900, "Seerr", nullptr, nullptr);
     }
     if (!win) {
         glfwTerminate();
@@ -382,7 +397,7 @@ int main() {
         std::string dir = util::assetDir() + "/";
         g_logoTex = ImageCache::instance().loadLocal(dir + "logo_full.png", &g_logoW, &g_logoH);
         tray::init(win, dir + "icon.png");
-#ifdef _WIN32
+        // Window / taskbar icon on Windows and Linux (GLFW).
         int iw = 0, ih = 0;
         GLuint icon = ImageCache::instance().loadLocal(dir + "icon.png", &iw, &ih);
         if (icon && iw && ih) {
@@ -393,7 +408,6 @@ int main() {
             GLFWimage img; img.width = iw; img.height = ih; img.pixels = px.data();
             glfwSetWindowIcon(win, 1, &img);
         }
-#endif
     }
 
     ImGui::StyleColorsDark();

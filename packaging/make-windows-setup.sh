@@ -60,17 +60,21 @@ V3="$(echo "$V3" | tr -cd '0-9')"; V3="${V3:-0}"
 V4="$(echo "$V4" | tr -cd '0-9')"; V4="${V4:-0}"
 PRODUCT_VERSION="${V1}.${V2}.${V3}.${V4}"
 
-# Optional icon: convert PNG → ICO only via ImageMagick `magick`
-# (never bare `convert` — on Windows that is the disk partition tool).
-ICON_LINE=""
+# Installer + shortcut icon (committed ICO — no ImageMagick required in CI).
 ICON_PNG="${ROOT}/vendor/icon.png"
+ICON_ICO_SRC="${ROOT}/vendor/seerr.ico"
 ICON_ICO="$NSI_DIR/seerr.ico"
-if [[ -f "$ICON_PNG" ]] && command -v magick >/dev/null 2>&1; then
+ICON_LINE=""
+if [[ -f "$ICON_ICO_SRC" ]]; then
+  cp -f "$ICON_ICO_SRC" "$ICON_ICO"
+elif [[ -f "$ICON_PNG" ]] && command -v magick >/dev/null 2>&1; then
   magick "$ICON_PNG" -define icon:auto-resize=256,128,64,48,32,16 "$ICON_ICO" 2>/dev/null || true
 fi
 if [[ -f "$ICON_ICO" ]]; then
   ICON_WIN="$(to_win "$ICON_ICO")"
-  ICON_LINE="!define MUI_ICON \"$(esc_nsis "$ICON_WIN")\""
+  ICON_ESC="$(esc_nsis "$ICON_WIN")"
+  ICON_LINE="!define MUI_ICON \"$ICON_ESC\"
+!define MUI_UNICON \"$ICON_ESC\""
 fi
 
 PORTABLE_ESC="$(esc_nsis "$PORTABLE_WIN")"
@@ -121,9 +125,9 @@ Section "Seerr" SecApp
   ; Full portable tree (exe + MinGW DLLs + libvlc + assets)
   File /r "${PORTABLE_ESC}\\*.*"
 
-  ; Start Menu
+  ; Start Menu — icon from embedded exe resource (and seerr.ico beside it)
   CreateDirectory "\$SMPROGRAMS\\Seerr"
-  CreateShortCut "\$SMPROGRAMS\\Seerr\\Seerr.lnk" "\$INSTDIR\\seerr.exe"
+  CreateShortCut "\$SMPROGRAMS\\Seerr\\Seerr.lnk" "\$INSTDIR\\seerr.exe" "" "\$INSTDIR\\seerr.exe" 0
   CreateShortCut "\$SMPROGRAMS\\Seerr\\Uninstall Seerr.lnk" "\$INSTDIR\\Uninstall.exe"
 
   ; Registry (per-user) — keeps install path writable for auto-update
@@ -134,7 +138,7 @@ Section "Seerr" SecApp
   WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "InstallLocation" "\$INSTDIR"
   WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "UninstallString" '"\$INSTDIR\\Uninstall.exe"'
   WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "QuietUninstallString" '"\$INSTDIR\\Uninstall.exe" /S'
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "DisplayIcon" "\$INSTDIR\\seerr.exe"
+  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "DisplayIcon" "\$INSTDIR\\seerr.exe,0"
   WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "NoModify" 1
   WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "NoRepair" 1
   \${GetSize} "\$INSTDIR" "/S=0K" \$0 \$1 \$2

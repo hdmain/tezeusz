@@ -9,4 +9,5 @@ Icon=seerr
 Terminal=false
 Categories=AudioVideo;Video;Player;
 StartupNotify=true
+StartupWMClass=seerr
 Keywords=movies;tv;torrent;seerr;jellyseerr;

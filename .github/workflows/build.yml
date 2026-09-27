@@ -234,6 +234,8 @@ jobs:
           test -f /usr/share/seerr/locales/en.json
           test -f /usr/share/applications/seerr.desktop
           test -f /usr/share/pixmaps/seerr.png
+          test -f /usr/share/icons/hicolor/128x128/apps/seerr.png
+          grep -q 'StartupWMClass=seerr' /usr/share/applications/seerr.desktop
           # Headless runners often lack a usable GL stack; don't fail the job if
           # the GUI process dies under xvfb — packaging itself is already verified.
           set +e

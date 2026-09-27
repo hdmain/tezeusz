@@ -25,6 +25,7 @@ mkdir -p "$OUT/fonts" "$OUT/icons" "$OUT/locales"
 cp -f "$EXE" "$OUT/seerr.exe"
 cp -f "$ROOT/vendor/logo_full.png" "$OUT/"
 cp -f "$ROOT/vendor/icon.png" "$OUT/"
+cp -f "$ROOT/vendor/seerr.ico" "$OUT/" 2>/dev/null || true
 cp -f "$ROOT/vendor/poster_missing.png" "$OUT/"
 cp -f "$ROOT/vendor/fonts/"*.ttf "$OUT/fonts/" 2>/dev/null || true
 cp -f "$ROOT/vendor/icons/"*.svg "$OUT/icons/" 2>/dev/null || true

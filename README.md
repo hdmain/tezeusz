@@ -23,23 +23,26 @@ so you can run the binary from the build tree without `make install`.
 
 Playback needs VLC (`libvlc5` / `vlc`) — installed by `linux-deps.sh`.
 
-## Windows (MinGW)
+## Windows (MinGW / MSYS2)
+
+In an **MSYS2 MINGW64** shell:
+
+```bash
+./scripts/windows-deps.sh    # once (pacman)
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSEERR_BUNDLED_DEPS=OFF
+cmake --build build
+```
+
+Without MSYS2 packages (FetchContent Boost + libtorrent):
 
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSEERR_BUNDLED_DEPS=ON
 cmake --build build
 ```
 
-Or with MSYS2 packages (`mingw-w64-x86_64-libtorrent-rasterbar`,
-`mingw-w64-x86_64-boost`):
-
-```bash
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSEERR_BUNDLED_DEPS=OFF
-cmake --build build
-```
-
-CI also publishes a **Windows portable zip** (exe + MinGW DLLs + bundled libVLC)
-and a **Linux .deb** on the `continuous` release.
+CI publishes a **Windows portable zip** (exe + MinGW DLLs + bundled libVLC),
+differential **auto-update** manifests (`windows-x64` / `linux-x64`), and a
+**Linux .deb** on the `continuous` release.
 
 ## Layout
 
@@ -47,7 +50,7 @@ and a **Linux .deb** on the `continuous` release.
 |------|------|
 | `src/` | Application code |
 | `cmake/` | CMake modules (deps, imgui, packaging) |
-| `scripts/` | Linux/WSL build & run helpers |
+| `scripts/` | Linux/WSL + Windows (MSYS2) build helpers |
 | `packaging/` | Desktop entry, Windows portable packager |
 | `locales/` | UI translations (`en`, `pl`) |
 | `vendor/` | ImGui, GLFW (Win), fonts, icons |

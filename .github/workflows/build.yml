@@ -26,7 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: msys2/setup-msys2@v2
+      # Keep package list in sync with scripts/windows-deps.sh
+      - name: Windows setup
+        uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
@@ -34,14 +36,17 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-boost
             mingw-w64-x86_64-libtorrent-rasterbar
             mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-curl
             mingw-w64-x86_64-ntldd
+            mingw-w64-x86_64-openssl
             zip
             unzip
             curl
-            mingw-w64-x86_64-curl
+            git
 
       - name: Version
         id: ver
@@ -60,12 +65,21 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
-      - name: Package portable
+      - name: Package portable + update manifest
         run: |
           set -euo pipefail
           VER="${{ steps.ver.outputs.version }}"
           bash packaging/make-windows-portable.sh build/seerr.exe "build/seerr-portable" "$VER"
           bash packaging/make-update-manifest.sh build/seerr-portable windows-x64 "$VER" build/update-windows
+          # Auto-update must be able to find the Windows binary + libVLC core.
+          MAN=build/update-windows/update-manifest-windows-x64.json
+          test -f "$MAN"
+          grep -q '"platform": "windows-x64"' "$MAN"
+          grep -q '"path": "seerr.exe"' "$MAN"
+          grep -q 'libvlc/libvlc.dll' "$MAN"
+          test -f build/seerr-portable/seerr.exe
+          test -f build/seerr-portable/libvlc/libvlc.dll
+          test -d build/seerr-portable/libvlc/plugins
           (
             cd build
             rm -f "seerr-windows-portable-${VER}.zip"
@@ -233,25 +247,31 @@ jobs:
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           mkdir -p release
           find dist -type f \( -name '*.zip' -o -name '*.deb' -o -name 'seerr' \) -print
-          # Portable Windows zip
-          cp -f dist/seerr-windows-portable/*.zip release/ || true
+          # Portable Windows zip (required for auto-update channel)
+          test -n "$(ls -A dist/seerr-windows-portable/*.zip 2>/dev/null)"
+          cp -f dist/seerr-windows-portable/*.zip release/
           # Linux portable zip (self-updating layout)
-          cp -f dist/seerr-linux-portable/*.zip release/ || true
+          test -n "$(ls -A dist/seerr-linux-portable/*.zip 2>/dev/null)"
+          cp -f dist/seerr-linux-portable/*.zip release/
           # Debian package
-          cp -f dist/seerr-deb/*.deb release/ || true
+          test -n "$(ls -A dist/seerr-deb/*.deb 2>/dev/null)"
+          cp -f dist/seerr-deb/*.deb release/
           # Linux ELF binary (rename with version)
           if [[ -f dist/seerr-linux/seerr ]]; then
             cp -f dist/seerr-linux/seerr "release/seerr-linux-amd64-${VER}"
             chmod +x "release/seerr-linux-amd64-${VER}"
           fi
-          # Unpack update packs for differential publish
+          # Unpack update packs for differential publish (required)
           mkdir -p update-publish
+          test -n "$(ls -A dist/seerr-update-windows/*.zip 2>/dev/null)"
+          test -n "$(ls -A dist/seerr-update-linux/*.zip 2>/dev/null)"
           for z in dist/seerr-update-windows/*.zip dist/seerr-update-linux/*.zip; do
-            [[ -f "$z" ]] || continue
             unzip -q -o "$z" -d update-publish
           done
+          test -f update-publish/update-windows/update-manifest-windows-x64.json
+          test -f update-publish/update-linux/update-manifest-linux-x64.json
           ls -lah release
-          ls -lah update-publish || true
+          ls -lah update-publish
           test -n "$(ls -A release)"
 
       - name: Publish continuous release
@@ -285,13 +305,9 @@ jobs:
               --latest=false
           fi
 
-          # Differential update blobs + manifests (only new blobs uploaded)
-          if [[ -d update-publish/update-windows ]]; then
-            bash packaging/publish-update-assets.sh update-publish/update-windows windows-x64
-          fi
-          if [[ -d update-publish/update-linux ]]; then
-            bash packaging/publish-update-assets.sh update-publish/update-linux linux-x64
-          fi
+          # Differential update blobs + manifests (required — never skip a platform)
+          bash packaging/publish-update-assets.sh update-publish/update-windows windows-x64
+          bash packaging/publish-update-assets.sh update-publish/update-linux linux-x64
 
           # Also keep a versioned release tag for this commit
           TAG="v${VER}"

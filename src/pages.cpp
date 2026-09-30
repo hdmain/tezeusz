@@ -1391,8 +1391,39 @@ void renderLibrary() {
                       ImVec2(importJob ? 140.f : 120.f, 28))) {
         importErr.clear();
         importOkPath.clear();
+        std::string pickErr;
         std::string pick = platform::pickOpenFile(
-            i18n::tr("library.import"), i18n::tr("library.import_pick"), "*.zip");
+            i18n::tr("library.import"), i18n::tr("library.import_pick"), "*.zip", &pickErr);
+#ifndef _WIN32
+        // No zenity/kdialog: fall back to ~/…/imports drop folder (newest .zip).
+        if (pick.empty() && pickErr == "no_file_dialog") {
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            fs::path imports = util::appDataPath("imports");
+            fs::create_directories(imports, ec);
+            fs::file_time_type bestTime{};
+            bool have = false;
+            for (auto& ent : fs::directory_iterator(imports, ec)) {
+                if (ec) { ec.clear(); continue; }
+                if (!ent.is_regular_file(ec)) continue;
+                auto ext = util::lower(ent.path().extension().string());
+                if (ext != ".zip") continue;
+                auto ft = ent.last_write_time(ec);
+                if (!have || ft > bestTime) {
+                    bestTime = ft;
+                    pick = ent.path().string();
+                    have = true;
+                }
+            }
+            if (!have) {
+                platform::openPath(imports.string());
+                importErr = i18n::tr("library.import_no_dialog");
+                ImGui::OpenPopup("##lib_import_done");
+            } else {
+                pickErr.clear();
+            }
+        }
+#endif
         if (!pick.empty()) {
             auto job = std::make_shared<ZipJob>();
             importJob = job;
@@ -1404,6 +1435,9 @@ void renderLibrary() {
                 job->err = std::move(err);
                 job->done = true;
             });
+        } else if (!pickErr.empty() && pickErr != "no_file_dialog") {
+            importErr = pickErr;
+            ImGui::OpenPopup("##lib_import_done");
         }
     }
     ImGui::EndDisabled();

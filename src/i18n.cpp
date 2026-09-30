@@ -222,6 +222,9 @@ void seedEnglish() {
     g_en["library.import_no_video"] = "No video found in the ZIP";
     g_en["library.import_status"] = "Imported from ZIP";
     g_en["library.import_pick"] = "ZIP archives";
+    g_en["library.import_no_dialog"] =
+        "No file dialog found. Install zenity (sudo apt install zenity) or drop a .zip into the "
+        "opened Imports folder and click Import ZIP again.";
     g_en["library.size"] = "Size";
     g_en["library.container"] = "Container";
     g_en["library.modified"] = "Modified";

@@ -163,6 +163,7 @@
   "library.import_no_video": "W ZIP nie ma pliku wideo",
   "library.import_status": "Zaimportowano z ZIP",
   "library.import_pick": "Archiwa ZIP",
+  "library.import_no_dialog": "Brak okna wyboru pliku. Zainstaluj zenity (sudo apt install zenity) albo wrzuć .zip do otwartego folderu Imports i kliknij Importuj ZIP ponownie.",
   "library.size": "Rozmiar",
   "library.container": "Kontener",
   "library.modified": "Zmodyfikowano",

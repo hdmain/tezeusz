@@ -300,8 +300,11 @@ void openPath(const std::string& path) {
 #endif
 }
 
-std::string pickOpenFile(const char* title, const char* filterLabel, const char* filterPattern) {
+std::string pickOpenFile(const char* title, const char* filterLabel, const char* filterPattern,
+                         std::string* err) {
+    if (err) err->clear();
 #ifdef _WIN32
+    (void)err;
     char file[MAX_PATH] = {};
     char filter[256] = {};
     // OPENFILENAME wants "Label\0pattern\0All\0*.*\0\0"
@@ -333,22 +336,68 @@ std::string pickOpenFile(const char* title, const char* filterLabel, const char*
 #else
     (void)filterLabel;
     std::string pattern = filterPattern && filterPattern[0] ? filterPattern : "*";
-    std::string t = title ? title : "Open file";
-    // Prefer zenity, then kdialog.
-    auto run = [&](const std::string& cmd) -> std::string {
+    // zenity wants "Name | pat1 pat2"
+    if (!pattern.empty() && pattern[0] == '*')
+        pattern = std::string(filterLabel && filterLabel[0] ? filterLabel : "Files") + " | " + pattern;
+
+    auto shQuote = [](const std::string& s) {
+        std::string o = "'";
+        for (char c : s) {
+            if (c == '\'') o += "'\\''";
+            else o += c;
+        }
+        o += "'";
+        return o;
+    };
+    auto haveCmd = [](const char* bin) {
+        std::string c = std::string("command -v ") + bin + " >/dev/null 2>&1";
+        return std::system(c.c_str()) == 0;
+    };
+    auto run = [](const std::string& cmd) -> std::string {
         FILE* f = popen(cmd.c_str(), "r");
         if (!f) return {};
-        char buf[1024] = {};
-        if (!fgets(buf, sizeof(buf), f)) { pclose(f); return {}; }
-        pclose(f);
-        std::string out = buf;
+        char buf[2048] = {};
+        std::string out;
+        while (fgets(buf, sizeof(buf), f)) out += buf;
+        const int st = pclose(f);
         while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+        // Cancel / failure → empty (zenity exit 1 on cancel)
+        if (st != 0 && out.empty()) return {};
         return out;
     };
-    std::string path = run("zenity --file-selection --title=\"" + t + "\" --file-filter=\"" +
-                           pattern + "\" 2>/dev/null");
-    if (path.empty())
-        path = run("kdialog --getopenfilename . \"" + pattern + "\" 2>/dev/null");
+
+    const std::string t = title ? title : "Open file";
+    std::string path;
+
+    if (haveCmd("zenity")) {
+        path = run("zenity --file-selection --title=" + shQuote(t) +
+                   " --file-filter=" + shQuote(pattern) +
+                   " --file-filter=" + shQuote("All | *") +
+                   " 2>/dev/null");
+    }
+    if (path.empty() && haveCmd("yad")) {
+        path = run("yad --file --title=" + shQuote(t) +
+                   " --file-filter=" + shQuote(pattern) +
+                   " 2>/dev/null");
+    }
+    if (path.empty() && haveCmd("kdialog")) {
+        // kdialog filter is like "*.zip|ZIP archives"
+        std::string kdFilter = "*.zip|ZIP";
+        if (filterPattern && filterPattern[0])
+            kdFilter = std::string(filterPattern) + "|" +
+                       (filterLabel && filterLabel[0] ? filterLabel : "Files");
+        path = run("kdialog --getopenfilename . " + shQuote(kdFilter) + " 2>/dev/null");
+    }
+    if (path.empty() && haveCmd("qarma")) {
+        path = run("qarma --file-selection --title=" + shQuote(t) + " 2>/dev/null");
+    }
+
+    if (path.empty() && err) {
+        if (!haveCmd("zenity") && !haveCmd("yad") && !haveCmd("kdialog") && !haveCmd("qarma")) {
+            *err = "no_file_dialog"; // resolved to i18n in UI
+        }
+        // else: user cancelled — leave err empty
+    }
     return path;
 #endif
 }

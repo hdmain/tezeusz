@@ -163,7 +163,7 @@
   "library.import_no_video": "No video found in the ZIP",
   "library.import_status": "Imported from ZIP",
   "library.import_pick": "ZIP archives",
-  "library.import_no_dialog": "No file dialog found. Install zenity (sudo apt install zenity) or drop a .zip into the opened Imports folder and click Import ZIP again.",
+  "library.import_no_dialog": "No file dialog available (xdg-desktop-portal). Install xdg-desktop-portal and a backend for your desktop, or drop a .zip into the opened Imports folder and click Import ZIP again.",
   "library.size": "Size",
   "library.container": "Container",
   "library.modified": "Modified",

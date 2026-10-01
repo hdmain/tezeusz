@@ -31,6 +31,7 @@ set(SEERR_SOURCES
     src/library.cpp
     src/player.cpp
     src/subs.cpp
+    src/lector.cpp
     src/i18n.cpp
     src/gl_load.cpp
     src/updater.cpp

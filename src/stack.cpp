@@ -1057,6 +1057,11 @@ void StackConfig::load() {
             subsApiKey = j.value("subsApiKey", subsApiKey);
             subsUsername = j.value("subsUsername", subsUsername);
             subsPassword = j.value("subsPassword", subsPassword);
+            lectorEnabled = j.value("lectorEnabled", lectorEnabled);
+            lectorVoiceId = j.value("lectorVoiceId", lectorVoiceId);
+            lectorSpeed = j.value("lectorSpeed", lectorSpeed);
+            if (lectorSpeed != "normal" && lectorSpeed != "medium" && lectorSpeed != "hard")
+                lectorSpeed = "normal";
             uiTargetFps = j.value("uiTargetFps", uiTargetFps);
             uiVsync = j.value("uiVsync", uiVsync);
             showFpsOverlay = j.value("showFpsOverlay", showFpsOverlay);
@@ -1107,6 +1112,8 @@ void StackConfig::save() const {
         {"subsAuto", subsAuto}, {"subsPreferredLang", subsPreferredLang},
         {"subsApiKey", subsApiKey}, {"subsUsername", subsUsername},
         {"subsPassword", subsPassword},
+        {"lectorEnabled", lectorEnabled}, {"lectorVoiceId", lectorVoiceId},
+        {"lectorSpeed", lectorSpeed},
         {"uiTargetFps", uiTargetFps},
         {"uiVsync", uiVsync},
         {"showFpsOverlay", showFpsOverlay},

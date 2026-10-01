@@ -339,6 +339,56 @@ void seedEnglish() {
     g_en["settings.subs_password"] = "Password";
     g_en["settings.subs_save"] = "Save subtitle login";
     g_en["settings.scan_library"] = "Scan library";
+
+    g_en["settings.tab_lector"] = "AI Lector";
+    g_en["settings.lector_hint"] =
+        "Offline AI voice-over from subtitles (Piper). Enable to download the engine and a voice "
+        "model, then right-click a title in Library → AI Lector.";
+    g_en["settings.lector_enable"] = "Enable AI Lector";
+    g_en["settings.lector_enable_hint"] =
+        "Downloads the Piper TTS engine (~25 MB) and the selected voice model when enabled.";
+    g_en["settings.lector_voice"] = "Default voice";
+    g_en["settings.lector_speed"] = "Processing speed";
+    g_en["settings.lector_speed_hint"] =
+        "How hard Piper may push the CPU while synthesizing. Normal = default (as before). "
+        "Medium ≈ half of your cores. Hard = all cores.";
+    g_en["settings.lector_speed_normal"] = "Normal";
+    g_en["settings.lector_speed_medium"] = "Medium (~50% CPU)";
+    g_en["settings.lector_speed_hard"] = "Hard (100% CPU)";
+    g_en["settings.lector_sample"] = "Play sample";
+    g_en["lector.speed"] = "Processing speed";
+    g_en["settings.lector_sample_hint"] = "Synthesizes a short phrase with the selected voice.";
+    g_en["settings.lector_redownload"] = "Download / repair";
+    g_en["lector.disabled"] = "AI Lector is off";
+    g_en["lector.need_engine"] = "Piper engine not installed";
+    g_en["lector.need_voice"] = "Voice model not downloaded";
+    g_en["lector.ready"] = "Ready";
+    g_en["lector.starting"] = "Starting setup…";
+    g_en["lector.dl_engine"] = "Downloading Piper engine…";
+    g_en["lector.setup_engine"] = "Installing Piper…";
+    g_en["lector.dl_voice"] = "Downloading voice";
+    g_en["lector.dl_voice_cfg"] = "Downloading voice config";
+    g_en["lector.saving_voice"] = "Saving voice model…";
+    g_en["lector.setup_failed"] = "Lector setup failed";
+    g_en["lector.gen_start"] = "Generating voice-over…";
+    g_en["lector.gen_cue"] = "Synthesizing cue";
+    g_en["lector.gen_done"] = "Voice-over ready";
+    g_en["lector.gen_failed"] = "Voice-over generation failed";
+    g_en["lector.no_cues"] = "No subtitle cues found";
+    g_en["lector.menu"] = "AI Lector";
+    g_en["lector.dialog_title"] = "AI Lector";
+    g_en["lector.dialog_hint"] =
+        "Builds a timed voice-over from a subtitle file next to the video, then plays the movie "
+        "with that audio track.";
+    g_en["lector.sub_lang"] = "Subtitle language";
+    g_en["lector.voice"] = "Voice";
+    g_en["lector.srt_found"] = "Subtitles:";
+    g_en["lector.srt_missing"] = "No matching .srt next to this video. Download subtitles first.";
+    g_en["lector.generate"] = "Generate voice-over";
+    g_en["lector.play"] = "Play with lector";
+    g_en["lector.play_existing"] = "Play existing track";
+    g_en["lector.not_enabled"] = "Enable AI Lector in Settings first.";
+    g_en["lector.busy"] = "Working…";
     g_en["update.settings_title"] = "Updates";
     g_en["update.settings_hint"] =
         "Checks GitHub in the background and downloads only changed files (SHA-256). "

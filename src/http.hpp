@@ -3,6 +3,7 @@
 #include <future>
 #include <vector>
 #include <cstdint>
+#include <functional>
 
 struct HttpResponse {
     int status = 0;
@@ -14,11 +15,15 @@ struct HttpResponse {
 
 namespace http {
 
+// downloaded / total (total may be 0 if unknown).
+using ProgressFn = std::function<void(uint64_t downloaded, uint64_t total)>;
+
 HttpResponse get(const std::string& url, const std::string& accept = "application/json",
                  const std::string& extraHeaders = "");
 std::vector<uint8_t> getBinary(const std::string& url, std::string* err = nullptr);
 // Longer timeout for update blobs / large payloads (seconds; 0 = default).
-std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err = nullptr, int timeoutSec = 180);
+std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err = nullptr,
+                                   int timeoutSec = 180, ProgressFn onProgress = {});
 std::future<HttpResponse> getAsync(const std::string& url, const std::string& accept = "application/json");
 
 // POST with body. contentType e.g. "application/json" or "application/x-www-form-urlencoded".

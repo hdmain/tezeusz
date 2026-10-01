@@ -338,7 +338,8 @@ std::vector<uint8_t> getBinary(const std::string& url, std::string* err) {
     return out;
 }
 
-std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err, int timeoutSec) {
+std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err, int timeoutSec,
+                                   ProgressFn onProgress) {
 #ifdef _WIN32
     // Follow redirects (GitHub release assets → objects.githubusercontent.com).
     std::function<std::vector<uint8_t>(const std::string&, int)> downloadOnce =
@@ -410,14 +411,31 @@ std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err, int
             return downloadOnce(next, depth + 1);
         }
 
+        uint64_t contentLen = 0;
+        {
+            DWORD cl = 0, clSize = sizeof(cl);
+            if (WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+                                    WINHTTP_HEADER_NAME_BY_INDEX, &cl, &clSize, WINHTTP_NO_HEADER_INDEX))
+                contentLen = cl;
+        }
+
         std::string body;
+        if (contentLen > 0 && contentLen < (1ull << 31))
+            body.reserve((size_t)contentLen);
+        if (onProgress) onProgress(0, contentLen);
         for (;;) {
+            if (g_httpAbort.load()) {
+                if (err) *err = "aborted";
+                cleanup();
+                return {};
+            }
             DWORD avail = 0;
             if (!WinHttpQueryDataAvailable(request, &avail) || avail == 0) break;
             std::string chunk(avail, '\0');
             DWORD read = 0;
             if (!WinHttpReadData(request, chunk.data(), avail, &read) || read == 0) break;
             body.append(chunk.data(), read);
+            if (onProgress) onProgress((uint64_t)body.size(), contentLen);
         }
         cleanup();
         if (statusCode < 200 || statusCode >= 300) {
@@ -425,6 +443,8 @@ std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err, int
             return {};
         }
         if (err) err->clear();
+        if (onProgress) onProgress((uint64_t)body.size(),
+                                   contentLen ? contentLen : (uint64_t)body.size());
         std::vector<uint8_t> out(body.size());
         if (!out.empty()) std::memcpy(out.data(), body.data(), out.size());
         return out;
@@ -435,6 +455,23 @@ std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err, int
     HttpResponse r;
     CURL* curl = curl_easy_init();
     if (!curl) { if (err) *err = "curl_easy_init failed"; return {}; }
+
+    struct ProgCtx {
+        ProgressFn* fn = nullptr;
+        curl_off_t lastDl = -1;
+    } progCtx;
+    progCtx.fn = onProgress ? &onProgress : nullptr;
+
+    auto xfer = [](void* clientp, curl_off_t dltotal, curl_off_t dlnow,
+                   curl_off_t, curl_off_t) -> int {
+        auto* ctx = (ProgCtx*)clientp;
+        if (!ctx || !ctx->fn || !*ctx->fn) return 0;
+        if (dlnow == ctx->lastDl) return 0;
+        ctx->lastDl = dlnow;
+        (*ctx->fn)((uint64_t)dlnow, (uint64_t)dltotal);
+        return g_httpAbort.load() ? 1 : 0;
+    };
+
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &r.body);
@@ -442,6 +479,11 @@ std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err, int
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)(timeoutSec > 0 ? timeoutSec : 180));
+    if (onProgress) {
+        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, +xfer);
+        curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &progCtx);
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    }
     CURLcode code = curl_easy_perform(curl);
     if (code != CURLE_OK) {
         if (err) *err = curl_easy_strerror(code);

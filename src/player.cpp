@@ -640,12 +640,14 @@ void startOpenJob(uint64_t gen, std::string path, int volume, std::string audioS
             media = p_libvlc_media_new_path(vlc, path.c_str());
         }
         if (!media) { fail(i18n::tr("player.file_open_failed")); return; }
-        if (remote && p_libvlc_media_add_option) {
-            p_libvlc_media_add_option(media, ":network-caching=800");
-            p_libvlc_media_add_option(media, ":file-caching=0");
-            p_libvlc_media_add_option(media, ":http-reconnect");
+        if (p_libvlc_media_add_option) {
+            if (remote) {
+                p_libvlc_media_add_option(media, ":network-caching=800");
+                p_libvlc_media_add_option(media, ":file-caching=0");
+                p_libvlc_media_add_option(media, ":http-reconnect");
+            }
             if (!audioSlave.empty()) {
-                // YouTube adaptive: stream video URL + separate audio URL (no local file).
+                // YouTube adaptive audio, or local AI lector WAV alongside the movie.
                 std::string opt = ":input-slave=" + audioSlave;
                 p_libvlc_media_add_option(media, opt.c_str());
             }

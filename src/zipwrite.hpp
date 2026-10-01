@@ -248,7 +248,7 @@ inline bool zipDirectory(const fs::path& folder, const fs::path& zipPath, std::s
     return true;
 }
 
-// Extract a ZIP produced by zipDirectory (STORE only; ZIP64 OK). Streams large files.
+// Extract a ZIP (STORE or DEFLATE). ZIP64 OK. Streams large files.
 inline bool unzipToDirectory(const fs::path& zipPath, const fs::path& destDir, std::string* err) {
     std::ifstream in(zipPath.string(), std::ios::binary);
     if (!in) {
@@ -374,8 +374,9 @@ inline bool unzipToDirectory(const fs::path& zipPath, const fs::path& destDir, s
             if (err) *err = "unsafe path in zip";
             return false;
         }
-        if (method != 0) {
-            if (err) *err = "unsupported compression (need STORE)";
+        // 0 = STORE, 8 = DEFLATE (Piper Windows release uses DEFLATE)
+        if (method != 0 && method != 8) {
+            if (err) *err = "unsupported compression method " + std::to_string(method);
             return false;
         }
 
@@ -395,20 +396,73 @@ inline bool unzipToDirectory(const fs::path& zipPath, const fs::path& destDir, s
             if (err) *err = "cannot write: " + name;
             return false;
         }
-        uint64_t left = uncompSize;
         in.clear();
         in.seekg((std::streamoff)dataOff);
-        while (left) {
-            const size_t want = (size_t)std::min<uint64_t>(buf.size(), left);
-            in.read((char*)buf.data(), (std::streamsize)want);
-            const auto got = (size_t)in.gcount();
-            if (!got) {
+
+        if (method == 0) {
+            uint64_t left = uncompSize ? uncompSize : compSize;
+            while (left) {
+                const size_t want = (size_t)std::min<uint64_t>(buf.size(), left);
+                in.read((char*)buf.data(), (std::streamsize)want);
+                const auto got = (size_t)in.gcount();
+                if (!got) {
+                    out.close();
+                    if (err) *err = "truncated read: " + name;
+                    return false;
+                }
+                out.write((const char*)buf.data(), (std::streamsize)got);
+                left -= got;
+            }
+        } else {
+            // Raw DEFLATE (ZIP method 8) via zlib
+            z_stream zs{};
+            if (inflateInit2(&zs, -MAX_WBITS) != Z_OK) {
                 out.close();
-                if (err) *err = "truncated read: " + name;
+                if (err) *err = "inflateInit failed: " + name;
                 return false;
             }
-            out.write((const char*)buf.data(), (std::streamsize)got);
-            left -= got;
+            uint64_t leftComp = compSize;
+            std::vector<uint8_t> outBuf(1 << 16);
+            int zret = Z_OK;
+            while (leftComp > 0 || zs.avail_in > 0) {
+                if (zs.avail_in == 0 && leftComp > 0) {
+                    const size_t want = (size_t)std::min<uint64_t>(buf.size(), leftComp);
+                    in.read((char*)buf.data(), (std::streamsize)want);
+                    const auto got = (size_t)in.gcount();
+                    if (!got) {
+                        inflateEnd(&zs);
+                        out.close();
+                        if (err) *err = "truncated compressed read: " + name;
+                        return false;
+                    }
+                    zs.next_in = buf.data();
+                    zs.avail_in = (uInt)got;
+                    leftComp -= got;
+                }
+                zs.next_out = outBuf.data();
+                zs.avail_out = (uInt)outBuf.size();
+                zret = inflate(&zs, leftComp ? Z_NO_FLUSH : Z_FINISH);
+                const size_t produced = outBuf.size() - zs.avail_out;
+                if (produced)
+                    out.write((const char*)outBuf.data(), (std::streamsize)produced);
+                if (zret == Z_STREAM_END) break;
+                if (zret != Z_OK && zret != Z_BUF_ERROR) {
+                    inflateEnd(&zs);
+                    out.close();
+                    if (err) *err = "inflate failed: " + name;
+                    return false;
+                }
+                if (zret == Z_BUF_ERROR && zs.avail_in == 0 && leftComp == 0) break;
+            }
+            inflateEnd(&zs);
+            if (zret != Z_STREAM_END && uncompSize > 0 && (uint64_t)out.tellp() != uncompSize) {
+                // Some tools omit Z_STREAM_END cleanly; accept matching size.
+                if ((uint64_t)out.tellp() == 0) {
+                    out.close();
+                    if (err) *err = "deflate empty: " + name;
+                    return false;
+                }
+            }
         }
         out.close();
         ++extracted;

@@ -61,6 +61,12 @@ struct StackConfig {
     std::string subsUsername;
     std::string subsPassword;
 
+    // AI lector (Piper TTS voice-over from subtitles)
+    bool lectorEnabled = false;
+    std::string lectorVoiceId; // e.g. pl_PL-darkman-medium
+    // Synthesis load: "normal" (default/as-now), "medium" (~50% cores), "hard" (100%)
+    std::string lectorSpeed = "normal";
+
     // Advanced (nerds)
     int uiTargetFps = 60;       // 30 / 60 / 120 / 0 = uncapped
     bool uiVsync = true;        // glfwSwapInterval

@@ -10,6 +10,7 @@
 #include "player.hpp"
 #include "svgicons.hpp"
 #include "subs.hpp"
+#include "lector.hpp"
 #include "i18n.hpp"
 #include "updater.hpp"
 #include "core.hpp"
@@ -1356,6 +1357,7 @@ void renderLibrary() {
     static bool openDelete = false;
     static bool openArchive = false;
     static bool openExport = false;
+    static bool openLector = false;
     static std::string deleteErr;
     static std::string archiveErr;
     static std::string archiveOkPath;
@@ -1576,6 +1578,10 @@ void renderLibrary() {
             if (!it.archived) {
                 if (ImGui::MenuItem(i18n::tr("common.play"))) {
                     player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
+                }
+                if (ImGui::MenuItem(i18n::tr("lector.menu"), nullptr, false,
+                                    stack::StackConfig::get().lectorEnabled)) {
+                    openLector = true;
                 }
             }
             if (ImGui::MenuItem(i18n::tr("common.open_folder"))) {
@@ -2000,6 +2006,167 @@ void renderLibrary() {
             ImGui::CloseCurrentPopup();
         w::endQuestionModal();
     }
+
+    // ---- AI Lector ----
+    if (openLector) {
+        ImGui::OpenPopup("##lib_lector");
+        openLector = false;
+    }
+    if (w::beginQuestionModal("##lib_lector", 520.f)) {
+        auto& cfg = stack::StackConfig::get();
+        static int langIdx = 0;
+        static int voiceIdx = 0;
+        static std::string lastItemId;
+        static const char* langs[] = {
+            "pl", "en", "de", "fr", "es", "it", "pt", "ru", "uk", "cs"
+        };
+        static const char* langLabels[] = {
+            "Polski", "English", "Deutsch", "Français", "Español", "Italiano",
+            "Português", "Русский", "Українська", "Čeština"
+        };
+
+        if (lastItemId != ctxItem.id) {
+            lastItemId = ctxItem.id;
+            langIdx = 0;
+            for (int i = 0; i < (int)(sizeof(langs) / sizeof(langs[0])); i++)
+                if (cfg.subsPreferredLang == langs[i]) langIdx = i;
+            voiceIdx = 0;
+        }
+
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.91f, 0.93f, 1));
+        ImGui::TextUnformatted(i18n::tr("lector.dialog_title"));
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::TextWrapped("%s", i18n::tr("lector.dialog_hint"));
+        ImGui::Dummy(ImVec2(1, 6));
+
+        if (!cfg.lectorEnabled) {
+            ImGui::TextColored(ImVec4(0.96f, 0.55f, 0.4f, 1), "%s",
+                               i18n::tr("lector.not_enabled"));
+        } else {
+            ImGui::Text("%s", i18n::tr("lector.sub_lang"));
+            ImGui::SetNextItemWidth(-1);
+            ImGui::Combo("##lectorlang", &langIdx, langLabels,
+                         (int)(sizeof(langLabels) / sizeof(langLabels[0])));
+
+            std::string video = library::resolvePlayable(ctxItem.path);
+            std::string srt = lector::findSubtitle(video, langs[langIdx]);
+
+            auto voices = lector::voicesForLang(langs[langIdx]);
+            if (voices.empty()) voices = lector::catalog();
+            // Keep voiceIdx in range; prefer cfg voice
+            if (voiceIdx >= (int)voices.size()) voiceIdx = 0;
+            for (int i = 0; i < (int)voices.size(); i++)
+                if (voices[i].id == cfg.lectorVoiceId) voiceIdx = i;
+
+            ImGui::Text("%s", i18n::tr("lector.voice"));
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::BeginCombo("##lectorvoice",
+                                  voices.empty() ? "-" : (voices[voiceIdx].name + " (" +
+                                                          voices[voiceIdx].id + ")")
+                                                             .c_str())) {
+                for (int i = 0; i < (int)voices.size(); i++) {
+                    std::string label = voices[i].name + " · " + voices[i].id;
+                    bool sel = (i == voiceIdx);
+                    if (ImGui::Selectable(label.c_str(), sel)) {
+                        voiceIdx = i;
+                        cfg.lectorVoiceId = voices[i].id;
+                        cfg.save();
+                        if (!lector::voiceReady(voices[i].id))
+                            lector::downloadVoice(voices[i].id);
+                    }
+                    if (sel) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::Text("%s", i18n::tr("lector.speed"));
+            {
+                const char* speeds[] = { "normal", "medium", "hard" };
+                const char* labels[] = {
+                    i18n::tr("settings.lector_speed_normal"),
+                    i18n::tr("settings.lector_speed_medium"),
+                    i18n::tr("settings.lector_speed_hard")
+                };
+                int si = 0;
+                for (int i = 0; i < 3; i++)
+                    if (cfg.lectorSpeed == speeds[i]) si = i;
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::Combo("##lectorjobspeed", &si, labels, 3)) {
+                    cfg.lectorSpeed = speeds[si];
+                    cfg.save();
+                }
+            }
+
+            ImGui::Dummy(ImVec2(1, 4));
+            if (srt.empty()) {
+                ImGui::TextColored(ImVec4(0.96f, 0.55f, 0.4f, 1), "%s",
+                                   i18n::tr("lector.srt_missing"));
+            } else {
+                ImGui::TextColored(ImVec4(0.4f, 0.85f, 0.55f, 1), "%s",
+                                   i18n::tr("lector.srt_found"));
+                ImGui::TextWrapped("%s", std::filesystem::path(srt).filename().string().c_str());
+            }
+
+            auto st = lector::state();
+            ImGui::TextDisabled("%s", lector::statusMessage().c_str());
+            if (!lector::statusDetail().empty())
+                ImGui::TextWrapped("%s", lector::statusDetail().c_str());
+            if (st == lector::State::Downloading || lector::jobBusy()) {
+                float p = lector::jobBusy() ? lector::jobProgress() : lector::progress();
+                char overlay[64];
+                std::snprintf(overlay, sizeof(overlay), "%.0f%%", p * 100.f);
+                ImGui::ProgressBar(p, ImVec2(-1, 0), overlay);
+                if (lector::jobBusy())
+                    ImGui::TextWrapped("%s", lector::jobMessage().c_str());
+            }
+            if (!lector::errorMessage().empty())
+                ImGui::TextColored(ImVec4(0.96f, 0.4f, 0.4f, 1), "%s",
+                                   lector::errorMessage().c_str());
+            if (!lector::jobError().empty())
+                ImGui::TextColored(ImVec4(0.96f, 0.4f, 0.4f, 1), "%s",
+                                   lector::jobError().c_str());
+
+            const std::string voiceId =
+                voices.empty() ? cfg.lectorVoiceId : voices[voiceIdx].id;
+            const std::string existing =
+                voiceId.empty() ? std::string() : lector::outputPathFor(video, voiceId);
+            std::error_code ec;
+            const bool haveTrack =
+                !existing.empty() && std::filesystem::exists(existing, ec);
+
+            ImGui::Dummy(ImVec2(1, 8));
+            const bool canGen = !srt.empty() && !voiceId.empty() && !lector::jobBusy();
+            if (ImGui::Button(lector::jobBusy() ? i18n::tr("lector.busy")
+                                                : i18n::tr("lector.generate"),
+                              ImVec2(200, 34))) {
+                if (canGen)
+                    lector::startGenerate(video, srt, voiceId);
+            }
+            ImGui::SameLine();
+            const bool canPlay =
+                (haveTrack || (!lector::jobOutputPath().empty() &&
+                               std::filesystem::exists(lector::jobOutputPath(), ec))) &&
+                !lector::jobBusy();
+            std::string playPath = haveTrack ? existing : lector::jobOutputPath();
+            if (ImGui::Button(haveTrack ? i18n::tr("lector.play_existing")
+                                        : i18n::tr("lector.play"),
+                              ImVec2(200, 34))) {
+                if (canPlay && !playPath.empty()) {
+                    std::string title =
+                        ctxItem.title + (ctxItem.year.empty() ? "" : " (" + ctxItem.year + ")");
+                    player::open(video, title, lector::fileUri(playPath));
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+        }
+
+        ImGui::Dummy(ImVec2(1, 8));
+        if (ImGui::Button(i18n::tr("common.close"), ImVec2(120, 32)))
+            ImGui::CloseCurrentPopup();
+        w::endQuestionModal();
+    }
 }
 
 void renderSettings() {
@@ -2026,11 +2193,11 @@ void renderSettings() {
         loaded = true;
     }
 
-    enum Tab { TabGeneral = 0, TabLibrary, TabDownloads, TabSubs, TabUpdates, TabAdvanced, TabCount };
+    enum Tab { TabGeneral = 0, TabLibrary, TabDownloads, TabSubs, TabLector, TabUpdates, TabAdvanced, TabCount };
     static int tab = TabGeneral;
     static const char* tabKeys[] = {
         "settings.tab_general", "settings.tab_library", "settings.tab_downloads",
-        "settings.tab_subs", "settings.tab_updates", "settings.tab_advanced"
+        "settings.tab_subs", "settings.tab_lector", "settings.tab_updates", "settings.tab_advanced"
     };
 
     const float navW = 168.f;
@@ -2351,6 +2518,136 @@ void renderSettings() {
             cfg.subsUsername = osUser;
             cfg.subsPassword = osPass;
             cfg.save();
+        }
+    } else if (tab == TabLector) {
+        sectionTitle(i18n::tr("settings.tab_lector"), i18n::tr("settings.lector_hint"));
+        ImGui::Dummy(ImVec2(1, 6));
+        bool en = cfg.lectorEnabled;
+        if (ImGui::Checkbox(i18n::tr("settings.lector_enable"), &en)) {
+            cfg.lectorEnabled = en;
+            cfg.save();
+            if (en) lector::ensureSetup(cfg.lectorVoiceId);
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+        ImGui::TextWrapped("%s", i18n::tr("settings.lector_enable_hint"));
+        ImGui::PopStyleColor();
+        ImGui::Dummy(ImVec2(1, 10));
+
+        fieldLabel(i18n::tr("settings.lector_speed"));
+        {
+            const char* speeds[] = { "normal", "medium", "hard" };
+            const char* labels[] = {
+                i18n::tr("settings.lector_speed_normal"),
+                i18n::tr("settings.lector_speed_medium"),
+                i18n::tr("settings.lector_speed_hard")
+            };
+            int si = 0;
+            for (int i = 0; i < 3; i++)
+                if (cfg.lectorSpeed == speeds[i]) si = i;
+            ImGui::SetNextItemWidth(fieldW);
+            if (ImGui::Combo("##lectorspeed", &si, labels, 3)) {
+                cfg.lectorSpeed = speeds[si];
+                cfg.save();
+            }
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+            ImGui::TextWrapped("%s", i18n::tr("settings.lector_speed_hint"));
+            ImGui::PopStyleColor();
+        }
+        ImGui::Dummy(ImVec2(1, 10));
+
+        fieldLabel(i18n::tr("settings.lector_voice"));
+        {
+            auto& all = lector::catalog();
+            int vi = 0;
+            for (int i = 0; i < (int)all.size(); i++)
+                if (all[i].id == cfg.lectorVoiceId) vi = i;
+            std::string preview = all.empty()
+                ? "-"
+                : (all[vi].name + " · " + all[vi].lang + " · " + all[vi].id);
+            ImGui::SetNextItemWidth(fieldW);
+            if (ImGui::BeginCombo("##lectordefvoice", preview.c_str())) {
+                for (int i = 0; i < (int)all.size(); i++) {
+                    std::string label = all[i].name + " (" + all[i].lang + ") — " + all[i].id;
+                    bool sel = (i == vi);
+                    if (ImGui::Selectable(label.c_str(), sel)) {
+                        vi = i;
+                        cfg.lectorVoiceId = all[i].id;
+                        cfg.save();
+                        if (cfg.lectorEnabled) lector::downloadVoice(all[i].id);
+                    }
+                    if (sel) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+        }
+
+        ImGui::Dummy(ImVec2(1, 8));
+        {
+            auto st = lector::state();
+            ImU32 badgeBg = theme::c("#374151");
+            if (st == lector::State::Ready) badgeBg = theme::c("#065f46");
+            else if (st == lector::State::Downloading) badgeBg = theme::c("#1e3a8a");
+            else if (st == lector::State::Error) badgeBg = theme::c("#7f1d1d");
+            std::string line = lector::statusMessage();
+            if (st == lector::State::Downloading)
+                line += "  ·  " + std::to_string((int)(lector::progress() * 100)) + "%";
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            ImVec2 ts = G.m16 ? G.m16->CalcTextSizeA(14, FLT_MAX, 0, line.c_str())
+                              : ImGui::CalcTextSize(line.c_str());
+            ImVec2 br(p.x + std::min(fieldW, ts.x + 24), p.y + ts.y + 16);
+            bdl->AddRectFilled(p, br, badgeBg, 10.f);
+            bdl->AddText(G.m16, 14, ImVec2(p.x + 12, p.y + 8), WHITE, line.c_str());
+            ImGui::Dummy(ImVec2(1, br.y - p.y + 8));
+            if (!lector::statusDetail().empty()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(TXT));
+                ImGui::TextWrapped("%s", lector::statusDetail().c_str());
+                ImGui::PopStyleColor();
+                ImGui::Dummy(ImVec2(1, 4));
+            }
+            if (st == lector::State::Downloading) {
+                float pr = lector::progress();
+                char overlay[64];
+                std::snprintf(overlay, sizeof(overlay), "%.0f%%", pr * 100.f);
+                ImGui::ProgressBar(pr, ImVec2(fieldW, 22), overlay);
+            }
+            if (!lector::errorMessage().empty()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.96f, 0.4f, 0.4f, 1));
+                ImGui::TextWrapped("%s", lector::errorMessage().c_str());
+                ImGui::PopStyleColor();
+            }
+        }
+
+        ImGui::Dummy(ImVec2(1, 8));
+        if (ImGui::Button(i18n::tr("settings.lector_redownload"), ImVec2(200, 36))) {
+            if (cfg.lectorEnabled) lector::ensureSetup(cfg.lectorVoiceId);
+        }
+        ImGui::SameLine();
+        {
+            static std::string pendingSampleVoice;
+            const bool canSample =
+                cfg.lectorEnabled && !cfg.lectorVoiceId.empty() &&
+                lector::engineReady() && lector::voiceReady(cfg.lectorVoiceId);
+            if (ImGui::Button(i18n::tr("settings.lector_sample"), ImVec2(180, 36))) {
+                if (canSample) {
+                    std::string sp = lector::samplePath(cfg.lectorVoiceId);
+                    if (!sp.empty()) {
+                        player::open(sp, i18n::tr("settings.lector_sample"));
+                    } else {
+                        pendingSampleVoice = cfg.lectorVoiceId;
+                        lector::playSample(cfg.lectorVoiceId);
+                    }
+                }
+            }
+            if (!pendingSampleVoice.empty()) {
+                std::string sp = lector::samplePath(pendingSampleVoice);
+                if (!sp.empty()) {
+                    player::open(sp, i18n::tr("settings.lector_sample"));
+                    pendingSampleVoice.clear();
+                }
+            }
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
+            ImGui::TextWrapped("%s", i18n::tr("settings.lector_sample_hint"));
+            ImGui::PopStyleColor();
         }
     } else if (tab == TabUpdates) {
         sectionTitle(i18n::tr("settings.tab_updates"), i18n::tr("update.settings_hint"));

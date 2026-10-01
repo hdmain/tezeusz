@@ -22,6 +22,7 @@
 #include "platform.hpp"
 #include "player.hpp"
 #include "subs.hpp"
+#include "lector.hpp"
 #include "i18n.hpp"
 #include "gl_compat.hpp"
 #include "tray.hpp"
@@ -391,6 +392,7 @@ int main() {
     stack::init();
     glfwSwapInterval(stack::StackConfig::get().uiVsync ? 1 : 0);
     subs::init();
+    lector::init();
     localdb::init();
     localdb::loadWatchlist(app().watchlist);
     updater::init();
@@ -500,6 +502,7 @@ int main() {
             core::tick();
             stack::tick();
             subs::tick();
+            lector::tick();
             ytplayer::tick();
             player::tick();
         }
@@ -528,6 +531,7 @@ int main() {
                         stack::shutdown();
                         setQuitStatus(i18n::tr("quit.subs"));
                         try { subs::shutdown(); } catch (...) {}
+                        try { lector::shutdown(); } catch (...) {}
                         setQuitStatus(i18n::tr("quit.jobs"));
                         core::shutdown();
                         setQuitStatus(i18n::tr("quit.cache"));

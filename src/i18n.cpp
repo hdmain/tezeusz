@@ -350,13 +350,15 @@ void seedEnglish() {
     g_en["settings.lector_voice"] = "Default voice";
     g_en["settings.lector_speed"] = "Processing speed";
     g_en["settings.lector_speed_hint"] =
-        "How hard Piper may push the CPU while synthesizing. Normal = default (as before). "
-        "Medium ≈ half of your cores. Hard = all cores.";
-    g_en["settings.lector_speed_normal"] = "Normal";
-    g_en["settings.lector_speed_medium"] = "Medium (~50% CPU)";
-    g_en["settings.lector_speed_hard"] = "Hard (100% CPU)";
+        "Normal = 1 worker (limited cores). Medium = 2 workers + ~50% CPU affinity. Hard = more "
+        "workers, full CPU. Progress updates live while Piper writes each cue.";
+    g_en["settings.lector_speed_normal"] = "Normal (1 worker)";
+    g_en["settings.lector_speed_medium"] = "Medium (~50% / multi-worker)";
+    g_en["settings.lector_speed_hard"] = "Hard (100% / max workers)";
     g_en["settings.lector_sample"] = "Play sample";
     g_en["lector.speed"] = "Processing speed";
+    g_en["lector.mixing"] = "Mixing voice-over track…";
+    g_en["lector.mixing_overlay"] = "Mixing lector over original audio…";
     g_en["settings.lector_sample_hint"] = "Synthesizes a short phrase with the selected voice.";
     g_en["settings.lector_redownload"] = "Download / repair";
     g_en["lector.disabled"] = "AI Lector is off";
@@ -378,8 +380,8 @@ void seedEnglish() {
     g_en["lector.menu"] = "AI Lector";
     g_en["lector.dialog_title"] = "AI Lector";
     g_en["lector.dialog_hint"] =
-        "Builds a timed voice-over from a subtitle file next to the video, then plays the movie "
-        "with that audio track.";
+        "Builds a timed voice-over from subtitles and overlays it on the original soundtrack "
+        "(ducks film audio when ffmpeg is available). Prefer deep/HQ voices for a narrator tone.";
     g_en["lector.sub_lang"] = "Subtitle language";
     g_en["lector.voice"] = "Voice";
     g_en["lector.srt_found"] = "Subtitles:";

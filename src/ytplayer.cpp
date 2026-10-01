@@ -243,8 +243,8 @@ bool pickFromStreamingData(const json& sd, std::string* videoUrl, std::string* a
         *videoUrl = hls;
         return true;
     }
-    return false;
-}
+        return false;
+    }
 
 // Lightweight YouTube InnerTube — prefers clients that still return clear `url` fields.
 bool tryInnerTube(const std::string& videoId, std::string* videoUrl, std::string* audioUrl) {
@@ -355,7 +355,7 @@ void open(const std::string& videoId, const std::string& title) {
         if (job->cancelled) {
             job->done = true;
             g_busy.store(false);
-            return;
+        return;
         }
         job->url = std::move(video);
         job->audioUrl = std::move(audio);

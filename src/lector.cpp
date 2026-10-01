@@ -8,11 +8,15 @@
 #include <atomic>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <memory>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -66,31 +70,61 @@ PendingGen g_pendingGen;
 bool g_hasPendingGen = false;
 
 const std::vector<VoiceInfo>& voiceCatalog() {
+    // hfPath: relative under rhasspy/piper-voices, OR full https://…/stem (no .onnx)
     static const std::vector<VoiceInfo> k = {
-        {"pl_PL-darkman-medium", "pl", "pl_PL", "Darkman", "medium",
-         "pl/pl_PL/darkman/medium"},
+        // Polish — Bass High is a large community deep male (22 kHz); then official mediums
+        {"pl_PL-bass-high", "pl", "pl_PL", "Bass (głęboki, high)", "high",
+         "https://huggingface.co/blackbartblues/piper-pl-bass-high/resolve/main/bass_high", true},
+        {"pl_PL-darkman-medium", "pl", "pl_PL", "Darkman (głęboki)", "medium",
+         "pl/pl_PL/darkman/medium", true},
+        {"pl_PL-mc_speech-medium", "pl", "pl_PL", "MC Speech (lektor)", "medium",
+         "pl/pl_PL/mc_speech/medium", true},
         {"pl_PL-gosia-medium", "pl", "pl_PL", "Gosia", "medium",
-         "pl/pl_PL/gosia/medium"},
+         "pl/pl_PL/gosia/medium", false},
+
+        // English — prefer high / deep male
+        {"en_US-ryan-high", "en", "en_US", "Ryan (deep, high)", "high",
+         "en/en_US/ryan/high", true},
+        {"en_US-ryan-medium", "en", "en_US", "Ryan (deep)", "medium",
+         "en/en_US/ryan/medium", true},
+        {"en_US-john-medium", "en", "en_US", "John (deep)", "medium",
+         "en/en_US/john/medium", true},
+        {"en_US-norman-medium", "en", "en_US", "Norman (deep)", "medium",
+         "en/en_US/norman/medium", true},
+        {"en_US-hfc_male-medium", "en", "en_US", "HFC Male (deep)", "medium",
+         "en/en_US/hfc_male/medium", true},
+        {"en_US-joe-medium", "en", "en_US", "Joe (deep)", "medium",
+         "en/en_US/joe/medium", true},
+        {"en_US-bryce-medium", "en", "en_US", "Bryce (deep)", "medium",
+         "en/en_US/bryce/medium", true},
+        {"en_US-lessac-high", "en", "en_US", "Lessac (high)", "high",
+         "en/en_US/lessac/high", false},
         {"en_US-lessac-medium", "en", "en_US", "Lessac", "medium",
-         "en/en_US/lessac/medium"},
+         "en/en_US/lessac/medium", false},
         {"en_US-amy-medium", "en", "en_US", "Amy", "medium",
-         "en/en_US/amy/medium"},
+         "en/en_US/amy/medium", false},
+        {"en_GB-northern_english_male-medium", "en", "en_GB", "Northern Male (deep)", "medium",
+         "en/en_GB/northern_english_male/medium", true},
         {"en_GB-alan-medium", "en", "en_GB", "Alan", "medium",
-         "en/en_GB/alan/medium"},
+         "en/en_GB/alan/medium", true},
+
+        // Other langs — high / deep where available
+        {"de_DE-thorsten-high", "de", "de_DE", "Thorsten (deep, high)", "high",
+         "de/de_DE/thorsten/high", true},
         {"de_DE-thorsten-medium", "de", "de_DE", "Thorsten", "medium",
-         "de/de_DE/thorsten/medium"},
+         "de/de_DE/thorsten/medium", true},
         {"fr_FR-siwis-medium", "fr", "fr_FR", "Siwis", "medium",
-         "fr/fr_FR/siwis/medium"},
+         "fr/fr_FR/siwis/medium", false},
         {"es_ES-sharvard-medium", "es", "es_ES", "Sharvard", "medium",
-         "es/es_ES/sharvard/medium"},
+         "es/es_ES/sharvard/medium", false},
         {"it_IT-paola-medium", "it", "it_IT", "Paola", "medium",
-         "it/it_IT/paola/medium"},
+         "it/it_IT/paola/medium", false},
         {"uk_UA-ukrainian_tts-medium", "uk", "uk_UA", "Ukrainian TTS", "medium",
-         "uk/uk_UA/ukrainian_tts/medium"},
-        {"ru_RU-denis-medium", "ru", "ru_RU", "Denis", "medium",
-         "ru/ru_RU/denis/medium"},
+         "uk/uk_UA/ukrainian_tts/medium", false},
+        {"ru_RU-denis-medium", "ru", "ru_RU", "Denis (deep)", "medium",
+         "ru/ru_RU/denis/medium", true},
         {"cs_CZ-jirka-medium", "cs", "cs_CZ", "Jirka", "medium",
-         "cs/cs_CZ/jirka/medium"},
+         "cs/cs_CZ/jirka/medium", true},
     };
     return k;
 }
@@ -398,66 +432,120 @@ std::vector<Cue> parseSrt(const std::string& path) {
 }
 
 // ---- process ----
-unsigned piperThreadCount(const std::string& speed) {
+unsigned hardwareCores() {
     unsigned cores = std::thread::hardware_concurrency();
-    if (cores == 0) cores = 4;
-    if (speed == "hard") return cores;
-    if (speed == "medium") return std::max(1u, cores / 2);
-    return 0; // normal: leave ORT default (as before)
+    return cores == 0 ? 4u : cores;
 }
 
-void applyPiperLoadEnv(const std::string& speed) {
-    const unsigned n = piperThreadCount(speed);
+// Parallel Piper processes (each loads the model once for its cue chunk).
+unsigned piperWorkerCount(const std::string& speed) {
+    const unsigned cores = hardwareCores();
+    if (speed == "hard") return std::min(std::max(2u, cores / 2), 6u);
+    if (speed == "medium") return 2u; // two light workers ≈ half load with affinity
+    return 1u; // normal: one process
+}
+
+unsigned piperThreadsPerWorker(const std::string& speed, unsigned /*workers*/) {
+    if (speed == "hard") return 2u;
+    if (speed == "medium") return 1u;
+    return 2u; // normal: modest, not all cores
+}
+
+void applyPiperLoadEnvThreads(unsigned threads, bool aggressive) {
 #ifdef _WIN32
-    if (n == 0) {
-        SetEnvironmentVariableA("OMP_NUM_THREADS", nullptr);
-        SetEnvironmentVariableA("OPENBLAS_NUM_THREADS", nullptr);
-        SetEnvironmentVariableA("MKL_NUM_THREADS", nullptr);
-        SetEnvironmentVariableA("OMP_WAIT_POLICY", nullptr);
-        return;
-    }
-    const std::string ns = std::to_string(n);
+    const std::string ns = std::to_string(std::max(1u, threads));
     SetEnvironmentVariableA("OMP_NUM_THREADS", ns.c_str());
     SetEnvironmentVariableA("OPENBLAS_NUM_THREADS", ns.c_str());
     SetEnvironmentVariableA("MKL_NUM_THREADS", ns.c_str());
-    SetEnvironmentVariableA("OMP_WAIT_POLICY", speed == "hard" ? "ACTIVE" : "PASSIVE");
+    SetEnvironmentVariableA("OMP_WAIT_POLICY", aggressive ? "ACTIVE" : "PASSIVE");
 #else
-    if (n == 0) {
-        unsetenv("OMP_NUM_THREADS");
-        unsetenv("OPENBLAS_NUM_THREADS");
-        unsetenv("MKL_NUM_THREADS");
-        unsetenv("OMP_WAIT_POLICY");
-        return;
-    }
-    const std::string ns = std::to_string(n);
+    const std::string ns = std::to_string(std::max(1u, threads));
     setenv("OMP_NUM_THREADS", ns.c_str(), 1);
     setenv("OPENBLAS_NUM_THREADS", ns.c_str(), 1);
     setenv("MKL_NUM_THREADS", ns.c_str(), 1);
-    setenv("OMP_WAIT_POLICY", speed == "hard" ? "ACTIVE" : "PASSIVE", 1);
+    setenv("OMP_WAIT_POLICY", aggressive ? "ACTIVE" : "PASSIVE", 1);
 #endif
 }
 
-bool runPiper(const fs::path& model, const fs::path& outWav, const std::string& text,
-              std::string* err) {
+#ifdef _WIN32
+void applyPiperProcessLimits(HANDLE proc, const std::string& speed) {
+    if (!proc || proc == INVALID_HANDLE_VALUE) return;
+    const unsigned cores = hardwareCores();
+    if (speed == "hard") {
+        SetPriorityClass(proc, ABOVE_NORMAL_PRIORITY_CLASS);
+        return;
+    }
+    // Cap to lower half (medium) or first quarter (normal) of CPU cores.
+    unsigned allow = (speed == "medium") ? std::max(1u, cores / 2) : std::max(1u, (cores + 3) / 4);
+    if (allow > 63) allow = 63;
+    DWORD_PTR mask = 0;
+    for (unsigned i = 0; i < allow; ++i) mask |= (DWORD_PTR)1 << i;
+    SetProcessAffinityMask(proc, mask);
+    SetPriorityClass(proc, BELOW_NORMAL_PRIORITY_CLASS);
+}
+#else
+void applyPiperProcessLimits(pid_t /*pid*/, const std::string& /*speed*/) {}
+#endif
+
+
+std::string jsonEscape(const std::string& s) {
+    std::string o;
+    o.reserve(s.size() + 8);
+    for (unsigned char c : s) {
+        switch (c) {
+        case '"': o += "\\\""; break;
+        case '\\': o += "\\\\"; break;
+        case '\n': o += "\\n"; break;
+        case '\r': o += "\\r"; break;
+        case '\t': o += "\\t"; break;
+        default:
+            if (c < 0x20) {
+                char b[8];
+                std::snprintf(b, sizeof(b), "\\u%04x", c);
+                o += b;
+            } else {
+                o.push_back((char)c);
+            }
+            break;
+        }
+    }
+    return o;
+}
+
+bool writeJsonInput(const fs::path& path, const std::vector<std::string>& texts) {
+    std::ofstream t(path, std::ios::binary | std::ios::trunc);
+    if (!t) return false;
+    for (auto& text : texts) {
+        t << "{\"text\":\"" << jsonEscape(text) << "\"}\n";
+    }
+    return (bool)t;
+}
+
+std::vector<fs::path> listWavsSorted(const fs::path& dir) {
+    std::vector<fs::path> wavs;
+    std::error_code ec;
+    if (!fs::exists(dir, ec)) return wavs;
+    for (auto& ent : fs::directory_iterator(dir, ec)) {
+        if (ec) break;
+        if (!ent.is_regular_file(ec)) continue;
+        if (util::lower(ent.path().extension().string()) == ".wav")
+            wavs.push_back(ent.path());
+    }
+    std::sort(wavs.begin(), wavs.end(),
+              [](const fs::path& a, const fs::path& b) {
+                  return a.filename().string() < b.filename().string();
+              });
+    return wavs;
+}
+
+bool runPiperCmd(const fs::path& model, const fs::path& stdinFile, const fs::path& outFile,
+                 const fs::path& outDir, unsigned threads, bool aggressive, uint32_t timeoutMs,
+                 std::string* err,
+                 const std::function<void(size_t wavCount)>& onWavProgress = {}) {
     fs::path exe = piperExe();
     if (!fs::exists(exe)) {
         if (err) *err = "piper binary missing";
         return false;
-    }
-    applyPiperLoadEnv(stack::StackConfig::get().lectorSpeed);
-    std::error_code ec;
-    fs::create_directories(outWav.parent_path(), ec);
-    fs::path txtPath = workDir() / ("cue_" + std::to_string(
-        std::chrono::steady_clock::now().time_since_epoch().count()) + ".txt");
-    fs::create_directories(workDir(), ec);
-    {
-        std::ofstream t(txtPath, std::ios::binary | std::ios::trunc);
-        if (!t) {
-            if (err) *err = "cannot write cue text";
-            return false;
-        }
-        t.write(text.data(), (std::streamsize)text.size());
-        if (text.empty() || text.back() != '\n') t.put('\n');
     }
 
 #ifdef _WIN32
@@ -469,18 +557,22 @@ bool runPiper(const fs::path& model, const fs::path& outWav, const std::string& 
     }
     SetHandleInformation(wr, HANDLE_FLAG_INHERIT, 0);
 
-    // Feed stdin from the text file via redirected handle
-    HANDLE txtRd = CreateFileW(txtPath.wstring().c_str(), GENERIC_READ, FILE_SHARE_READ, &sa,
+    HANDLE txtRd = CreateFileW(stdinFile.wstring().c_str(), GENERIC_READ, FILE_SHARE_READ, &sa,
                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (txtRd == INVALID_HANDLE_VALUE) {
         CloseHandle(rd);
         CloseHandle(wr);
-        if (err) *err = "cannot open cue text";
+        if (err) *err = "cannot open piper stdin";
         return false;
     }
 
-    std::wstring cmd = L"\"" + exe.wstring() + L"\" --model \"" + model.wstring() +
-                       L"\" --output_file \"" + outWav.wstring() + L"\"";
+    std::wstring cmd = L"\"" + exe.wstring() + L"\" --model \"" + model.wstring() + L"\"";
+    if (!outFile.empty())
+        cmd += L" --output_file \"" + outFile.wstring() + L"\"";
+    if (!outDir.empty())
+        cmd += L" --output_dir \"" + outDir.wstring() + L"\" --sentence_silence 0.05";
+    cmd += L" --json-input --quiet";
+
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
@@ -490,8 +582,16 @@ bool runPiper(const fs::path& model, const fs::path& outWav, const std::string& 
     si.hStdError = wr;
     PROCESS_INFORMATION pi{};
     std::wstring cwd = exe.parent_path().wstring();
-    BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
-                             nullptr, cwd.c_str(), &si, &pi);
+    BOOL ok = FALSE;
+    {
+        static std::mutex spawnMu;
+        std::lock_guard<std::mutex> spawnLk(spawnMu);
+        applyPiperLoadEnvThreads(threads, aggressive);
+        ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
+                            nullptr, cwd.c_str(), &si, &pi);
+        if (ok)
+            applyPiperProcessLimits(pi.hProcess, stack::StackConfig::get().lectorSpeed);
+    }
     CloseHandle(wr);
     CloseHandle(txtRd);
     if (!ok) {
@@ -499,30 +599,85 @@ bool runPiper(const fs::path& model, const fs::path& outWav, const std::string& 
         if (err) *err = "CreateProcess failed";
         return false;
     }
-    // Drain pipe to avoid blocking
-    char buf[512];
-    DWORD n = 0;
-    while (ReadFile(rd, buf, sizeof(buf), &n, nullptr) && n > 0) {}
-    CloseHandle(rd);
-    WaitForSingleObject(pi.hProcess, 120000);
+
+    // Non-blocking drain + live progress while Piper writes WAVs.
     DWORD code = 1;
-    GetExitCodeProcess(pi.hProcess, &code);
+    const DWORD step = 200;
+    DWORD waited = 0;
+    size_t lastWav = (size_t)-1;
+    for (;;) {
+        char buf[512];
+        DWORD n = 0, avail = 0;
+        if (PeekNamedPipe(rd, nullptr, 0, nullptr, &avail, nullptr) && avail > 0) {
+            while (avail > 0) {
+                DWORD want = (DWORD)std::min<DWORD>(avail, (DWORD)sizeof(buf));
+                if (!ReadFile(rd, buf, want, &n, nullptr) || n == 0) break;
+                avail -= n;
+            }
+        }
+        DWORD wait = WaitForSingleObject(pi.hProcess, step);
+        if (!outDir.empty() && onWavProgress) {
+            size_t wavs = listWavsSorted(outDir).size();
+            if (wavs != lastWav) {
+                lastWav = wavs;
+                onWavProgress(wavs);
+            }
+        }
+        if (wait == WAIT_OBJECT_0) {
+            GetExitCodeProcess(pi.hProcess, &code);
+            break;
+        }
+        waited += step;
+        if (timeoutMs && waited >= timeoutMs) {
+            TerminateProcess(pi.hProcess, 1);
+            if (err) *err = "piper timeout";
+            code = 1;
+            break;
+        }
+    }
+    // Final drain
+    {
+        char buf[512];
+        DWORD n = 0;
+        while (ReadFile(rd, buf, sizeof(buf), &n, nullptr) && n > 0) {}
+    }
+    CloseHandle(rd);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
-    fs::remove(txtPath, ec);
-    if (code != 0 || !fs::exists(outWav, ec)) {
-        if (err) *err = "piper failed (" + std::to_string((int)code) + ")";
+    if (code != 0) {
+        if (err && err->empty()) *err = "piper failed (" + std::to_string((int)code) + ")";
         return false;
     }
     return true;
 #else
+    applyPiperLoadEnvThreads(threads, aggressive);
     std::string modelS = model.string();
-    std::string outS = outWav.string();
     std::string exeS = exe.string();
-    std::string txtS = txtPath.string();
+    std::string txtS = stdinFile.string();
     std::string cwd = exe.parent_path().string();
-    const std::string speed = stack::StackConfig::get().lectorSpeed;
-    const unsigned threads = piperThreadCount(speed);
+    std::string threadsStr = std::to_string(std::max(1u, threads));
+    std::string outFileS = outFile.string();
+    std::string outDirS = outDir.string();
+
+    std::vector<std::string> argStore;
+    argStore.push_back("piper");
+    argStore.push_back("--model");
+    argStore.push_back(modelS);
+    if (!outFile.empty()) {
+        argStore.push_back("--output_file");
+        argStore.push_back(outFileS);
+    }
+    if (!outDir.empty()) {
+        argStore.push_back("--output_dir");
+        argStore.push_back(outDirS);
+        argStore.push_back("--sentence_silence");
+        argStore.push_back("0.05");
+    }
+    argStore.push_back("--json-input");
+    argStore.push_back("--quiet");
+    std::vector<char*> argv;
+    for (auto& s : argStore) argv.push_back(s.data());
+    argv.push_back(nullptr);
 
     pid_t pid = fork();
     if (pid < 0) {
@@ -531,18 +686,10 @@ bool runPiper(const fs::path& model, const fs::path& outWav, const std::string& 
     }
     if (pid == 0) {
         if (chdir(cwd.c_str()) != 0) _exit(127);
-        if (threads > 0) {
-            const std::string threadsStr = std::to_string(threads);
-            setenv("OMP_NUM_THREADS", threadsStr.c_str(), 1);
-            setenv("OPENBLAS_NUM_THREADS", threadsStr.c_str(), 1);
-            setenv("MKL_NUM_THREADS", threadsStr.c_str(), 1);
-            setenv("OMP_WAIT_POLICY", speed == "hard" ? "ACTIVE" : "PASSIVE", 1);
-        } else {
-            unsetenv("OMP_NUM_THREADS");
-            unsetenv("OPENBLAS_NUM_THREADS");
-            unsetenv("MKL_NUM_THREADS");
-            unsetenv("OMP_WAIT_POLICY");
-        }
+        setenv("OMP_NUM_THREADS", threadsStr.c_str(), 1);
+        setenv("OPENBLAS_NUM_THREADS", threadsStr.c_str(), 1);
+        setenv("MKL_NUM_THREADS", threadsStr.c_str(), 1);
+        setenv("OMP_WAIT_POLICY", aggressive ? "ACTIVE" : "PASSIVE", 1);
         int fd = open(txtS.c_str(), O_RDONLY);
         if (fd < 0) _exit(126);
         dup2(fd, STDIN_FILENO);
@@ -553,19 +700,98 @@ bool runPiper(const fs::path& model, const fs::path& outWav, const std::string& 
             dup2(nullfd, STDERR_FILENO);
             close(nullfd);
         }
-        execl(exeS.c_str(), "piper", "--model", modelS.c_str(), "--output_file", outS.c_str(),
-              (char*)nullptr);
+        execv(exeS.c_str(), argv.data());
         _exit(127);
     }
+    // Poll wav count while child runs
     int status = 0;
-    waitpid(pid, &status, 0);
-    fs::remove(txtPath, ec);
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0 || !fs::exists(outWav, ec)) {
+    size_t lastWav = (size_t)-1;
+    for (;;) {
+        pid_t r = waitpid(pid, &status, WNOHANG);
+        if (!outDir.empty() && onWavProgress) {
+            size_t wavs = listWavsSorted(outDir).size();
+            if (wavs != lastWav) {
+                lastWav = wavs;
+                onWavProgress(wavs);
+            }
+        }
+        if (r == pid) break;
+        if (r < 0) {
+            if (err) *err = "waitpid failed";
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
         if (err) *err = "piper failed";
         return false;
     }
     return true;
 #endif
+}
+
+bool runPiper(const fs::path& model, const fs::path& outWav, const std::string& text,
+              std::string* err) {
+    std::error_code ec;
+    fs::create_directories(outWav.parent_path(), ec);
+    fs::path txtPath = workDir() / ("cue_" + std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count()) + ".txt");
+    fs::create_directories(workDir(), ec);
+    if (!writeJsonInput(txtPath, {text})) {
+        if (err) *err = "cannot write cue text";
+        return false;
+    }
+    const std::string speed = stack::StackConfig::get().lectorSpeed;
+    const unsigned threads = piperThreadsPerWorker(speed, 1);
+    bool ok = runPiperCmd(model, txtPath, outWav, {}, threads, speed == "hard", 180000, err);
+    fs::remove(txtPath, ec);
+    if (!ok) return false;
+    if (!fs::exists(outWav, ec)) {
+        if (err) *err = "piper produced no wav";
+        return false;
+    }
+    return true;
+}
+
+// Synthesize many utterances in one Piper process (model loaded once).
+// onProgress(doneInThisBatch) is called as WAVs appear on disk.
+bool runPiperBatch(const fs::path& model, const fs::path& outDir,
+                   const std::vector<std::string>& texts, unsigned threads, bool aggressive,
+                   std::string* err, const std::function<void(size_t)>& onProgress = {}) {
+    if (texts.empty()) return true;
+    std::error_code ec;
+    fs::create_directories(outDir, ec);
+    fs::path txtPath = outDir / "input.jsonl";
+    if (!writeJsonInput(txtPath, texts)) {
+        if (err) *err = "cannot write batch input";
+        return false;
+    }
+    for (auto& p : listWavsSorted(outDir)) fs::remove(p, ec);
+
+    uint32_t timeout = (uint32_t)std::min<uint64_t>(
+        3600000ull, 120000ull + (uint64_t)texts.size() * 15000ull);
+    if (!runPiperCmd(model, txtPath, {}, outDir, threads, aggressive, timeout, err, onProgress))
+        return false;
+
+    auto wavs = listWavsSorted(outDir);
+    if (wavs.size() != texts.size()) {
+        if (err)
+            *err = "piper batch size mismatch (" + std::to_string(wavs.size()) + "/" +
+                   std::to_string(texts.size()) + ")";
+        return false;
+    }
+    for (size_t i = 0; i < wavs.size(); ++i) {
+        fs::path dest = outDir / ("cue_" + std::to_string(i) + ".wav");
+        ec.clear();
+        fs::rename(wavs[i], dest, ec);
+        if (ec) {
+            ec.clear();
+            fs::copy_file(wavs[i], dest, fs::copy_options::overwrite_existing, ec);
+            fs::remove(wavs[i], ec);
+        }
+    }
+    if (onProgress) onProgress(texts.size());
+    return true;
 }
 
 bool extractEngineArchive(const fs::path& archive, std::string* err) {
@@ -693,8 +919,14 @@ bool downloadVoiceFiles(const VoiceInfo& v, uint64_t gen, std::string* err) {
 
     TransferMeter meter;
     meter.begin(std::string(i18n::tr("lector.dl_voice")) + " — " + v.name);
-    std::string onnxUrl = std::string(kHfBase) + v.hfPath + "/" + v.id + ".onnx";
-    std::string jsonUrl = std::string(kHfBase) + v.hfPath + "/" + v.id + ".onnx.json";
+    std::string onnxUrl, jsonUrl;
+    if (v.hfPath.rfind("http://", 0) == 0 || v.hfPath.rfind("https://", 0) == 0) {
+        onnxUrl = v.hfPath + ".onnx";
+        jsonUrl = v.hfPath + ".onnx.json";
+    } else {
+        onnxUrl = std::string(kHfBase) + v.hfPath + "/" + v.id + ".onnx";
+        jsonUrl = std::string(kHfBase) + v.hfPath + "/" + v.id + ".onnx.json";
+    }
 
     auto onnxBytes = http::getBinaryLong(onnxUrl, err, 600, [&](uint64_t got, uint64_t total) {
         meter.onProgress(got, total);
@@ -835,6 +1067,122 @@ bool buildTimedTrack(const std::string& voiceId, const std::vector<Cue>& cues,
         if (err) *err = i18n::tr("lector.no_cues");
         return false;
     }
+    fs::path model = voicesDir() / voiceId / (voiceId + ".onnx");
+    if (!fs::exists(model)) {
+        if (err) *err = "voice model missing";
+        return false;
+    }
+
+    const std::string speed = stack::StackConfig::get().lectorSpeed;
+    unsigned workers = piperWorkerCount(speed);
+    workers = std::min(workers, (unsigned)cues.size());
+    workers = std::max(1u, workers);
+    const unsigned threads = piperThreadsPerWorker(speed, workers);
+    const bool aggressive = (speed == "hard");
+
+    fs::path tmpDir = workDir() / ("job_" + std::to_string(gen));
+    std::error_code ec;
+    fs::remove_all(tmpDir, ec);
+    fs::create_directories(tmpDir, ec);
+
+    g_jobProgress = 0.01f;
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        g_jobMsg = std::string(i18n::tr("lector.gen_start")) + " · " + speed + " · " +
+                   std::to_string(workers) + "× Piper · 0/" + std::to_string(cues.size());
+    }
+
+    struct Chunk {
+        size_t begin = 0;
+        size_t count = 0;
+        fs::path dir;
+        std::string err;
+        bool ok = false;
+        std::atomic<size_t> localDone{0};
+    };
+    std::vector<std::unique_ptr<Chunk>> chunks;
+    chunks.reserve(workers);
+    const size_t n = cues.size();
+    size_t cursor = 0;
+    for (unsigned w = 0; w < workers; ++w) {
+        const size_t left = n - cursor;
+        const size_t take = left / (workers - w);
+        auto ch = std::make_unique<Chunk>();
+        ch->begin = cursor;
+        ch->count = take;
+        ch->dir = tmpDir / ("w" + std::to_string(w));
+        fs::create_directories(ch->dir, ec);
+        chunks.push_back(std::move(ch));
+        cursor += take;
+    }
+
+    auto refreshProgress = [&]() {
+        size_t sum = 0;
+        for (auto& ch : chunks) sum += ch->localDone.load();
+        g_jobProgress = std::min(0.95f, (float)sum / (float)std::max<size_t>(1, n));
+        std::lock_guard<std::mutex> lk(g_mu);
+        char line[160];
+        std::snprintf(line, sizeof(line), "%s %zu/%zu (%.0f%%)", i18n::tr("lector.gen_cue"), sum,
+                      n, (double)sum * 100.0 / (double)std::max<size_t>(1, n));
+        g_jobMsg = line;
+    };
+
+    std::vector<std::thread> pool;
+    pool.reserve(workers);
+    for (unsigned w = 0; w < workers; ++w) {
+        pool.emplace_back([&, w]() {
+            Chunk& ch = *chunks[w];
+            if (ch.count == 0) {
+                ch.ok = true;
+                return;
+            }
+            if (g_stop || gen != g_jobGen) {
+                ch.err = "cancelled";
+                return;
+            }
+            std::vector<std::string> texts;
+            texts.reserve(ch.count);
+            for (size_t i = 0; i < ch.count; ++i) {
+                std::string t = cues[ch.begin + i].text;
+                for (char& c : t)
+                    if (c == '\n' || c == '\r') c = ' ';
+                if (util::trim(t).empty()) t = ".";
+                texts.push_back(std::move(t));
+            }
+            std::string localErr;
+            ch.ok = runPiperBatch(model, ch.dir, texts, threads, aggressive, &localErr,
+                                  [&](size_t wavCount) {
+                                      ch.localDone.store(std::min(wavCount, ch.count));
+                                      refreshProgress();
+                                  });
+            if (!ch.ok) ch.err = localErr.empty() ? "piper batch failed" : localErr;
+            else {
+                ch.localDone.store(ch.count);
+                refreshProgress();
+            }
+        });
+    }
+    for (auto& t : pool) t.join();
+
+    if (g_stop || gen != g_jobGen) {
+        if (err) *err = "cancelled";
+        fs::remove_all(tmpDir, ec);
+        return false;
+    }
+    for (auto& ch : chunks) {
+        if (!ch->ok) {
+            if (err) *err = ch->err.empty() ? "piper batch failed" : ch->err;
+            fs::remove_all(tmpDir, ec);
+            return false;
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        g_jobMsg = i18n::tr("lector.mixing");
+    }
+    g_jobProgress = 0.96f;
+
     WavData master;
     master.sampleRate = 22050;
     master.channels = 1;
@@ -843,59 +1191,44 @@ bool buildTimedTrack(const std::string& voiceId, const std::vector<Cue>& cues,
         (size_t)std::max<int64_t>(1, (lastEnd * master.sampleRate) / 1000);
     master.pcm.assign(totalSamples, 0);
 
-    fs::path tmpDir = workDir() / ("job_" + std::to_string(gen));
-    std::error_code ec;
-    fs::create_directories(tmpDir, ec);
-
-    for (size_t i = 0; i < cues.size(); ++i) {
-        if (g_stop || gen != g_jobGen) {
-            if (err) *err = "cancelled";
-            fs::remove_all(tmpDir, ec);
-            return false;
-        }
-        g_jobProgress = (float)i / (float)cues.size();
-        {
-            std::lock_guard<std::mutex> lk(g_mu);
-            g_jobMsg = std::string(i18n::tr("lector.gen_cue")) + " " + std::to_string(i + 1) +
-                       "/" + std::to_string(cues.size());
-        }
-        fs::path cueWav = tmpDir / ("cue_" + std::to_string(i) + ".wav");
-        if (!synthesizeToFile(voiceId, cues[i].text, cueWav, err)) {
-            fs::remove_all(tmpDir, ec);
-            return false;
-        }
-        WavData w;
-        if (!readWav(cueWav, w)) {
-            if (err) *err = "bad cue wav";
-            fs::remove_all(tmpDir, ec);
-            return false;
-        }
-        if (w.sampleRate != master.sampleRate || w.channels != master.channels) {
-            // Accept first cue rate if different
-            if (i == 0) {
-                master.sampleRate = w.sampleRate;
-                master.channels = w.channels;
-                const size_t n =
+    for (unsigned w = 0; w < workers; ++w) {
+        const Chunk& ch = *chunks[w];
+        for (size_t i = 0; i < ch.count; ++i) {
+            const size_t cueIdx = ch.begin + i;
+            fs::path cueWav = ch.dir / ("cue_" + std::to_string(i) + ".wav");
+            WavData wav;
+            if (!readWav(cueWav, wav)) {
+                if (err) *err = "bad cue wav #" + std::to_string(cueIdx);
+                fs::remove_all(tmpDir, ec);
+                return false;
+            }
+            if (cueIdx == 0 &&
+                (wav.sampleRate != master.sampleRate || wav.channels != master.channels)) {
+                master.sampleRate = wav.sampleRate;
+                master.channels = wav.channels;
+                const size_t nn =
                     (size_t)std::max<int64_t>(1, (lastEnd * master.sampleRate) / 1000) *
                     (size_t)master.channels;
-                master.pcm.assign(n, 0);
+                master.pcm.assign(nn, 0);
+            }
+            const size_t start =
+                (size_t)((cues[cueIdx].startMs * (int64_t)master.sampleRate) / 1000) *
+                (size_t)master.channels;
+            // Boost lector so it sits clearly over the film soundtrack when mixed.
+            constexpr float kLectorGain = 2.15f;
+            for (size_t s = 0; s < wav.pcm.size(); ++s) {
+                size_t dst = start + s;
+                if (dst >= master.pcm.size()) break;
+                int v = (int)master.pcm[dst] + (int)std::lround((float)wav.pcm[s] * kLectorGain);
+                if (v > 32767) v = 32767;
+                if (v < -32768) v = -32768;
+                master.pcm[dst] = (int16_t)v;
             }
         }
-        const size_t start =
-            (size_t)((cues[i].startMs * (int64_t)master.sampleRate) / 1000) *
-            (size_t)master.channels;
-        for (size_t s = 0; s < w.pcm.size(); ++s) {
-            size_t dst = start + s;
-            if (dst >= master.pcm.size()) break;
-            int v = (int)master.pcm[dst] + (int)w.pcm[s];
-            if (v > 32767) v = 32767;
-            if (v < -32768) v = -32768;
-            master.pcm[dst] = (int16_t)v;
-        }
-        fs::remove(cueWav, ec);
+        g_jobProgress = 0.96f + 0.03f * ((float)(w + 1) / (float)workers);
     }
 
-    g_jobProgress = 0.98f;
+    g_jobProgress = 0.99f;
     if (!writeWav(outWav, master)) {
         if (err) *err = "cannot write lector wav";
         fs::remove_all(tmpDir, ec);
@@ -914,6 +1247,17 @@ std::vector<VoiceInfo> voicesForLang(const std::string& lang) {
     std::vector<VoiceInfo> out;
     for (auto& v : voiceCatalog())
         if (lang.empty() || v.lang == lang) out.push_back(v);
+    // Prefer deep + high quality first in pickers
+    std::stable_sort(out.begin(), out.end(), [](const VoiceInfo& a, const VoiceInfo& b) {
+        auto score = [](const VoiceInfo& v) {
+            int s = 0;
+            if (v.deep) s += 2;
+            if (v.quality == "high") s += 2;
+            else if (v.quality == "medium") s += 1;
+            return s;
+        };
+        return score(a) > score(b);
+    });
     return out;
 }
 
@@ -1056,6 +1400,123 @@ std::string outputPathFor(const std::string& videoPath, const std::string& voice
     return (video.parent_path() / (video.stem().string() + ".lector." + safe + ".wav")).string();
 }
 
+bool isVoiceOverMixPath(const std::string& pathOrUri) {
+    std::string p = util::lower(pathOrUri);
+    return p.find(".lector.") != std::string::npos && p.find(".mix.") != std::string::npos;
+}
+
+std::string mixPathForLector(const std::string& lectorWavPath) {
+    std::string s = lectorWavPath;
+    auto lower = util::lower(s);
+    if (lower.size() >= 4 && lower.substr(lower.size() - 4) == ".wav")
+        s = s.substr(0, s.size() - 4);
+    return s + ".mix.m4a";
+}
+
+std::string findFfmpeg() {
+    std::error_code ec;
+    fs::path beside = fs::path(util::exeDir()) /
+#ifdef _WIN32
+                      "ffmpeg.exe";
+#else
+                      "ffmpeg";
+#endif
+    if (fs::exists(beside, ec)) return beside.string();
+
+#ifdef _WIN32
+    const char* pathCandidates[] = {
+        "C:\\ffmpeg\\bin\\ffmpeg.exe",
+        "C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe",
+    };
+    for (auto* c : pathCandidates) {
+        if (fs::exists(c, ec)) return c;
+    }
+    if (std::system("where ffmpeg >nul 2>nul") == 0) return "ffmpeg";
+#else
+    if (std::system("command -v ffmpeg >/dev/null 2>&1") == 0) return "ffmpeg";
+#endif
+    return {};
+}
+
+std::string ensureVoiceOverMix(const std::string& videoPath, const std::string& lectorWavPath,
+                               std::string* err) {
+    if (videoPath.empty() || lectorWavPath.empty()) {
+        if (err) *err = "missing paths";
+        return {};
+    }
+    std::error_code ec;
+    if (!fs::exists(videoPath, ec) || !fs::exists(lectorWavPath, ec)) {
+        if (err) *err = "video or lector wav missing";
+        return {};
+    }
+
+    fs::path mix = mixPathForLector(lectorWavPath);
+    // Reuse if mix is newer than both inputs
+    if (fs::exists(mix, ec)) {
+        auto mtMix = fs::last_write_time(mix, ec);
+        auto mtVid = fs::last_write_time(videoPath, ec);
+        auto mtLec = fs::last_write_time(lectorWavPath, ec);
+        if (!ec && mtMix >= mtVid && mtMix >= mtLec) return mix.string();
+    }
+
+    std::string ff = findFfmpeg();
+    if (ff.empty()) {
+        if (err) *err = "ffmpeg not found";
+        return {};
+    }
+
+    // Duck original (~28%) and sit amplified lector on top (~140%).
+    std::string filter =
+        "[0:a]volume=0.28[a0];[1:a]volume=1.40,aformat=sample_rates=48000:channel_layouts=stereo[a1];"
+        "[a0][a1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]";
+
+    auto q = [](const std::string& s) {
+#ifdef _WIN32
+        std::string o = "\"";
+        for (char c : s) {
+            if (c == '"') o += "\\\"";
+            else o += c;
+        }
+        o += "\"";
+        return o;
+#else
+        std::string o = "'";
+        for (char c : s) {
+            if (c == '\'') o += "'\\''";
+            else o += c;
+        }
+        o += "'";
+        return o;
+#endif
+    };
+
+    auto runMix = [&](const std::string& fc, const std::string& codecArgs) {
+#ifdef _WIN32
+        std::string cmd = "\"" + ff + "\" -y -hide_banner -loglevel error -i " + q(videoPath) +
+                          " -i " + q(lectorWavPath) + " -filter_complex \"" + fc +
+                          "\" -map \"[aout]\" " + codecArgs + " " + q(mix.string());
+#else
+        std::string cmd = ff + " -y -hide_banner -loglevel error -i " + q(videoPath) + " -i " +
+                          q(lectorWavPath) + " -filter_complex '" + fc + "' -map '[aout]' " +
+                          codecArgs + " " + q(mix.string());
+#endif
+        return std::system(cmd.c_str());
+    };
+
+    int rc = runMix(filter, "-c:a aac -b:a 192k");
+    if (rc != 0 || !fs::exists(mix, ec)) {
+        // Fallback without film audio (no stream / codec issues)
+        std::string filter2 =
+            "[1:a]volume=1.35,aformat=sample_rates=48000:channel_layouts=stereo[aout]";
+        rc = runMix(filter2, "-c:a aac -b:a 192k");
+        if (rc != 0 || !fs::exists(mix, ec)) {
+            if (err) *err = "ffmpeg mix failed";
+            return {};
+        }
+    }
+    return mix.string();
+}
+
 std::string fileUri(const std::string& path) {
     if (path.empty()) return {};
     if (path.rfind("file:", 0) == 0 || path.rfind("http://", 0) == 0 ||
@@ -1064,14 +1525,30 @@ std::string fileUri(const std::string& path) {
     std::string p = path;
     for (char& c : p)
         if (c == '\\') c = '/';
+    std::string enc;
+    enc.reserve(p.size() + 16);
+    auto appendHex = [&](unsigned char c) {
+        static const char* h = "0123456789ABCDEF";
+        enc.push_back('%');
+        enc.push_back(h[c >> 4]);
+        enc.push_back(h[c & 15]);
+    };
+    for (unsigned char c : p) {
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+            c == '/' || c == ':' || c == '-' || c == '_' || c == '.' || c == '~')
+            enc.push_back((char)c);
+        else if (c == ' ')
+            enc += "%20";
+        else
+            appendHex(c);
+    }
 #ifdef _WIN32
-    // file:///C:/...
-    if (p.size() >= 2 && p[1] == ':')
-        return "file:///" + p;
-    return "file:///" + p;
+    if (enc.size() >= 2 && enc[1] == ':')
+        return "file:///" + enc;
+    return "file:///" + enc;
 #else
-    if (!p.empty() && p[0] == '/') return "file://" + p;
-    return "file://" + p;
+    if (!enc.empty() && enc[0] == '/') return "file://" + enc;
+    return "file://" + enc;
 #endif
 }
 
@@ -1108,6 +1585,16 @@ void startGenerate(const std::string& videoPath, const std::string& srtPath,
                 break;
             }
             ok = buildTimedTrack(voiceId, cues, out, gen, &err);
+            if (ok && gen == g_jobGen && !g_stop) {
+                {
+                    std::lock_guard<std::mutex> lk(g_mu);
+                    g_jobMsg = i18n::tr("lector.mixing_overlay");
+                }
+                g_jobProgress = 0.97f;
+                std::string mixErr;
+                // Best-effort ducked mix (original + lector). Play falls back to raw slave.
+                ensureVoiceOverMix(videoPath, out.string(), &mixErr);
+            }
         } while (false);
 
         {

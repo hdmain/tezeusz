@@ -476,6 +476,14 @@ bool w::beginQuestionModal(const char* id, float cardWidth, float cardHeight) {
         return false;
     }
 
+    // Modal itself stays clear (blur drawn below). Nested Combo/BeginCombo popups
+    // inherit PopupBg — give them an opaque panel so they aren't see-through.
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.10f, 0.12f, 0.18f, 0.98f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.45f, 0.49f, 0.55f, 0.85f));
+    ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 10.f);
+    ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 1.f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, 10));
+
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 wp = ImGui::GetWindowPos();
     const ImVec2 ws = ImGui::GetWindowSize();
@@ -539,6 +547,9 @@ void w::endQuestionModal() {
 
     ImGui::PopStyleColor(3);
     ImGui::PopStyleVar(4);
+    // Nested combo PopupBg / border / padding pushed after BeginPopupModal
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(2);
     ImGui::EndPopup();
     ImGui::PopStyleColor(3);
     ImGui::PopStyleVar(3);

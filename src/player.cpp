@@ -8,6 +8,7 @@
 #include "svgicons.hpp"
 #include "i18n.hpp"
 #include "localdb.hpp"
+#include "lector.hpp"
 #include <GLFW/glfw3.h>
 #include "imgui.h"
 #include <atomic>
@@ -174,6 +175,9 @@ double g_lastSavedPos = -1;
 double g_lastSaveAt = 0;       // ImGui::GetTime() of last disk write
 localdb::PlaybackTracks g_savedTracks{};
 bool g_didApplyTracks = false;
+// Lector: raw timed WAV as slave (mix with film audio), or pre-ducked .mix (mute film).
+enum class VoiceOverMode { None, OverlaySlave, MixOnly };
+VoiceOverMode g_voiceOverMode = VoiceOverMode::None;
 
 std::string trackNameById(const std::vector<Track>& tracks, int id) {
     for (auto& t : tracks)
@@ -460,7 +464,16 @@ void refreshTracks() {
             p_libvlc_video_set_spu(g_mp, subPick);
             g_st.subtitleId = subPick;
         }
-        if (audPick != -2 && audPick != g_st.audioId) {
+        if (g_voiceOverMode == VoiceOverMode::MixOnly) {
+            // Mix already contains ducked original + lector — mute main ES.
+            if (g_st.audioId != -1) {
+                p_libvlc_audio_set_track(g_mp, -1);
+                g_st.audioId = -1;
+            }
+        } else if (g_voiceOverMode == VoiceOverMode::OverlaySlave) {
+            // Keep default track selection so VLC mixes film + amplified lector slave.
+            // Do not force a saved audio track (that can drop the slave).
+        } else if (audPick != -2 && audPick != g_st.audioId) {
             p_libvlc_audio_set_track(g_mp, audPick);
             g_st.audioId = audPick;
         }
@@ -738,6 +751,15 @@ bool open(const std::string& path, const std::string& title, const std::string& 
     g_lastSaveAt = 0;
     g_savedTracks = {};
     g_didApplyTracks = false;
+    g_voiceOverMode = VoiceOverMode::None;
+    if (!audioSlaveUrl.empty()) {
+        const std::string low = util::lower(audioSlaveUrl);
+        if (low.find(".lector.") != std::string::npos) {
+            g_voiceOverMode = lector::isVoiceOverMixPath(audioSlaveUrl)
+                                  ? VoiceOverMode::MixOnly
+                                  : VoiceOverMode::OverlaySlave;
+        }
+    }
     const bool remote = path.rfind("http://", 0) == 0 || path.rfind("https://", 0) == 0;
     if (!remote) {
         localdb::PlaybackProgress pp;

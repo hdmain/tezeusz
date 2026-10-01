@@ -1464,7 +1464,7 @@ void renderLibrary() {
                           (int)items.size(), i18n::tr("library.titles"),
                           i18n::tr("library.used"), library::formatSize(used).c_str());
         }
-        ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", countBuf);
+    ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", countBuf);
         if (!cfg.moviesPathsExtra.empty() || !cfg.tvPathsExtra.empty()) {
             ImGui::SameLine();
             ImGui::TextColored(ImVec4(0.50f, 0.55f, 0.62f, 1), "· %s",
@@ -1569,15 +1569,15 @@ void renderLibrary() {
                     : it.folder;
                 platform::openPath(folder);
             } else {
-                player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
+            player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
             }
         }
         bool hov = ImGui::IsItemHovered();
         if (ImGui::BeginPopupContextItem("##libctx")) {
             ctxItem = it;
             if (!it.archived) {
-                if (ImGui::MenuItem(i18n::tr("common.play"))) {
-                    player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
+            if (ImGui::MenuItem(i18n::tr("common.play"))) {
+                player::open(it.path, it.title + (it.year.empty() ? "" : " (" + it.year + ")"));
                 }
                 if (ImGui::MenuItem(i18n::tr("lector.menu"), nullptr, false,
                                     stack::StackConfig::get().lectorEnabled)) {
@@ -2062,12 +2062,17 @@ void renderLibrary() {
 
             ImGui::Text("%s", i18n::tr("lector.voice"));
             ImGui::SetNextItemWidth(-1);
-            if (ImGui::BeginCombo("##lectorvoice",
-                                  voices.empty() ? "-" : (voices[voiceIdx].name + " (" +
-                                                          voices[voiceIdx].id + ")")
-                                                             .c_str())) {
+            auto voiceLabel = [](const lector::VoiceInfo& v) {
+                std::string s = v.name;
+                if (v.quality == "high") s += " · HQ";
+                else if (v.deep) s += " · deep";
+                return s;
+            };
+            std::string voicePreview =
+                voices.empty() ? std::string("-") : voiceLabel(voices[voiceIdx]);
+            if (ImGui::BeginCombo("##lectorvoice", voicePreview.c_str())) {
                 for (int i = 0; i < (int)voices.size(); i++) {
-                    std::string label = voices[i].name + " · " + voices[i].id;
+                    std::string label = voiceLabel(voices[i]);
                     bool sel = (i == voiceIdx);
                     if (ImGui::Selectable(label.c_str(), sel)) {
                         voiceIdx = i;
@@ -2156,7 +2161,11 @@ void renderLibrary() {
                 if (canPlay && !playPath.empty()) {
                     std::string title =
                         ctxItem.title + (ctxItem.year.empty() ? "" : " (" + ctxItem.year + ")");
-                    player::open(video, title, lector::fileUri(playPath));
+                    std::string slave = playPath;
+                    std::string mixErr;
+                    std::string mix = lector::ensureVoiceOverMix(video, playPath, &mixErr);
+                    if (!mix.empty()) slave = mix;
+                    player::open(video, title, lector::fileUri(slave));
                     ImGui::CloseCurrentPopup();
                 }
             }
@@ -2301,20 +2310,20 @@ void renderSettings() {
     if (tab == TabGeneral) {
         sectionTitle(i18n::tr("settings.tab_general"), i18n::tr("settings.general_hint"));
         fieldLabel(i18n::tr("settings.ui_language"));
-        {
-            const char* uiCodes[] = { "en", "pl" };
-            const char* uiLabels[] = { "English", "Polski" };
-            int ui = 0;
-            for (int i = 0; i < 2; i++)
-                if (cfg.uiLanguage == uiCodes[i]) ui = i;
-            if (ImGui::Combo("##uilang", &ui, uiLabels, 2)) {
-                cfg.uiLanguage = uiCodes[ui];
-                i18n::setLanguage(cfg.uiLanguage);
+    {
+        const char* uiCodes[] = { "en", "pl" };
+        const char* uiLabels[] = { "English", "Polski" };
+        int ui = 0;
+        for (int i = 0; i < 2; i++)
+            if (cfg.uiLanguage == uiCodes[i]) ui = i;
+        if (ImGui::Combo("##uilang", &ui, uiLabels, 2)) {
+            cfg.uiLanguage = uiCodes[ui];
+            i18n::setLanguage(cfg.uiLanguage);
                 cfg::syncFromUi(cfg.uiLanguage);
                 app().reloadSeq++;
-                cfg.save();
-            }
+            cfg.save();
         }
+    }
         ImGui::Dummy(ImVec2(1, 8));
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
         ImGui::TextWrapped("%s", i18n::tr("settings.save_hint"));
@@ -2399,9 +2408,9 @@ void renderSettings() {
         }
 
         fieldLabel(i18n::tr("settings.movies_path"));
-        ImGui::InputText("##movies", movies, sizeof(movies));
+    ImGui::InputText("##movies", movies, sizeof(movies));
         fieldLabel(i18n::tr("settings.tv_path"));
-        ImGui::InputText("##tv", tv, sizeof(tv));
+    ImGui::InputText("##tv", tv, sizeof(tv));
 
         if (!cfg.moviesPathsExtra.empty() || !cfg.tvPathsExtra.empty()) {
             ImGui::Dummy(ImVec2(1, 8));
@@ -2446,7 +2455,7 @@ void renderSettings() {
     } else if (tab == TabDownloads) {
         sectionTitle(i18n::tr("settings.tab_downloads"), i18n::tr("settings.downloads_hint"));
         fieldLabel(i18n::tr("settings.download_path"));
-        ImGui::InputText("##dl", dlpath, sizeof(dlpath));
+    ImGui::InputText("##dl", dlpath, sizeof(dlpath));
         fieldLabel(i18n::tr("settings.download_cache_max"));
         if (ImGui::SliderInt("##cachegb", &cfg.downloadCacheMaxGb, 0, 500, "%d GB"))
             cfg.save();
@@ -2464,38 +2473,38 @@ void renderSettings() {
         fieldLabel(i18n::tr("settings.min_seeders"));
         ImGui::SliderInt("##seeders", &cfg.minSeeders, 0, 50);
         fieldLabel(i18n::tr("settings.default_quality"));
-        {
-            const char* quals[] = { "any", "720p", "1080p", "2160p" };
+    {
+        const char* quals[] = { "any", "720p", "1080p", "2160p" };
             const char* labels[] = { i18n::tr("settings.quality_any"), "720p", "1080p", "2160p (4K)" };
-            int qi = 2;
-            for (int i = 0; i < 4; i++) if (cfg.preferredQuality == quals[i]) qi = i;
-            if (ImGui::Combo("##defq", &qi, labels, 4))
-                cfg.preferredQuality = quals[qi];
-        }
+        int qi = 2;
+        for (int i = 0; i < 4; i++) if (cfg.preferredQuality == quals[i]) qi = i;
+        if (ImGui::Combo("##defq", &qi, labels, 4))
+            cfg.preferredQuality = quals[qi];
+    }
     } else if (tab == TabSubs) {
         sectionTitle(i18n::tr("settings.tab_subs"), i18n::tr("settings.subs_hint1"));
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
         ImGui::TextWrapped("%s", i18n::tr("settings.subs_hint2"));
         ImGui::PopStyleColor();
         ImGui::Dummy(ImVec2(1, 8));
-        ImGui::Checkbox(i18n::tr("settings.subs_auto"), &cfg.subsAuto);
+    ImGui::Checkbox(i18n::tr("settings.subs_auto"), &cfg.subsAuto);
         fieldLabel(i18n::tr("settings.subs_lang"));
-        {
-            static const char* langs[] = {
-                "pl", "en", "de", "fr", "es", "it", "pt", "ru", "uk", "cs", "sk",
-                "hu", "nl", "sv", "no", "da", "fi", "ja", "ko", "zh", "ar", "tr"
-            };
-            static const char* labels[] = {
-                "Polski", "English", "Deutsch", "Français", "Español", "Italiano", "Português",
-                "Русский", "Українська", "Čeština", "Slovenčina", "Magyar", "Nederlands",
-                "Svenska", "Norsk", "Dansk", "Suomi", "日本語", "한국어", "中文", "العربية", "Türkçe"
-            };
-            int li = 0;
-            for (int i = 0; i < (int)(sizeof(langs) / sizeof(langs[0])); i++)
-                if (cfg.subsPreferredLang == langs[i]) li = i;
-            if (ImGui::Combo("##sublang", &li, labels, (int)(sizeof(labels) / sizeof(labels[0]))))
-                cfg.subsPreferredLang = langs[li];
-        }
+    {
+        static const char* langs[] = {
+            "pl", "en", "de", "fr", "es", "it", "pt", "ru", "uk", "cs", "sk",
+            "hu", "nl", "sv", "no", "da", "fi", "ja", "ko", "zh", "ar", "tr"
+        };
+        static const char* labels[] = {
+            "Polski", "English", "Deutsch", "Français", "Español", "Italiano", "Português",
+            "Русский", "Українська", "Čeština", "Slovenčina", "Magyar", "Nederlands",
+            "Svenska", "Norsk", "Dansk", "Suomi", "日本語", "한국어", "中文", "العربية", "Türkçe"
+        };
+        int li = 0;
+        for (int i = 0; i < (int)(sizeof(langs) / sizeof(langs[0])); i++)
+            if (cfg.subsPreferredLang == langs[i]) li = i;
+        if (ImGui::Combo("##sublang", &li, labels, (int)(sizeof(labels) / sizeof(labels[0]))))
+            cfg.subsPreferredLang = langs[li];
+    }
         ImGui::Dummy(ImVec2(1, 10));
         {
             ImVec2 p = ImGui::GetCursorScreenPos();
@@ -2561,13 +2570,16 @@ void renderSettings() {
             int vi = 0;
             for (int i = 0; i < (int)all.size(); i++)
                 if (all[i].id == cfg.lectorVoiceId) vi = i;
-            std::string preview = all.empty()
-                ? "-"
-                : (all[vi].name + " · " + all[vi].lang + " · " + all[vi].id);
+            auto voiceLabel = [](const lector::VoiceInfo& v) {
+                std::string s = v.name + " · " + v.lang;
+                if (v.quality == "high") s += " · HQ";
+                return s;
+            };
+            std::string preview = all.empty() ? "-" : voiceLabel(all[vi]);
             ImGui::SetNextItemWidth(fieldW);
             if (ImGui::BeginCombo("##lectordefvoice", preview.c_str())) {
                 for (int i = 0; i < (int)all.size(); i++) {
-                    std::string label = all[i].name + " (" + all[i].lang + ") — " + all[i].id;
+                    std::string label = voiceLabel(all[i]);
                     bool sel = (i == vi);
                     if (ImGui::Selectable(label.c_str(), sel)) {
                         vi = i;
@@ -2824,16 +2836,16 @@ void renderSettings() {
         if (ImGui::Button(i18n::tr("common.save"), ImVec2(160, 38))) {
             cfg.setMoviesPath(movies);
             cfg.setTvPath(tv);
-            cfg.downloadPath = dlpath;
+        cfg.downloadPath = dlpath;
             std::error_code ec;
             std::filesystem::create_directories(cfg.moviesPath, ec);
             std::filesystem::create_directories(cfg.tvPath, ec);
             std::filesystem::create_directories(cfg.downloadPath, ec);
             std::snprintf(movies, sizeof(movies), "%s", cfg.moviesPath.c_str());
             std::snprintf(tv, sizeof(tv), "%s", cfg.tvPath.c_str());
-            cfg.save();
-        }
-        ImGui::SameLine();
+        cfg.save();
+    }
+    ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
         ImGui::TextUnformatted(i18n::tr("settings.saved_toast"));
         ImGui::PopStyleColor();
@@ -2924,8 +2936,8 @@ void applyAvailableSeasons(RequestDlg& d, const std::vector<SeasonInfo>& seasons
     if (d.installMore) {
         // Leave seasons unchecked — user picks what to add.
     } else {
-        for (auto& s : d.availableSeasons)
-            d.selectedSeasons.insert(s.seasonNumber);
+    for (auto& s : d.availableSeasons)
+        d.selectedSeasons.insert(s.seasonNumber);
     }
 }
 

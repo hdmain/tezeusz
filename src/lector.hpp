@@ -13,6 +13,7 @@ struct VoiceInfo {
     std::string name;     // display name
     std::string quality;  // "medium" / "low" / "high"
     std::string hfPath;   // path under piper-voices repo
+    bool deep = false;    // deeper / narrator-style male voice
 };
 
 enum class State {
@@ -67,7 +68,13 @@ std::string jobError();
 // Path that would be / is used for this video+voice.
 std::string outputPathFor(const std::string& videoPath, const std::string& voiceId);
 
-// file:/// URI suitable for libVLC :input-slave=
+// Build (or reuse) ducked original+lector mix WAV for true voice-over overlay.
+// Returns mix path on success, otherwise empty (caller falls back to raw lector).
+std::string ensureVoiceOverMix(const std::string& videoPath, const std::string& lectorWavPath,
+                               std::string* err = nullptr);
+bool isVoiceOverMixPath(const std::string& pathOrUri);
+
+// file:/// URI suitable for libVLC :input-slave= (percent-encoded)
 std::string fileUri(const std::string& path);
 
 } // namespace lector

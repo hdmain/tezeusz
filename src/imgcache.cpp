@@ -13,6 +13,8 @@
 #include <filesystem>
 #include <fstream>
 #include <cstdio>
+#include <mutex>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -47,6 +49,47 @@ static std::string cachePath(const std::string& url) {
     return (fs::path(cacheRoot()) / cacheFileName(url)).string();
 }
 
+static std::string urlSidecarPath(const std::string& imgPath) {
+    // foo.img -> foo.url (stores the CDN URL needed for P2P announce)
+    if (imgPath.size() > 4 && imgPath.compare(imgPath.size() - 4, 4, ".img") == 0)
+        return imgPath.substr(0, imgPath.size() - 4) + ".url";
+    return imgPath + ".url";
+}
+
+static std::string indexPath() {
+    return (fs::path(cacheRoot()) / "urls.txt").string();
+}
+
+static void rememberCachedUrl(const std::string& url) {
+    if (url.empty()) return;
+    const std::string img = cachePath(url);
+    const std::string side = urlSidecarPath(img);
+    {
+        std::ofstream f(side, std::ios::binary | std::ios::trunc);
+        if (f) f.write(url.data(), (std::streamsize)url.size());
+    }
+    // Append to index once (best-effort; duplicates are fine / filtered on load).
+    static std::mutex idxMu;
+    static std::unordered_set<std::string> known;
+    static bool loaded = false;
+    std::lock_guard<std::mutex> lk(idxMu);
+    if (!loaded) {
+        loaded = true;
+        std::ifstream in(indexPath());
+        std::string line;
+        while (std::getline(in, line)) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
+            if (!line.empty()) known.insert(line);
+        }
+    }
+    if (!known.insert(url).second) return;
+    std::ofstream out(indexPath(), std::ios::binary | std::ios::app);
+    if (out) {
+        out.write(url.data(), (std::streamsize)url.size());
+        out.put('\n');
+    }
+}
+
 static bool readBinaryFile(const std::string& path, std::vector<uint8_t>* out) {
     std::ifstream f(path, std::ios::binary);
     if (!f) return false;
@@ -77,12 +120,50 @@ static bool writeBinaryFile(const std::string& path, const std::vector<uint8_t>&
     return !ec;
 }
 
+void ImageCache::shareDiskCacheLoop() {
+    // Build P2P share catalog from persisted URL index + *.url sidecars.
+    // Files without a known URL cannot be announced (hash-only names are one-way).
+    std::unordered_set<std::string> urls;
+    {
+        std::ifstream in(indexPath());
+        std::string line;
+        while (std::getline(in, line)) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
+            if (!line.empty()) urls.insert(std::move(line));
+        }
+    }
+    std::error_code ec;
+    for (fs::directory_iterator it(cacheRoot(), ec), end; it != end && !stop_; it.increment(ec)) {
+        if (ec) break;
+        if (!it->is_regular_file(ec)) continue;
+        if (it->path().extension() != ".url") continue;
+        std::ifstream f(it->path(), std::ios::binary);
+        if (!f) continue;
+        std::string u((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        while (!u.empty() && (u.back() == '\r' || u.back() == '\n' || u.back() == '\0')) u.pop_back();
+        if (!u.empty()) urls.insert(std::move(u));
+    }
+
+    int registered = 0;
+    for (const auto& url : urls) {
+        if (stop_) return;
+        const std::string path = cachePath(url);
+        if (!fs::is_regular_file(path, ec)) continue;
+        rememberCachedUrl(url); // ensure sidecar exists for next launch
+        imgswarm::registerCached(url, path);
+        ++registered;
+    }
+    if (registered > 0 && !stop_)
+        imgswarm::init(); // start DHT + catalog rotation even if UI hasn't requested posters yet
+}
+
 void ImageCache::init() {
     cacheRoot();
     // Defer imgswarm (libtorrent session) - starting DHT/listen during GUI bring-up
-    // has caused hard crashes on some Linux installs. Workers init it on first use.
+    // has caused hard crashes on some Linux installs. Workers / share thread init on use.
     nextStart_ = std::chrono::steady_clock::now();
     for (int i = 0; i < 2; i++) workers_.emplace_back([this] { workerLoop(); });
+    shareThread_ = std::thread([this] { shareDiskCacheLoop(); });
     missingPosterTex = loadLocal(util::assetDir() + "/poster_missing.png");
 }
 
@@ -93,6 +174,7 @@ void ImageCache::shutdown() {
     }
     imgswarm::abortFetches(); // unblock workers stuck in P2P tryFetch
     cv_.notify_all();
+    if (shareThread_.joinable()) shareThread_.join();
     for (auto& t : workers_) if (t.joinable()) t.join();
     workers_.clear();
     imgswarm::shutdown();
@@ -258,6 +340,7 @@ void ImageCache::workerLoop() {
                 bytes.clear();
             } else {
                 // Already cached - share with other Tezeusz peers (HTTP remains primary for new fetches)
+                rememberCachedUrl(item.url);
                 imgswarm::offer(item.url, path);
             }
         }
@@ -291,6 +374,7 @@ void ImageCache::workerLoop() {
                 out.failed = true;
             } else {
                 writeBinaryFile(path, bytes);
+                rememberCachedUrl(item.url);
                 imgswarm::offer(item.url, path);
             }
             {

@@ -43,14 +43,27 @@ std::mutex g_mu;
 std::condition_variable g_cv;
 std::unique_ptr<lt::session> g_ses;
 std::thread g_alertThread;
+std::thread g_rotateThread;
 std::atomic<bool> g_stop{true};
 std::unordered_map<std::string, lt::torrent_handle> g_seeds; // url -> handle
 std::deque<std::string> g_seedOrder;
-constexpr int kMaxSeeds = 48;
+// Cap concurrent libtorrent seeds; catalog can be much larger and rotates through this window.
+constexpr int kMaxSeeds = 256;
+constexpr int kRotateBatch = 32;
+constexpr auto kRotatePeriod = std::chrono::seconds(12);
 
 // DHT mutable items (infohash hex) keyed by ed25519 public key bytes.
 // alertLoop is the sole pop_alerts consumer; tryFetch reads from here.
 std::map<std::array<char, 32>, std::string> g_dhtInfoHashes;
+
+// Full share catalog (disk-cached posters with known URLs). Rotates into g_seeds.
+struct CatalogEntry {
+    std::string url;
+    std::string path;
+};
+std::vector<CatalogEntry> g_catalog;
+std::unordered_map<std::string, size_t> g_catalogIndex; // url -> g_catalog index
+size_t g_rotatePos = 0;
 
 // Per-seed upload tracking (estimate complete poster transfers to peers).
 struct SeedTrack {
@@ -62,6 +75,16 @@ std::atomic<uint64_t> g_offeredSession{0};
 std::atomic<uint64_t> g_sentSession{0};
 std::atomic<uint64_t> g_bytesUploaded{0};
 std::unordered_set<std::string> g_offeredUrls;
+
+void addCatalogLocked(const std::string& url, const std::string& filePath) {
+    auto it = g_catalogIndex.find(url);
+    if (it != g_catalogIndex.end()) {
+        g_catalog[it->second].path = filePath;
+        return;
+    }
+    g_catalogIndex.emplace(url, g_catalog.size());
+    g_catalog.push_back(CatalogEntry{url, filePath});
+}
 
 bool isImageCdnUrl(const std::string& url) {
     return url.find("image.tmdb.org/") != std::string::npos
@@ -280,6 +303,32 @@ void alertLoop() {
     }
 }
 
+void rotateLoop() {
+    while (!g_stop.load()) {
+        for (int i = 0; i < 20 && !g_stop.load(); ++i)
+            std::this_thread::sleep_for(kRotatePeriod / 20);
+        if (g_stop.load()) break;
+        if (!stack::StackConfig::get().imageP2p) continue;
+
+        std::vector<std::pair<std::string, std::string>> batch;
+        {
+            std::lock_guard<std::mutex> lk(g_mu);
+            if (g_catalog.empty()) continue;
+            const size_t n = g_catalog.size();
+            for (int tries = 0; tries < (int)n && (int)batch.size() < kRotateBatch; ++tries) {
+                const auto& e = g_catalog[g_rotatePos % n];
+                g_rotatePos = (g_rotatePos + 1) % n;
+                if (g_seeds.count(e.url)) continue;
+                batch.emplace_back(e.url, e.path);
+            }
+        }
+        for (auto& e : batch) {
+            if (g_stop.load()) break;
+            offer(e.first, e.second);
+        }
+    }
+}
+
 } // namespace
 
 void init() {
@@ -304,10 +353,10 @@ void init() {
         pack.set_bool(lt::settings_pack::enable_natpmp, true);
         pack.set_bool(lt::settings_pack::announce_to_all_trackers, true);
         pack.set_bool(lt::settings_pack::announce_to_all_tiers, true);
-        pack.set_int(lt::settings_pack::connections_limit, 200);
-        pack.set_int(lt::settings_pack::active_seeds, 40);
+        pack.set_int(lt::settings_pack::connections_limit, 400);
+        pack.set_int(lt::settings_pack::active_seeds, 220);
         pack.set_int(lt::settings_pack::active_downloads, 8);
-        pack.set_int(lt::settings_pack::active_limit, 60);
+        pack.set_int(lt::settings_pack::active_limit, 280);
         pack.set_str(lt::settings_pack::dht_bootstrap_nodes,
                      "router.bittorrent.com:6881,router.utorrent.com:6881,"
                      "dht.transmissionbt.com:6881,dht.libtorrent.org:25401");
@@ -315,6 +364,8 @@ void init() {
         pack.set_str(lt::settings_pack::listen_interfaces, "0.0.0.0:0");
         g_ses = std::make_unique<lt::session>(pack);
         g_alertThread = std::thread(alertLoop);
+        if (!g_rotateThread.joinable())
+            g_rotateThread = std::thread(rotateLoop);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "tezeusz: imgswarm disabled (%s)\n", e.what());
         g_ses.reset();
@@ -331,6 +382,7 @@ void abortFetches() { g_stop = true; g_cv.notify_all(); }
 void shutdown() {
     g_stop = true;
     g_cv.notify_all();
+    if (g_rotateThread.joinable()) g_rotateThread.join();
     if (g_alertThread.joinable()) g_alertThread.join();
     std::lock_guard<std::mutex> lk(g_mu);
     refreshUploadCountersLocked();
@@ -339,6 +391,9 @@ void shutdown() {
     g_seedOrder.clear();
     g_seedTrack.clear();
     g_dhtInfoHashes.clear();
+    g_catalog.clear();
+    g_catalogIndex.clear();
+    g_rotatePos = 0;
     g_ses.reset();
 }
 
@@ -346,6 +401,12 @@ void offer(const std::string& url, const std::string& filePath) {
     if (!stack::StackConfig::get().imageP2p) return;
     if (url.empty() || filePath.empty() || !isImageCdnUrl(url)) return;
     if (g_stop.load()) return;
+
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        addCatalogLocked(url, filePath);
+    }
+
     init();
     if (g_stop.load()) return;
 
@@ -382,6 +443,23 @@ void offer(const std::string& url, const std::string& filePath) {
         trimSeedsLocked();
         publishInfoHash(url, ti->info_hashes().get_best());
     } catch (...) {}
+}
+
+void registerCached(const std::string& url, const std::string& filePath) {
+    if (!stack::StackConfig::get().imageP2p) return;
+    if (url.empty() || filePath.empty() || !isImageCdnUrl(url)) return;
+    std::error_code ec;
+    if (!fs::is_regular_file(filePath, ec)) return;
+
+    bool seedNow = false;
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        addCatalogLocked(url, filePath);
+        // Fill the active window; rotation covers the rest of the catalog.
+        seedNow = (int)g_seeds.size() < kMaxSeeds;
+    }
+    if (seedNow)
+        offer(url, filePath);
 }
 
 bool tryFetch(const std::string& url, const std::string& destPath, int timeoutMs) {
@@ -512,6 +590,7 @@ Stats stats() {
         if (g_ses)
             refreshUploadCountersLocked();
         s.activeSeeds = (int)g_seeds.size();
+        s.catalogSize = (int)g_catalog.size();
     }
     s.offeredSession = g_offeredSession.load();
     s.sentSession = g_sentSession.load();

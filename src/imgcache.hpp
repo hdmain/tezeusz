@@ -57,6 +57,7 @@ private:
 
     void workerLoop();
     void enqueueLocked(const std::string& url, int attempt);
+    void shareDiskCacheLoop();
 
     std::unordered_map<std::string, ImageEntry> entries_;
     std::unordered_map<std::string, std::chrono::steady_clock::time_point> retryAt_;
@@ -65,6 +66,7 @@ private:
     mutable std::mutex mtx_;
     std::condition_variable cv_;
     std::vector<std::thread> workers_;
+    std::thread shareThread_;
     bool stop_ = false;
     int activeDownloads_ = 0;
     // Global pacing across workers (steady_clock ticks)

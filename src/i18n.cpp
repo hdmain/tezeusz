@@ -267,8 +267,9 @@ void seedEnglish() {
         "Top-right overlay: FPS, frame time, worker jobs, torrent peers, vsync/cap.";
     g_en["settings.image_p2p"] = "Poster P2P swarm";
     g_en["settings.image_p2p_hint"] =
-        "Share/fetch poster images over BitTorrent DHT between Tezeusz clients. Disable if you only "
-        "want plain HTTP downloads (or set TEZEUSZ_DISABLE_IMGSWARM=1).";
+        "Share/fetch poster images over BitTorrent DHT between Tezeusz clients. Cached posters with a "
+        "known URL are rotated into the swarm (not only ones on screen). Disable if you only want "
+        "plain HTTP (or TEZEUSZ_DISABLE_IMGSWARM=1).";
     g_en["settings.image_fetch_priority"] = "Poster download priority";
     g_en["settings.image_fetch_http_first"] = "HTTP first, then P2P";
     g_en["settings.image_fetch_p2p_first"] = "P2P first, then HTTP";
@@ -278,7 +279,7 @@ void seedEnglish() {
     g_en["settings.image_p2p_sent_hint"] =
         "How many full posters this app has uploaded to other Tezeusz peers (lifetime).";
     g_en["settings.image_p2p_sent_detail"] =
-        "This session: %llu sent · %llu offered · seeding %d now · %.2f MB uploaded";
+        "This session: %llu sent · catalog %llu · seeding %d now · %.2f MB uploaded";
     g_en["settings.diagnostics"] = "Diagnostics";
     g_en["settings.path_data"] = "Data:";
     g_en["settings.path_exe"] = "Exe:";

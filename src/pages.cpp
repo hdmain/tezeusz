@@ -2785,12 +2785,12 @@ void renderSettings() {
             ImGui::PopStyleColor();
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
             ImGui::TextWrapped("%s", i18n::tr("settings.image_p2p_sent_hint"));
-            char detail[160];
+            char detail[192];
             const double mb = (double)ps.bytesUploaded / (1024.0 * 1024.0);
             std::snprintf(detail, sizeof(detail),
                           i18n::tr("settings.image_p2p_sent_detail"),
                           (unsigned long long)ps.sentSession,
-                          (unsigned long long)ps.offeredSession,
+                          (unsigned long long)ps.catalogSize,
                           ps.activeSeeds, mb);
             ImGui::TextWrapped("%s", detail);
             ImGui::PopStyleColor();

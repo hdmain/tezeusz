@@ -7,8 +7,9 @@
 namespace imgswarm {
 
 struct Stats {
-    int activeSeeds = 0;           // posters currently offered to the swarm
-    uint64_t offeredSession = 0;   // unique posters offered this run
+    int activeSeeds = 0;           // posters currently seeded in libtorrent
+    int catalogSize = 0;           // cached posters registered for sharing
+    uint64_t offeredSession = 0;   // unique posters announced this run
     uint64_t sentSession = 0;      // complete poster transfers out this run
     uint64_t sentTotal = 0;        // lifetime complete transfers (persisted)
     uint64_t bytesUploaded = 0;    // payload bytes uploaded this run
@@ -21,6 +22,10 @@ void abortFetches();
 
 // Announce + seed a file already on disk (non-blocking).
 void offer(const std::string& url, const std::string& filePath);
+
+// Remember a disk-cached poster for catalog rotation (share beyond the visible UI).
+// Safe to call before init(); seeding starts when the session is up.
+void registerCached(const std::string& url, const std::string& filePath);
 
 // Try to download from peers into destPath. Returns true if destPath is a usable image file.
 bool tryFetch(const std::string& url, const std::string& destPath, int timeoutMs = 3000);

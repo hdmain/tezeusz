@@ -243,7 +243,7 @@ bool spawnApplyScript(const std::string& script, const std::string& pid,
 }
 
 bool writeApplyScript(const std::string& path) {
-    // NOTE: never write "%DEST%\" — the trailing \" eats the closing quote on Windows.
+    // NOTE: never write "%DEST%\" - the trailing \" eats the closing quote on Windows.
     const char* body =
         "@echo off\r\n"
         "setlocal EnableExtensions\r\n"
@@ -428,7 +428,7 @@ bool runElevatedInstall(const std::string& stage, const std::string& bindir,
             pkexec.data(), bash.data(), script.data(),
             stageCopy.data(), binCopy.data(), shareCopy.data(), nullptr
         };
-        // Do not fall through to sudo on cancel — polkit already prompted.
+        // Do not fall through to sudo on cancel - polkit already prompted.
         return spawnAndWait(argv, &exitCode);
     }
     if (access("/usr/bin/sudo", X_OK) == 0) {
@@ -535,7 +535,7 @@ void workerCheckAndDownload() {
     }
 
     if (need.empty()) {
-        // Same files, version string differs (rebuild) — treat as up to date
+        // Same files, version string differs (rebuild) - treat as up to date
         setStatus(State::UpToDate, i18n::tr("update.up_to_date"));
         return;
     }

@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           VER="${{ steps.ver.outputs.version }}"
           bash packaging/make-windows-portable.sh build/seerr.exe "build/seerr-portable" "$VER"
-          # Same tree as portable — install under %LOCALAPPDATA%\Programs\Seerr
+          # Same tree as portable - install under %LOCALAPPDATA%\Programs\Seerr
           # so the folder stays writable and in-app auto-update keeps working.
           bash packaging/make-windows-setup.sh \
             build/seerr-portable \
@@ -237,7 +237,7 @@ jobs:
           test -f /usr/share/icons/hicolor/128x128/apps/seerr.png
           grep -q 'StartupWMClass=seerr' /usr/share/applications/seerr.desktop
           # Headless runners often lack a usable GL stack; don't fail the job if
-          # the GUI process dies under xvfb — packaging itself is already verified.
+          # the GUI process dies under xvfb - packaging itself is already verified.
           set +e
           SEERR_DISABLE_UPDATE=1 SEERR_DISABLE_IMGSWARM=1 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a timeout 8s seerr 2>seerr-xvfb.log
           rc=$?
@@ -271,7 +271,7 @@ jobs:
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           mkdir -p release
           find dist -type f \( -name '*.zip' -o -name '*.deb' -o -name '*.exe' -o -name 'seerr' \) -print
-          # Windows setup.exe (preferred — per-user install, auto-updates without elevation)
+          # Windows setup.exe (preferred - per-user install, auto-updates without elevation)
           test -f dist/seerr-windows-setup/seerr-windows-setup.exe
           cp -f dist/seerr-windows-setup/seerr-windows-setup.exe release/
           cp -f dist/seerr-windows-setup/seerr-windows-setup-*.exe release/ 2>/dev/null || true
@@ -315,11 +315,11 @@ jobs:
           Automated build from \`main\` (\`${GITHUB_SHA:0:7}\`).
 
           ### Downloads
-          - **Windows setup** — \`seerr-windows-setup.exe\` (installs to \`%LOCALAPPDATA%\\Programs\\Seerr\`, auto-updates in the background)
-          - **Windows portable** — unzip and run \`seerr.exe\` (same auto-update channel)
-          - **Linux portable** — unzip and run \`./seerr\` (auto-updates when folder is writable)
-          - **Linux .deb** — \`sudo apt install ./seerr_*.deb\` (system install; auto-updates via pkexec permission prompt)
-          - **Linux binary** — raw ELF (needs system GLFW/CURL/libtorrent)
+          - **Windows setup** - \`seerr-windows-setup.exe\` (installs to \`%LOCALAPPDATA%\\Programs\\Seerr\`, auto-updates in the background)
+          - **Windows portable** - unzip and run \`seerr.exe\` (same auto-update channel)
+          - **Linux portable** - unzip and run \`./seerr\` (auto-updates when folder is writable)
+          - **Linux .deb** - \`sudo apt install ./seerr_*.deb\` (system install; auto-updates via pkexec permission prompt)
+          - **Linux binary** - raw ELF (needs system GLFW/CURL/libtorrent)
 
           Updates download **only changed files** (SHA-256) from the \`continuous\` channel and restart automatically.
           The Windows installer uses a per-user folder so updates never need elevation.
@@ -336,7 +336,7 @@ jobs:
               --latest=false
           fi
 
-          # Differential update blobs + manifests (required — never skip a platform)
+          # Differential update blobs + manifests (required - never skip a platform)
           bash packaging/publish-update-assets.sh update-publish/update-windows windows-x64
           bash packaging/publish-update-assets.sh update-publish/update-linux linux-x64
 

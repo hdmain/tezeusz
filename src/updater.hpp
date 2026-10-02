@@ -19,7 +19,7 @@ enum class State {
 
 void init();
 void shutdown();
-void tick(); // UI thread — progress + auto-apply when safe
+void tick(); // UI thread - progress + auto-apply when safe
 
 State state();
 std::string statusText();   // short UI string

@@ -37,7 +37,7 @@ struct Job {
     std::string title;
     int season = 0;
     int episode = 0;
-    std::string sceneName; // original release name (torrent) — Bazarr refiner hint
+    std::string sceneName; // original release name (torrent) - Bazarr refiner hint
 };
 
 std::mutex g_mu;
@@ -354,7 +354,7 @@ bool tryNapiProjekt(const Job& job, const std::string& lang) {
     std::string content = gunzip(r.body);
     if (content.empty()) content = r.body;
     if (!looksLikeSrt(content)) return false;
-    // NapiProjekt ships Windows-1250 — normalize so VLC shows ó/ł/ą correctly.
+    // NapiProjekt ships Windows-1250 - normalize so VLC shows ó/ł/ą correctly.
     content = util::toUtf8(content);
     std::string outPath = sidecarPath(job.videoPath, "pl");
     if (!util::writeFile(outPath, content)) return false;
@@ -832,7 +832,7 @@ int pickBestFileId(const json& data, const std::string& lang,
         if (bestScore < MOVIE_HASH && bestScore < EP_HASH) {
             char buf[128];
             std::snprintf(buf, sizeof(buf), "score %d < min %d", bestScore, thresh);
-            setStatus(std::string(i18n::tr("subs.weak_match")) + buf + ") — " + bestName);
+            setStatus(std::string(i18n::tr("subs.weak_match")) + buf + ") - " + bestName);
             return 0;
         }
     }
@@ -898,7 +898,7 @@ bool downloadOne(const Job& job, const std::string& lang, const Snap& cfg) {
         auto data = j.value("data", json::array());
         fileId = pickBestFileId(data, lang, info, videoHashHex, job.imdbId, isEpisode, minScore);
         // If a strict moviehash query returned nothing scorable, retry a broader
-        // title/tmdb query (still scored) — matches Bazarr trying multiple hints.
+        // title/tmdb query (still scored) - matches Bazarr trying multiple hints.
         if (fileId <= 0) {
             q.erase("moviehash");
             if (isEpisode && !job.title.empty())
@@ -1124,7 +1124,7 @@ void shutdown() {
         if (joined.load()) {
             if (waiter.joinable()) waiter.join();
         } else {
-            // Process is exiting — don't block on a stuck hash/read forever.
+            // Process is exiting - don't block on a stuck hash/read forever.
             waiter.detach();
         }
     }
@@ -1219,7 +1219,7 @@ void scanLibrary() {
         return;
     }
     setStatus(i18n::tr("subs.scanning"));
-    // Disk walk + per-file sidecar checks are slow — never run them on the UI thread.
+    // Disk walk + per-file sidecar checks are slow - never run them on the UI thread.
     core::enqueue([] { doScanLibrary(); });
 }
 

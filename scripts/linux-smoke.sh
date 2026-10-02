@@ -39,5 +39,5 @@ if [[ "$rc" -eq 0 || "$rc" -eq 124 ]]; then
   echo "Linux smoke OK"
   exit 0
 fi
-echo "Linux smoke failed (rc=$rc) — see build/seerr-smoke.log" >&2
+echo "Linux smoke failed (rc=$rc) - see build/seerr-smoke.log" >&2
 exit "$rc"

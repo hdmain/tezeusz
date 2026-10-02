@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-// Local Seerr-like data (blocklist / issues / profile) — no remote API.
+// Local Seerr-like data (blocklist / issues / profile) - no remote API.
 namespace localdb {
 
 enum class IssueType { Video = 1, Audio = 2, Subtitles = 3, Other = 4 };
@@ -79,7 +79,7 @@ void loadWatchlist(std::set<std::string>& out);
 void saveWatchlist(const std::set<std::string>& wl);
 
 // Crash-safe resume positions for in-app playback (keyed by video file path).
-// Saved continuously while watching — not only on close.
+// Saved continuously while watching - not only on close.
 struct PlaybackProgress {
     double position = 0;   // 0..1
     int64_t timeMs = 0;

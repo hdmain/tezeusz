@@ -69,7 +69,7 @@ void seedEnglish() {
     g_en["common.person"] = "PERSON";
     g_en["common.request"] = "Request";
     g_en["common.available"] = "Available";
-    g_en["common.failed_retry"] = "Failed — retry";
+    g_en["common.failed_retry"] = "Failed - retry";
     g_en["common.untitled"] = "(untitled)";
     g_en["common.prev"] = "« Back";
     g_en["common.next"] = "Next »";
@@ -85,7 +85,7 @@ void seedEnglish() {
     g_en["search.title"] = "Search";
     g_en["search.results_title"] = "Search results";
     g_en["search.empty_title"] = "Type a movie, TV show, or person name…";
-    g_en["search.empty_sub"] = "Results appear as you type — like Seerr / Jellyseerr.";
+    g_en["search.empty_sub"] = "Results appear as you type - like Seerr / Jellyseerr.";
     g_en["search.results"] = "results";
     g_en["search.error"] = "error";
     g_en["search.no_results"] = "No results. Try a different query or filter.";
@@ -152,7 +152,7 @@ void seedEnglish() {
     g_en["issues.reopen"] = "Reopen";
     g_en["users.title"] = "Users";
     g_en["users.sub"] =
-        "Local app owner (no Jellyfin import — everything in one program).";
+        "Local app owner (no Jellyfin import - everything in one program).";
     g_en["users.display_name"] = "Display name";
     g_en["users.email"] = "Email";
     g_en["users.local_profile"] = "Local profile";
@@ -176,7 +176,7 @@ void seedEnglish() {
     g_en["library.free"] = "Free";
     g_en["library.multi_disk"] = "multiple folders";
     g_en["library.empty"] =
-        "Library is empty. Request a movie and wait for the download — it will show up here.";
+        "Library is empty. Request a movie and wait for the download - it will show up here.";
     g_en["library.movies"] = "Movies";
     g_en["library.tv"] = "TV Shows";
     g_en["library.delete_title"] = "Remove from library";
@@ -192,7 +192,7 @@ void seedEnglish() {
     g_en["library.archive_hint"] =
         "Creates a ZIP under Archives/ (video is stored as-is, not re-compressed), then deletes the originals.";
     g_en["library.archive_working"] = "Archiving…";
-    g_en["library.archive_working_hint"] = "You can keep using the app — this runs in the background.";
+    g_en["library.archive_working_hint"] = "You can keep using the app - this runs in the background.";
     g_en["library.archive_done"] = "Archived to:";
     g_en["library.archive_failed"] = "Archive failed";
     g_en["library.archived_badge"] = "Archived";
@@ -206,7 +206,7 @@ void seedEnglish() {
         "other PC use Import ZIP.";
     g_en["library.export_working"] = "Exporting…";
     g_en["library.export_working_hint"] =
-        "You can keep using the app — this runs in the background.";
+        "You can keep using the app - this runs in the background.";
     g_en["library.export_done"] = "Exported to:";
     g_en["library.export_failed"] = "Export failed";
     g_en["library.export_no_folder"] = "Title folder not found";
@@ -214,7 +214,7 @@ void seedEnglish() {
     g_en["library.export_manifest_failed"] = "Could not write export metadata";
     g_en["library.import"] = "Import ZIP";
     g_en["library.import_hint"] =
-        "Choose a ZIP exported from another Seerr — unpacked into your library without downloading.";
+        "Choose a ZIP exported from another Seerr - unpacked into your library without downloading.";
     g_en["library.import_working"] = "Importing…";
     g_en["library.import_done"] = "Imported:";
     g_en["library.import_failed"] = "Import failed";
@@ -240,7 +240,7 @@ void seedEnglish() {
     // Settings
     g_en["settings.title"] = "Settings";
     g_en["settings.sub"] =
-        "Everything runs in one app — torrent search + libtorrent + library";
+        "Everything runs in one app - torrent search + libtorrent + library";
     g_en["settings.tab_general"] = "General";
     g_en["settings.tab_library"] = "Library";
     g_en["settings.tab_downloads"] = "Downloads";
@@ -250,7 +250,7 @@ void seedEnglish() {
     g_en["settings.general_hint"] = "Language and app preferences.";
     g_en["settings.advanced_hint"] =
         "For nerds. Frame pacing, debug HUD, and diagnostic tools. Wrong settings can make the UI "
-        "feel choppy — 60 FPS + vsync is the safe default.";
+        "feel choppy - 60 FPS + vsync is the safe default.";
     g_en["settings.ui_target_fps"] = "UI frame cap";
     g_en["settings.ui_target_fps_hint"] =
         "Used when the GPU driver ignores vsync (common on Linux). Uncapped can spin a CPU core.";
@@ -289,7 +289,7 @@ void seedEnglish() {
     g_en["settings.clear_image_cache_hint"] =
         "Drops in-memory poster textures and re-downloads what is on screen.";
     g_en["settings.library_hint"] =
-        "Choose which disk new movies save to. The previous folder stays as a second library — both "
+        "Choose which disk new movies save to. The previous folder stays as a second library - both "
         "are scanned.";
     g_en["settings.downloads_hint"] =
         "Staging folder (prefer SSD). Torrents download here, then copy to the library disk "
@@ -300,7 +300,7 @@ void seedEnglish() {
     g_en["settings.no_disks"] = "No disks detected";
     g_en["settings.extra_libraries"] = "Also scanning (previous disks)";
     g_en["settings.extra_libraries_hint"] =
-        "Titles on these folders still appear in Library. Remove only unlinks the path — files stay "
+        "Titles on these folders still appear in Library. Remove only unlinks the path - files stay "
         "on disk.";
     g_en["settings.remove_extra"] = "Remove";
     g_en["settings.download_cache_max"] = "Download cache limit";
@@ -331,7 +331,7 @@ void seedEnglish() {
         "An OpenSubtitles key unlocks more languages and TV episodes (optional).";
     g_en["settings.subs_os_section"] = "OpenSubtitles (optional)";
     g_en["settings.subs_os_hint"] =
-        "Get a free API key at opensubtitles.com/consumers — a free account is enough.";
+        "Get a free API key at opensubtitles.com/consumers - a free account is enough.";
     g_en["settings.subs_api_key"] = "API key";
     g_en["settings.subs_login"] = "Username";
     g_en["settings.subs_auto"] = "Download subtitles automatically";
@@ -400,19 +400,19 @@ void seedEnglish() {
     g_en["update.remote"] = "Available:";
     g_en["update.idle"] = "Automatic updates enabled";
     g_en["update.idle_permission"] =
-        "Automatic updates enabled — will ask for permission to install";
+        "Automatic updates enabled - will ask for permission to install";
     g_en["update.checking"] = "Checking for updates…";
     g_en["update.up_to_date"] = "You are up to date";
     g_en["update.downloading"] = "Downloading update";
-    g_en["update.ready"] = "Update ready — restarting…";
+    g_en["update.ready"] = "Update ready - restarting…";
     g_en["update.ready_permission"] =
-        "Update ready — you'll be asked for permission, then Seerr restarts…";
+        "Update ready - you'll be asked for permission, then Seerr restarts…";
     g_en["update.applying"] = "Applying update…";
     g_en["update.requesting_permission"] = "Requesting permission to install update…";
-    g_en["update.permission_denied"] = "Permission denied — update not installed";
+    g_en["update.permission_denied"] = "Permission denied - update not installed";
     g_en["update.disabled"] = "Updates disabled";
     g_en["update.disabled_user"] = "Automatic updates are off";
-    g_en["update.not_writable"] = "Install folder is not writable — auto-update unavailable";
+    g_en["update.not_writable"] = "Install folder is not writable - auto-update unavailable";
     g_en["update.check_failed"] = "Could not check for updates";
     g_en["update.bad_manifest"] = "Invalid update manifest";
     g_en["update.bad_platform"] = "Update is for a different platform";
@@ -436,8 +436,8 @@ void seedEnglish() {
     g_en["req.pick_episodes"] = "Pick specific episodes";
     g_en["req.need_season"] = "Select at least one season.";
     g_en["req.multi_season"] =
-        "Multiple seasons — whole seasons will be downloaded (no episode pick).";
-    g_en["req.interactive"] = "Interactive Search — release list, you pick.";
+        "Multiple seasons - whole seasons will be downloaded (no episode pick).";
+    g_en["req.interactive"] = "Interactive Search - release list, you pick.";
     g_en["req.interactive_title"] = "Interactive Search";
     g_en["req.interactive_btn"] = "Interactive";
     g_en["req.auto"] = "Automatic";
@@ -472,7 +472,7 @@ void seedEnglish() {
     g_en["stack.unknown_error"] = "Unknown error";
     g_en["stack.retrying"] = "Retrying…";
     g_en["stack.more_episodes_queued"] = "More episodes queued";
-    g_en["stack.picked_queued"] = "Release selected — queued";
+    g_en["stack.picked_queued"] = "Release selected - queued";
     g_en["stack.cancelled"] = "Cancelled";
     g_en["stack.removed_library"] = "Removed from library";
     g_en["stack.progress_seed"] =
@@ -498,7 +498,7 @@ void seedEnglish() {
     g_en["subs.bad_search"] = "Subtitles: bad search response";
     g_en["subs.no_match"] = "Subtitles: no good match ";
     g_en["subs.downloading"] = "Subtitles: downloading ";
-    g_en["subs.session_expired"] = "Subtitles: session expired — try again";
+    g_en["subs.session_expired"] = "Subtitles: session expired - try again";
     g_en["subs.daily_limit"] = "Subtitles: OpenSubtitles daily limit reached";
     g_en["subs.download_error"] = "Subtitles: download error (";
     g_en["subs.no_link"] = "Subtitles: no download link";
@@ -506,7 +506,7 @@ void seedEnglish() {
     g_en["subs.not_srt"] = "Subtitles: downloaded file does not look like SRT";
     g_en["subs.save_failed"] = "Subtitles: could not save ";
     g_en["subs.missing"] = "Subtitles: no ";
-    g_en["subs.need_os_key"] = " — add OpenSubtitles key for more sources";
+    g_en["subs.need_os_key"] = " - add OpenSubtitles key for more sources";
     g_en["subs.exception"] = "Subtitles: exception while downloading";
     g_en["subs.done"] = "Subtitles: done";
     g_en["subs.queued_scan"] = "Subtitles: scan queued (";
@@ -533,12 +533,12 @@ void seedEnglish() {
     g_en["player.hide_stats"] = "Hide Stats for nerds";
     g_en["player.shortcuts"] =
         "Space pause | ←/→ ±10s | F fullscreen | M mute | C subtitles | ` / Ctrl+Shift+I stats | Esc";
-    g_en["player.no_vlc"] = "libVLC not found — install VLC or place libvlc next to seerr.exe";
+    g_en["player.no_vlc"] = "libVLC not found - install VLC or place libvlc next to seerr.exe";
     g_en["player.vlc_load_failed"] = "Failed to load libVLC";
     g_en["yt.connecting"] = "Connecting to YouTube…";
     g_en["yt.loading"] = "Loading trailer…";
     g_en["yt.goto_youtube"] = "Go to YouTube";
-    g_en["yt.window_title"] = "Trailer — Seerr";
+    g_en["yt.window_title"] = "Trailer - Seerr";
     g_en["yt.vlc_fail"] = "VLC failed to play trailer";
     g_en["yt.timeout"] = "Trailer load timeout";
     g_en["quit.closing"] = "Shutting down…";

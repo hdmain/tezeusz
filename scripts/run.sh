@@ -11,14 +11,14 @@ if [[ ! -x "$BIN" ]]; then
   exit 1
 fi
 
-# Prefer X11 under WSLg / mixed sessions — Wayland + GLFW 3.3 is flaky.
+# Prefer X11 under WSLg / mixed sessions - Wayland + GLFW 3.3 is flaky.
 export GDK_BACKEND="${GDK_BACKEND:-x11}"
 if [[ -n "${DISPLAY:-}" ]]; then
   unset WAYLAND_DISPLAY || true
 fi
 
 if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
-  echo "No DISPLAY/WAYLAND_DISPLAY — starting under xvfb-run" >&2
+  echo "No DISPLAY/WAYLAND_DISPLAY - starting under xvfb-run" >&2
   exec env SEERR_DISABLE_IMGSWARM="${SEERR_DISABLE_IMGSWARM:-1}" \
     xvfb-run -a "$BIN" "$@"
 fi

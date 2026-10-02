@@ -16,7 +16,7 @@ struct Item {
     MediaType mediaType = MediaType::Movie;
     int tmdbId = 0;
     int64_t sizeBytes = 0;
-    bool archived = false;     // ZIP under Archives/ — shown greyed at end of library
+    bool archived = false;     // ZIP under Archives/ - shown greyed at end of library
 };
 
 // Scan movies/TV primary + extra roots (+ Available requests) for playable videos.
@@ -29,7 +29,7 @@ std::string resolvePlayable(const std::string& pathOrFolder);
 bool removeItem(const Item& item, std::string* err = nullptr);
 
 // Compress title folder to Archives/*.zip, then remove originals from the library.
-// Returns the zip path on success (empty string on failure — see err).
+// Returns the zip path on success (empty string on failure - see err).
 std::string archiveItem(const Item& item, std::string* err = nullptr);
 
 // Pack title folder to Exports/*.zip for transfer to another device (keeps originals).

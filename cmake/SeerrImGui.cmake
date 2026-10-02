@@ -18,7 +18,7 @@ if(WIN32)
     target_include_directories(imgui PUBLIC ${GLFW_DIR}/include)
     target_link_libraries(imgui PUBLIC ${GLFW_DIR}/lib-mingw-w64/libglfw3.a opengl32 gdi32)
 else()
-    # Do not link OpenGL::GL — GLVND stubs segfault if called without a loader.
+    # Do not link OpenGL::GL - GLVND stubs segfault if called without a loader.
     find_package(glfw3 REQUIRED)
     set(SEERR_GLFW_TARGET "")
     if(TARGET glfw)

@@ -1,4 +1,4 @@
-# Seerr CMake helpers — keep the root CMakeLists thin and predictable.
+# Seerr CMake helpers - keep the root CMakeLists thin and predictable.
 
 # Prefer system packages in CI; bundle on local Windows by default.
 if(NOT DEFINED SEERR_BUNDLED_DEPS)

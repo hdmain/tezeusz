@@ -16,6 +16,6 @@ std::string pickOpenFile(const char* title, const char* filterLabel, const char*
 void applyDarkTitlebar(GLFWwindow* win);
 
 // Keep display awake while media is playing (screensaver / idle sleep).
-// Safe to call every frame — only toggles when `active` changes.
+// Safe to call every frame - only toggles when `active` changes.
 void setIdleInhibit(bool active, const char* reason = "Playing video");
 }

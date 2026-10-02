@@ -93,7 +93,7 @@ static float animToward(float cur, float target, float speed) {
 
 static void renderSidebar(App& a) {
     // Keep sidebar above content (seerr: fixed w-64 column). Do NOT use
-    // NoBringToFrontOnFocus — otherwise focused content redraws over the nav.
+    // NoBringToFrontOnFocus - otherwise focused content redraws over the nav.
     ImGuiWindowFlags wf = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                           ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
                           ImGuiWindowFlags_NoScrollbar |
@@ -153,7 +153,7 @@ static void renderSidebar(App& a) {
         float ha = hoverAmt[i], aa = activeAmt[i];
 
         if (aa > 0.01f) {
-            // Rounded solid (MultiColor can't round) — soft indigo pill
+            // Rounded solid (MultiColor can't round) - soft indigo pill
             ImU32 fill = theme::withA(theme::c(hv ? "#7c5cf3" : "#6366f1"), aa);
             dl->AddRectFilled(p0, p1, fill, 14.0f);
             if (aa > 0.5f)
@@ -308,7 +308,7 @@ int main() {
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1);
 #endif
-    glfwWindowHint(GLFW_SAMPLES, 0); // UI doesn't need MSAA — saves GPU fillrate
+    glfwWindowHint(GLFW_SAMPLES, 0); // UI doesn't need MSAA - saves GPU fillrate
     // Match packaging/seerr.desktop StartupWMClass / Icon=seerr (Linux taskbar).
 #if defined(GLFW_X11_CLASS_NAME)
     glfwWindowHintString(GLFW_X11_CLASS_NAME, "seerr");
@@ -320,7 +320,7 @@ int main() {
 
     GLFWwindow* win = glfwCreateWindow(1500, 900, "Seerr", nullptr, nullptr);
     if (!win) {
-        // Some drivers reject Core 3.3 — fall back to any available OpenGL.
+        // Some drivers reject Core 3.3 - fall back to any available OpenGL.
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_SAMPLES, 0);
 #if defined(GLFW_X11_CLASS_NAME)
@@ -486,7 +486,7 @@ int main() {
         else if (!focused)
             glfwWaitEventsTimeout(1.0 / 30.0);
         else
-            // Drain input only — do NOT wait a full frame here. Waiting before
+            // Drain input only - do NOT wait a full frame here. Waiting before
             // render + SwapInterval vsync stacked to ~30fps with uneven Δt
             // (Discover row scroll felt stuttery / "przycinany").
             glfwPollEvents();
@@ -596,7 +596,7 @@ int main() {
         if (player::isOpen()) {
             player::render();
         } else {
-        // content column only (seerr: lg:ml-64) — never draw under the fixed sidebar
+        // content column only (seerr: lg:ml-64) - never draw under the fixed sidebar
         ImGuiWindowFlags cwf = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus |
                                ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground;
@@ -646,7 +646,7 @@ int main() {
         renderRequestQualityDialog();
         }
 
-        // Trailer resolve overlay (ImGui — same on Windows and Linux)
+        // Trailer resolve overlay (ImGui - same on Windows and Linux)
         ytplayer::drawOverlay();
 
         // FPS / debug HUD (Settings → Advanced)

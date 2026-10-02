@@ -40,7 +40,7 @@ App& app() { static App a; return a; }
 static const char* kSearchInputId = "##seerr_search";
 
 // If we must reclaim focus, clear the auto-select immediately (not via
-// ReloadUserBufAndMoveToEnd — that only applies on the next frame).
+// ReloadUserBufAndMoveToEnd - that only applies on the next frame).
 static void searchInputCursorToEnd() {
     if (ImGuiInputTextState* st = ImGui::GetInputTextState(ImGui::GetItemID())) {
         // SelectAll leaves cursor at TextLen; ClearSelection collapses to that.
@@ -107,7 +107,7 @@ static void sliderRow(const std::string& title, PagedResult& pr) {
     float rowH = CARD_H;
     // Always reserve layout space; skip draw work when the row is off-screen
     ImGui::Dummy(ImVec2(0, 36 + rowH + 16));
-    // Dummy advances the layout cursor — restore it after absolute card draws or the
+    // Dummy advances the layout cursor - restore it after absolute card draws or the
     // next row starts too high and cards overlap (esp. while scrolling vertically).
     const float layoutYAfter = ImGui::GetCursorPosY();
     ImGui::SetCursorPosX(contentX);
@@ -412,7 +412,7 @@ void renderSearch() {
     ImVec2 origin = ImGui::GetCursorScreenPos();
     float availW = ImGui::GetContentRegionAvail().x;
 
-    // Search field first — update query before debounce
+    // Search field first - update query before debounce
     {
         float barH = 46.0f;
         ImVec2 bp = origin;
@@ -470,7 +470,7 @@ void renderSearch() {
                 return;
             }
         } else if (!prev.empty()) {
-            // Cleared the last character — back to Discover (trending etc.)
+            // Cleared the last character - back to Discover (trending etc.)
             goHome();
             return;
         }
@@ -849,7 +849,7 @@ void renderDetails(MediaType type, int id) {
                           theme::c("#374151"), theme::c("#4b5563"), theme::c("#6b7280"), theme::c("#4b5563"),
                           TXT, G.m18, 15)) {
                 std::string t = d.title.empty() ? i18n::tr("details.trailer")
-                                                : (d.title + " — " + i18n::tr("details.trailer"));
+                                                : (d.title + " - " + i18n::tr("details.trailer"));
                 ytplayer::open(d.bestTrailer()->key, t);
             }
             bx += 142;
@@ -1276,7 +1276,7 @@ void renderUsers() {
 
     ImGui::SetCursorScreenPos(ImVec2(origin.x, r1.y + 24));
     ImGui::TextColored(ImVec4(0.6f, 0.65f, 0.72f, 1),
-                       "Import z Jellyfin/Plex nie jest potrzebny — to lokalny stack bez kont serwerowych.");
+                       "Import z Jellyfin/Plex nie jest potrzebny - to lokalny stack bez kont serwerowych.");
 }
 
 void renderRequests() {
@@ -1314,7 +1314,7 @@ void renderRequests() {
         dl->AddText(G.r14, 12, ImVec2(p0.x + 14, p0.y + 10), ATTR, type.c_str());
         dl->AddText(G.sb18, 16, ImVec2(p0.x + 14, p0.y + 28), TXT, r.title.c_str());
         std::string sub = std::string(stack::statusLabel(r.status));
-        if (!r.message.empty()) sub += " — " + r.message;
+        if (!r.message.empty()) sub += " - " + r.message;
         if (r.status == stack::ReqStatus::Downloading)
             sub += "  " + std::to_string((int)(r.progress * 100)) + "%";
         dl->AddText(G.r14, 12, ImVec2(p0.x + 14, p0.y + 50), stCol, sub.c_str());
@@ -1688,7 +1688,7 @@ void renderLibrary() {
             ImGui::TextColored(ImVec4(0.61f, 0.64f, 0.69f, 1), "%s", k);
             ImGui::SameLine(140);
             ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 340);
-            ImGui::TextUnformatted(v.empty() ? "—" : v.c_str());
+            ImGui::TextUnformatted(v.empty() ? "-" : v.c_str());
             ImGui::PopTextWrapPos();
         };
 
@@ -1799,7 +1799,7 @@ void renderLibrary() {
         w::endQuestionModal();
     }
 
-    // ---- Archive (ZIP runs on a worker thread — UI stays responsive) ----
+    // ---- Archive (ZIP runs on a worker thread - UI stays responsive) ----
     if (openArchive) {
         ImGui::OpenPopup("##lib_archive");
         openArchive = false;
@@ -1887,7 +1887,7 @@ void renderLibrary() {
         w::endQuestionModal();
     }
 
-    // ---- Export (transfer ZIP — originals kept) ----
+    // ---- Export (transfer ZIP - originals kept) ----
     if (openExport) {
         ImGui::OpenPopup("##lib_export");
         openExport = false;
@@ -2331,7 +2331,7 @@ void renderSettings() {
     } else if (tab == TabLibrary) {
         sectionTitle(i18n::tr("settings.tab_library"), i18n::tr("settings.library_hint"));
 
-        // Disk picker — sets primary movies/TV folders on the chosen volume.
+        // Disk picker - sets primary movies/TV folders on the chosen volume.
         {
             fieldLabel(i18n::tr("settings.save_disk"));
             static std::vector<util::VolumeInfo> vols;
@@ -2378,7 +2378,7 @@ void renderSettings() {
                 ImGui::TextUnformatted(i18n::tr("settings.no_disks"));
                 ImGui::PopStyleColor();
             } else {
-                // ImGui Combo needs const char* array — rebuild each frame
+                // ImGui Combo needs const char* array - rebuild each frame
                 std::vector<const char*> ptrs;
                 for (auto& s : labels) ptrs.push_back(s.c_str());
                 int prev = sel;
@@ -2934,7 +2934,7 @@ void applyAvailableSeasons(RequestDlg& d, const std::vector<SeasonInfo>& seasons
     d.availableEpisodes.clear();
     d.selectedEpisodes.clear();
     if (d.installMore) {
-        // Leave seasons unchecked — user picks what to add.
+        // Leave seasons unchecked - user picks what to add.
     } else {
     for (auto& s : d.availableSeasons)
         d.selectedSeasons.insert(s.seasonNumber);

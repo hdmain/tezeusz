@@ -49,7 +49,7 @@ void ensureSetup(const std::string& voiceId = {});
 void downloadVoice(const std::string& voiceId);
 
 // Synthesize a short sample and return a playable WAV path (may start async;
-// empty until ready — call again / poll samplePath).
+// empty until ready - call again / poll samplePath).
 void playSample(const std::string& voiceId);
 std::string samplePath(const std::string& voiceId);
 

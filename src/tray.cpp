@@ -212,7 +212,7 @@ struct DBusError {
 };
 struct DBusConnection;
 struct DBusMessage;
-// Real DBusMessageIter is a fixed-size struct (not opaque) — must match ABI.
+// Real DBusMessageIter is a fixed-size struct (not opaque) - must match ABI.
 struct DBusMessageIter {
     void* dummy1;
     void* dummy2;
@@ -477,7 +477,7 @@ void replyGetLayout(DBusMessage* msg) {
     appendVariantString(&props, "children-display", "submenu");
     d.message_iter_close_container(&layout, &props);
     d.message_iter_open_container(&layout, DBUS_TYPE_ARRAY, "(ia{sv}av)", &children);
-    // children must be variants of (ia{sv}av) per dbusmenu — use av of variants
+    // children must be variants of (ia{sv}av) per dbusmenu - use av of variants
     // Spec: children is av where each is variant of (ia{sv}av). Simpler hosts accept direct structs
     // in the array type "(ia{sv}av)". We'll emit struct children directly.
     appendMenuItem(&children, 1, i18n::tr("tray.show"), true);
@@ -543,7 +543,7 @@ int onMessage(DBusConnection*, DBusMessage* msg, void*) {
         return DBUS_HANDLER_RESULT_HANDLED;
     }
     if (d.message_is_method_call(msg, "com.canonical.dbusmenu", "Event")) {
-        // Event(id, eventId, data, timestamp) — clicked
+        // Event(id, eventId, data, timestamp) - clicked
         DBusMessageIter it;
         if (d.message_iter_init(msg, &it) && d.message_iter_get_arg_type(&it) == DBUS_TYPE_INT32) {
             int32_t id = 0;
@@ -641,7 +641,7 @@ bool platformInit() {
     }
 
     if (!registerWithWatcher()) {
-        // Still keep the item exported — some hosts discover by name.
+        // Still keep the item exported - some hosts discover by name.
         std::fprintf(stderr, "seerr: StatusNotifierWatcher register failed (tray may be hidden)\n");
     }
     d.connection_flush(g_conn);
@@ -665,7 +665,7 @@ void platformTick() {
     auto& d = dbus();
     if (!g_conn || !d.ok) return;
     d.connection_read_write(g_conn, 0);
-    // Cap dispatches — a stuck DATA_REMAINS loop would freeze the UI thread.
+    // Cap dispatches - a stuck DATA_REMAINS loop would freeze the UI thread.
     for (int i = 0; i < 64; ++i) {
         if (d.connection_dispatch(g_conn) != 1) break;
     }

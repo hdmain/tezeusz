@@ -1,5 +1,5 @@
 # Stage MinGW runtime DLLs next to seerr.exe (local convenience).
-# Always exits 0 so CI/link is never blocked — portable packaging uses bash.
+# Always exits 0 so CI/link is never blocked - portable packaging uses bash.
 param(
     [Parameter(Mandatory = $true)][string]$Exe,
     [string]$MingwBin = $env:MINGW_BIN

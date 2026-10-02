@@ -48,7 +48,7 @@ void idleInhibitApply(bool active, const char*) {
         SetThreadExecutionState(ES_CONTINUOUS);
 }
 #else
-// ---- D-Bus (dlopen libdbus-1) — no hard link dependency ----
+// ---- D-Bus (dlopen libdbus-1) - no hard link dependency ----
 enum { DBUS_BUS_SESSION = 0, DBUS_BUS_SYSTEM = 1 };
 enum {
     DBUS_TYPE_INVALID = 0,
@@ -80,7 +80,7 @@ struct DBusError {
 };
 struct DBusConnection;
 struct DBusMessage;
-// Real DBusMessageIter is a fixed-size struct (not opaque) — must match ABI.
+// Real DBusMessageIter is a fixed-size struct (not opaque) - must match ABI.
 struct DBusMessageIter {
     void* dummy1; void* dummy2; uint32_t dummy3; int dummy4; int dummy5;
     int dummy6; int dummy7; int dummy8; int dummy9; int dummy10; int dummy11; int pad;
@@ -217,7 +217,7 @@ static std::string fileUriToPath(std::string uri) {
     return out;
 }
 
-// xdg-desktop-portal FileChooser — works with GNOME/KDE/XFCE/etc. native dialogs.
+// xdg-desktop-portal FileChooser - works with GNOME/KDE/XFCE/etc. native dialogs.
 static std::string pickOpenFilePortal(const char* title, const char* filterLabel,
                                       const char* filterPattern) {
     auto& d = dbus();
@@ -597,7 +597,7 @@ std::string pickOpenFile(const char* title, const char* filterLabel, const char*
     if (!GetOpenFileNameA(&ofn)) return {};
     return std::string(file);
 #else
-    // 1) xdg-desktop-portal — native dialog for the current desktop (any file manager DE)
+    // 1) xdg-desktop-portal - native dialog for the current desktop (any file manager DE)
     std::string path = pickOpenFilePortal(title, filterLabel, filterPattern);
     if (!path.empty()) return path;
 
@@ -672,7 +672,7 @@ void applyDarkTitlebar(GLFWwindow* win) {
     HWND hwnd = glfwGetWin32Window(win);
     if (!hwnd) return;
 
-    // Keep the default Windows caption/buttons — just switch to the modern dark theme.
+    // Keep the default Windows caption/buttons - just switch to the modern dark theme.
     BOOL dark = TRUE;
     DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof(dark));
 

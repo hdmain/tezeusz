@@ -67,7 +67,7 @@ while IFS= read -r rel || [[ -n "$rel" ]]; do
   [[ -z "$rel" ]] && continue
   src="$ROOT_DIR/$rel"
   [[ -f "$src" ]] || continue
-  # Skip VLC locale noise? Keep plugins — needed for playback.
+  # Skip VLC locale noise? Keep plugins - needed for playback.
   sha="$(sha_file "$src")"
   size="$(wc -c < "$src" | tr -d ' ')"
   # JSON-escape path

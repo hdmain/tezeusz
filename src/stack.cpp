@@ -259,7 +259,7 @@ std::string xmlUnescape(const std::string& s) {
     return out;
 }
 
-// YTS — movies only, official JSON API, no key. Domains rotate often (DMCA),
+// YTS - movies only, official JSON API, no key. Domains rotate often (DMCA),
 // so try a few known mirrors until one answers.
 inline std::vector<Release> searchYtsOne(const std::string& host, const std::string& query) {
     std::vector<Release> out;
@@ -307,7 +307,7 @@ std::vector<Release> searchYts(const std::string& query) {
     return {};
 }
 
-// Nyaa.si — anime/serial + packs, public RSS, no key.
+// Nyaa.si - anime/serial + packs, public RSS, no key.
 std::vector<Release> searchNyaa(const std::string& query) {
     std::vector<Release> out;
     auto r = http::get("https://nyaa.si/?page=rss&q=" + util::urlEncode(query) + "&c=0_0&f=0",
@@ -396,7 +396,7 @@ std::vector<Release> searchReleases(const MediaRequest& req) {
         mergeReleases(all, searchNyaa(q));
     };
 
-    // 1) IMDb id — strongest signal (apibay indexes tt…)
+    // 1) IMDb id - strongest signal (apibay indexes tt…)
     if (!req.imdbId.empty()) {
         auto hit = searchApibay(req.imdbId);
         if (!hit.empty()) { mergeReleases(all, std::move(hit)); fromImdb = true; }
@@ -409,7 +409,7 @@ std::vector<Release> searchReleases(const MediaRequest& req) {
             queryAll(q);
     }
 
-    // 3) originalTitle alone — still nothing solid, cast a wider net
+    // 3) originalTitle alone - still nothing solid, cast a wider net
     if (all.size() < 3 && !orig.empty())
         queryAll(orig + seasonSuffix);
 
@@ -622,7 +622,7 @@ bool libraryHas(const MediaRequest& req) {
         return false;
     }
 
-    // TV — only skip download when requested seasons/episodes are already on disk.
+    // TV - only skip download when requested seasons/episodes are already on disk.
     if (!req.episodes.empty() && req.seasons.size() == 1) {
         int sn = req.seasons[0];
         for (int ep : req.episodes) {
@@ -812,7 +812,7 @@ void processOne(const std::string& id) {
     }
     syncAppStatuses();
 
-    // Already finished on disk (e.g. closed during import) — skip re-download
+    // Already finished on disk (e.g. closed during import) - skip re-download
     {
         std::string existing = findBiggestVideo(jobDir);
         if (!existing.empty() && snap.progress >= 0.95) {
@@ -836,7 +836,7 @@ void processOne(const std::string& id) {
                     if (auto* r = findReqLocked(id)) {
                         r->progress = std::min(0.95, std::max(0.02, p.fraction));
 
-                        char eta[32] = "—";
+                        char eta[32] = "-";
                         double remainMb = std::max(0.0, p.totalMb - p.downloadedMb);
                         if (p.downloadRateKBs > 8.0 && remainMb > 0.05) {
                             double sec = (remainMb * 1024.0) / p.downloadRateKBs;
@@ -912,7 +912,7 @@ void processOne(const std::string& id) {
                 playable = video;
             } else {
                 r->libraryPath = dest;
-                // No dedicated key for "In library" after import — use available status label.
+                // No dedicated key for "In library" after import - use available status label.
                 setStatus(*r, ReqStatus::Available, i18n::tr("status.available"));
                 playable = dest;
             }
@@ -964,7 +964,7 @@ void pumpOnce() {
         }
     }
     syncAppStatuses();
-    // Continue queue on a worker — never on UI thread.
+    // Continue queue on a worker - never on UI thread.
     schedulePump();
 }
 
@@ -1274,7 +1274,7 @@ static std::string qualityLabelOf(const std::string& title) {
     if (t.find("1080p") != std::string::npos) return "1080p";
     if (t.find("720p") != std::string::npos) return "720p";
     if (t.find("480p") != std::string::npos) return "480p";
-    return "—";
+    return "-";
 }
 
 std::vector<ReleaseHit> searchReleasesInteractive(

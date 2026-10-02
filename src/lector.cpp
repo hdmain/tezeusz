@@ -72,7 +72,7 @@ bool g_hasPendingGen = false;
 const std::vector<VoiceInfo>& voiceCatalog() {
     // hfPath: relative under rhasspy/piper-voices, OR full https://…/stem (no .onnx)
     static const std::vector<VoiceInfo> k = {
-        // Polish — Bass High is a large community deep male (22 kHz); then official mediums
+        // Polish - Bass High is a large community deep male (22 kHz); then official mediums
         {"pl_PL-bass-high", "pl", "pl_PL", "Bass (głęboki, high)", "high",
          "https://huggingface.co/blackbartblues/piper-pl-bass-high/resolve/main/bass_high", true},
         {"pl_PL-darkman-medium", "pl", "pl_PL", "Darkman (głęboki)", "medium",
@@ -82,7 +82,7 @@ const std::vector<VoiceInfo>& voiceCatalog() {
         {"pl_PL-gosia-medium", "pl", "pl_PL", "Gosia", "medium",
          "pl/pl_PL/gosia/medium", false},
 
-        // English — prefer high / deep male
+        // English - prefer high / deep male
         {"en_US-ryan-high", "en", "en_US", "Ryan (deep, high)", "high",
          "en/en_US/ryan/high", true},
         {"en_US-ryan-medium", "en", "en_US", "Ryan (deep)", "medium",
@@ -108,7 +108,7 @@ const std::vector<VoiceInfo>& voiceCatalog() {
         {"en_GB-alan-medium", "en", "en_GB", "Alan", "medium",
          "en/en_GB/alan/medium", true},
 
-        // Other langs — high / deep where available
+        // Other langs - high / deep where available
         {"de_DE-thorsten-high", "de", "de_DE", "Thorsten (deep, high)", "high",
          "de/de_DE/thorsten/high", true},
         {"de_DE-thorsten-medium", "de", "de_DE", "Thorsten", "medium",
@@ -818,7 +818,7 @@ bool extractEngineArchive(const fs::path& archive, std::string* err) {
             if (util::iequals(name, "piper.exe")) {
                 fs::path destDir = engineDir() / "piper";
                 fs::create_directories(destDir, ec);
-                // Move sibling files too — keep parent folder if already named piper
+                // Move sibling files too - keep parent folder if already named piper
                 fs::path parent = ent.path().parent_path();
                 if (parent != destDir) {
                     for (auto& sib : fs::directory_iterator(parent, ec)) {
@@ -918,7 +918,7 @@ bool downloadVoiceFiles(const VoiceInfo& v, uint64_t gen, std::string* err) {
     if (fs::exists(onnx) && fs::exists(json)) return true;
 
     TransferMeter meter;
-    meter.begin(std::string(i18n::tr("lector.dl_voice")) + " — " + v.name);
+    meter.begin(std::string(i18n::tr("lector.dl_voice")) + " - " + v.name);
     std::string onnxUrl, jsonUrl;
     if (v.hfPath.rfind("http://", 0) == 0 || v.hfPath.rfind("https://", 0) == 0) {
         onnxUrl = v.hfPath + ".onnx";
@@ -937,7 +937,7 @@ bool downloadVoiceFiles(const VoiceInfo& v, uint64_t gen, std::string* err) {
         return false;
     }
 
-    meter.begin(std::string(i18n::tr("lector.dl_voice_cfg")) + " — " + v.name);
+    meter.begin(std::string(i18n::tr("lector.dl_voice_cfg")) + " - " + v.name);
     auto jsonBytes = http::getBinaryLong(jsonUrl, err, 60, [&](uint64_t got, uint64_t total) {
         meter.onProgress(got, total);
     });

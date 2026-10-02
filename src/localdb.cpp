@@ -405,7 +405,7 @@ void savePlaybackProgress(const std::string& path, double position, int64_t time
     entry["durationMs"] = durationMs;
     entry["updatedAt"] = nowMs();
     m[k] = entry;
-    // Cap map size — keep newest 200 entries
+    // Cap map size - keep newest 200 entries
     if (m.size() > 200) {
         std::vector<std::pair<int64_t, std::string>> order;
         for (auto it = m.begin(); it != m.end(); ++it) {

@@ -79,7 +79,7 @@ static bool writeBinaryFile(const std::string& path, const std::vector<uint8_t>&
 
 void ImageCache::init() {
     cacheRoot();
-    // Defer imgswarm (libtorrent session) — starting DHT/listen during GUI bring-up
+    // Defer imgswarm (libtorrent session) - starting DHT/listen during GUI bring-up
     // has caused hard crashes on some Linux installs. Workers init it on first use.
     nextStart_ = std::chrono::steady_clock::now();
     for (int i = 0; i < 2; i++) workers_.emplace_back([this] { workerLoop(); });
@@ -257,7 +257,7 @@ void ImageCache::workerLoop() {
                 fromDisk = false;
                 bytes.clear();
             } else {
-                // Already cached — share with other Seerr peers (HTTP remains primary for new fetches)
+                // Already cached - share with other Seerr peers (HTTP remains primary for new fetches)
                 imgswarm::offer(item.url, path);
             }
         }
@@ -321,7 +321,7 @@ void ImageCache::purgeFailed() {
 }
 
 void ImageCache::purgeAll() {
-    // RAM only — disk cache stays so posters reload quickly after F5.
+    // RAM only - disk cache stays so posters reload quickly after F5.
     std::lock_guard<std::mutex> l(mtx_);
     for (auto& kv : entries_)
         if (kv.second.tex) { GLuint t = kv.second.tex; glDeleteTextures(1, &t); }

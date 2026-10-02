@@ -36,7 +36,7 @@ std::atomic<int> g_pending{0};
 std::mutex g_statMu;
 Stats g_stats{};
 
-// Rolling average of last 3 samples — keeps sidebar RAM/CPU/peers from jumping.
+// Rolling average of last 3 samples - keeps sidebar RAM/CPU/peers from jumping.
 constexpr int kSmoothN = 3;
 double g_ramHist[kSmoothN]{};
 double g_cpuHist[kSmoothN]{};
@@ -109,7 +109,7 @@ void refreshProcessStats() {
                 double dCpu = (double)(cpuNow.QuadPart - g_lastCpu.QuadPart);
                 double dSys = (double)(sysNow.QuadPart - g_lastSys.QuadPart);
                 // dCpu / dSys already = share of total machine capacity (all cores).
-                // Do NOT multiply by core count — Task Manager uses 0..100% of the PC.
+                // Do NOT multiply by core count - Task Manager uses 0..100% of the PC.
                 if (dSys > 0)
                     cpu = (dCpu / dSys) * 100.0;
                 if (cpu < 0) cpu = 0;

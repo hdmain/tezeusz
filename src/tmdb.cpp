@@ -276,7 +276,7 @@ Details parseTv(const json& j) {
     d.nextEpisodeAirDate = jstr(j, "next_episode_to_air").empty() ? "" : jstr(j, "next_episode_to_air");
     if (j.contains("last_episode_to_air") && j["last_episode_to_air"].is_object())
         d.lastEpisodeAirDate = jstr(j["last_episode_to_air"], "air_date");
-    // videos already parsed in parseMovie — don't clear them
+    // videos already parsed in parseMovie - don't clear them
     if (d.videos.empty()) parseVideosInto(d, j);
     d.seasons.clear();
     if (j.contains("seasons")) for (auto& s : j["seasons"]) {

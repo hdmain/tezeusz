@@ -32,7 +32,7 @@ cp -f "$ROOT/vendor/icons/"*.svg "$OUT/icons/" 2>/dev/null || true
 cp -f "$ROOT/locales/"*.json "$OUT/locales/" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# MinGW DLL collector — only follow DLLs that live under the MinGW prefix.
+# MinGW DLL collector - only follow DLLs that live under the MinGW prefix.
 # Never walk Windows api-set / ext-ms trees (ntldd -R hangs forever on those).
 # ---------------------------------------------------------------------------
 is_skip_name() {
@@ -187,7 +187,7 @@ if [[ ! -f "$VLC_ZIP" ]]; then
   elif command -v wget >/dev/null 2>&1; then
     wget -O "$VLC_ZIP" "$VLC_ZIP_URL"
   else
-    echo "error: no curl/wget — cannot fetch VLC" >&2
+    echo "error: no curl/wget - cannot fetch VLC" >&2
     exit 1
   fi
 fi
@@ -197,7 +197,7 @@ rm -rf "$VLC_EXTRACT"
 mkdir -p "$VLC_EXTRACT"
 
 extract_vlc() {
-  # Prefer PowerShell on Windows — MSYS bsdtar often chokes on VLC locale/*.mo entries.
+  # Prefer PowerShell on Windows - MSYS bsdtar often chokes on VLC locale/*.mo entries.
   if command -v powershell.exe >/dev/null 2>&1; then
     local zip_win extract_win
     if command -v cygpath >/dev/null 2>&1; then
@@ -287,7 +287,7 @@ Seerr portable (Windows) ${VER}
 
 1. Unzip the whole folder (keep DLLs next to seerr.exe).
 2. Run seerr.exe
-3. Do not move seerr.exe alone — MinGW DLLs + libvlc\\ must stay beside it.
+3. Do not move seerr.exe alone - MinGW DLLs + libvlc\\ must stay beside it.
 
 Included:
 - MinGW runtime + libtorrent + OpenSSL DLLs
@@ -346,7 +346,7 @@ echo "  VLC plugin DLLs:   $PLUGIN_COUNT"
 ls -la "$OUT" | head -n 80
 
 if ((UNRESOLVED > 0)); then
-  echo "error: $UNRESOLVED unresolved dependencies — portable is incomplete" >&2
+  echo "error: $UNRESOLVED unresolved dependencies - portable is incomplete" >&2
   exit 1
 fi
 if ((DLL_COUNT < 6)); then

@@ -80,7 +80,7 @@ struct StackConfig {
     void load();
     void save() const;
 
-    // All movie/TV roots (primary first, then extras) — used by library scan/delete.
+    // All movie/TV roots (primary first, then extras) - used by library scan/delete.
     std::vector<std::string> allMoviesPaths() const;
     std::vector<std::string> allTvPaths() const;
     // Move previous primary into extras when switching write disk.
@@ -93,7 +93,7 @@ struct MediaRequest {
     MediaType mediaType = MediaType::Movie;
     int tmdbId = 0;
     std::string title;
-    std::string originalTitle; // English / original — used for indexer search (Radarr-style)
+    std::string originalTitle; // English / original - used for indexer search (Radarr-style)
     std::string year;
     std::string imdbId;
     std::vector<int> seasons;

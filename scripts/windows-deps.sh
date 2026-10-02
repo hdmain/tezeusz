@@ -4,7 +4,7 @@
 set -euo pipefail
 
 if ! command -v pacman >/dev/null 2>&1; then
-  echo "error: pacman not found — open an MSYS2 MINGW64 shell first" >&2
+  echo "error: pacman not found - open an MSYS2 MINGW64 shell first" >&2
   exit 1
 fi
 

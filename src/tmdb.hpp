@@ -48,7 +48,7 @@ struct MediaItem {
     std::string status;
     // person extras (Seerr search)
     std::string knownForDepartment;
-    // Cached w300 poster URL (built once) — avoids string alloc every frame per card
+    // Cached w300 poster URL (built once) - avoids string alloc every frame per card
     mutable std::string posterUrl300;
 
     std::string year() const;

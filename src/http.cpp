@@ -22,7 +22,7 @@
 
 namespace http {
 
-// NOTE: no global mutex here — WinHTTP sessions are thread-safe (each request
+// NOTE: no global mutex here - WinHTTP sessions are thread-safe (each request
 // gets its own connect/request handles) and the curl path uses per-call
 // handles. Serializing everything here used to starve the UI while the subs
 // worker retried a slow endpoint (freeze on tab switches).
@@ -41,7 +41,7 @@ static HINTERNET sharedSession() {
         if (!g_sharedSess)
             g_sharedSess = WinHttpOpen(L"SeerrCpp/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-        // Resolve / connect / send / receive — keep receive shorter so quit isn't stuck for 30s+.
+        // Resolve / connect / send / receive - keep receive shorter so quit isn't stuck for 30s+.
         if (g_sharedSess) WinHttpSetTimeouts(g_sharedSess, 3000, 5000, 8000, 12000);
     }
     return g_sharedSess;

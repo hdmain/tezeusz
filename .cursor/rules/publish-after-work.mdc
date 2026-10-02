@@ -9,6 +9,6 @@ When a task is complete and leaves meaningful project changes:
 
 1. **Commit** relevant files (follow the repo’s git commit protocol: status/diff/log, focused message, no secrets).
 2. **Push** to `origin` on the current branch (`git push -u origin HEAD` if needed).
-3. Do this **without waiting** for an extra “commit/push” ask — finishing the work includes publishing.
+3. Do this **without waiting** for an extra “commit/push” ask - finishing the work includes publishing.
 4. Skip empty/noise-only diffs (e.g. line-ending-only, build artifacts, unrelated local scripts) unless the user asked for them.
 5. If push fails (auth/network), report the error and the local commit hash.

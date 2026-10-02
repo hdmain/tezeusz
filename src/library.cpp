@@ -304,7 +304,7 @@ std::string formatSize(int64_t bytes) {
 bool removeItem(const Item& item, std::string* err) {
     std::error_code ec;
 
-    // Archived ZIP — just delete the archive file.
+    // Archived ZIP - just delete the archive file.
     if (item.archived) {
         fs::path zip = item.path;
         if (zip.empty() || !fs::exists(zip, ec) ||
@@ -561,7 +561,7 @@ std::string importExportZip(const std::string& zipPath, std::string* err) {
     fs::path destRoot = (type == MediaType::TV) ? fs::path(cfg.tvPath) : fs::path(cfg.moviesPath);
     fs::path destDir = destRoot / folderName;
     if (fs::exists(destDir, ec)) {
-        // Avoid clobbering — add suffix.
+        // Avoid clobbering - add suffix.
         for (int i = 2; i < 50; ++i) {
             fs::path alt = destRoot / (folderName + " (" + std::to_string(i) + ")");
             if (!fs::exists(alt, ec)) { destDir = alt; break; }

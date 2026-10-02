@@ -15,7 +15,7 @@ Fonts G;
 // --------------------------------------------------------------------- theme
 
 ImU32 theme::c(const char* hex) {
-    // Hot path: cards call this dozens of times/frame — cache parsed colors.
+    // Hot path: cards call this dozens of times/frame - cache parsed colors.
     static std::unordered_map<std::string, ImU32> cache;
     auto it = cache.find(hex);
     if (it != cache.end()) return it->second;
@@ -49,7 +49,7 @@ void initFonts() {
     static ImVector<ImWchar> rangesPL;
     ImFontGlyphRangesBuilder rb;
     rb.AddRanges(io.Fonts->GetGlyphRangesDefault());
-    rb.AddText("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ…•–—→");
+    rb.AddText("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ…•–-→");
     rb.BuildRanges(&rangesPL);
 
     auto load = [&](const char* file, float px) -> ImFont* {
@@ -336,7 +336,7 @@ static std::vector<std::string> wrapText(const std::string& text, ImFont* font, 
             unsigned char c = (unsigned char)text[i];
             size_t adv = 1;
             if (c >= 0xF0) adv = 4; else if (c >= 0xE0) adv = 3; else if (c >= 0xC0) adv = 2;
-            if (i + adv > text.size()) adv = 1; // malformed trailing byte — don't overrun
+            if (i + adv > text.size()) adv = 1; // malformed trailing byte - don't overrun
             if (c == ' ' || c == '\n') {
                 if (!cur.empty()) { words.push_back(std::move(cur)); cur.clear(); }
                 if (c == '\n') words.push_back("\n");
@@ -416,7 +416,7 @@ void w::gradientRect(ImDrawList* dl, ImVec2 min, ImVec2 max, ImU32 topCol, ImU32
         dl->AddRectFilledMultiColor(min, max, topCol, topCol, botCol, botCol);
         return;
     }
-    // Rounded fill + vertical RGBA gradient (ImGui's ShadeVerts keeps alpha — we need it too)
+    // Rounded fill + vertical RGBA gradient (ImGui's ShadeVerts keeps alpha - we need it too)
     const int v0 = dl->VtxBuffer.Size;
     dl->AddRectFilled(min, max, IM_COL32_WHITE, rounding);
     const int v1 = dl->VtxBuffer.Size;
@@ -477,7 +477,7 @@ bool w::beginQuestionModal(const char* id, float cardWidth, float cardHeight) {
     }
 
     // Modal itself stays clear (blur drawn below). Nested Combo/BeginCombo popups
-    // inherit PopupBg — give them an opaque panel so they aren't see-through.
+    // inherit PopupBg - give them an opaque panel so they aren't see-through.
     ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.10f, 0.12f, 0.18f, 0.98f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.45f, 0.49f, 0.55f, 0.85f));
     ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 10.f);
@@ -489,7 +489,7 @@ bool w::beginQuestionModal(const char* id, float cardWidth, float cardHeight) {
     const ImVec2 ws = ImGui::GetWindowSize();
     modalblur::draw(dl, wp, ImVec2(wp.x + ws.x, wp.y + ws.y));
 
-    // Fullscreen hit-target behind the card — clicks here dismiss the dialog.
+    // Fullscreen hit-target behind the card - clicks here dismiss the dialog.
     ImGui::SetCursorScreenPos(wp);
     ImGui::InvisibleButton("##qbackdrop", ws);
     const bool backdropClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
@@ -651,7 +651,7 @@ int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool wat
         C.ready = true;
     }
 
-    // By-value URL — avoid dangling refs; snapshot tex so map rehash can't UAF mid-draw
+    // By-value URL - avoid dangling refs; snapshot tex so map rehash can't UAF mid-draw
     std::string img = item.posterUrl("w300_and_h450_face");
     GLuint tex = 0; int tw = 0, th = 0;
     bool failed = false, loadingFlag = false;
@@ -662,7 +662,7 @@ int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool wat
         }
     }
 
-    // Stable IDs only — never include pixel position (scrolling would change the ID
+    // Stable IDs only - never include pixel position (scrolling would change the ID
     // every few px and make hover/buttons "jump" between cards).
     ImGui::SetCursorScreenPos(min);
     ImGui::PushID(instanceSeed);

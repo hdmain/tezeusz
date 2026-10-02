@@ -1,4 +1,4 @@
-﻿#include "player.hpp"
+#include "player.hpp"
 #include "stack.hpp"
 #include "util.hpp"
 #include "core.hpp"
@@ -141,7 +141,7 @@ std::atomic<bool> g_tracksDirty{true};
 std::atomic<bool> g_cbEnabled{false}; // video/event callbacks must no-op when false
 std::atomic<uint64_t> g_openGen{0};
 std::atomic<uint64_t> g_framesDisplayed{0};
-// Event bits from VLC thread — applied on UI thread (avoid touching g_st from callbacks).
+// Event bits from VLC thread - applied on UI thread (avoid touching g_st from callbacks).
 enum : unsigned {
     EvPlaying = 1u << 0,
     EvPaused = 1u << 1,
@@ -156,7 +156,7 @@ int g_prevX = 0, g_prevY = 0, g_prevW = 0, g_prevH = 0;
 bool g_showControls = true;
 float g_idleTimer = 0;
 float g_controlsAlpha = 1.f; // 0..1 fade
-bool g_userPaused = false;   // explicit pause — not libvlc is_playing flicker
+bool g_userPaused = false;   // explicit pause - not libvlc is_playing flicker
 bool g_mouseInChrome = false;
 bool g_cursorHidden = false;
 double g_ignoreMouseUntil = 0; // suppress spurious deltas after cursor mode change
@@ -389,7 +389,7 @@ unsigned vlcFormat(void**, char* chroma, unsigned* width, unsigned* height, unsi
     size_t need = (size_t)g_pixW * g_pixH * 4u;
     g_pixels.assign(need, 0);
     g_pixelsUpload.assign(need, 0);
-    // Do not touch g_st here — VLC thread; uploadFrame copies size on UI thread.
+    // Do not touch g_st here - VLC thread; uploadFrame copies size on UI thread.
     return 1;
 }
 void vlcCleanup(void*) {
@@ -401,7 +401,7 @@ void vlcCleanup(void*) {
     g_pixW = g_pixH = 0;
 }
 void onEvent(const libvlc_event_t* ev, void*) {
-    // Never touch g_st (strings) from the VLC thread — only atomics.
+    // Never touch g_st (strings) from the VLC thread - only atomics.
     if (!ev || !g_cbEnabled.load(std::memory_order_acquire)) return;
     if (ev->type == libvlc_MediaPlayerPlaying)
         g_vlcEvents.fetch_or(EvPlaying, std::memory_order_relaxed);
@@ -441,7 +441,7 @@ void refreshTracks() {
                                       g_savedTracks.audioId, g_savedTracks.audioName, false);
 
         if (subPick == -2) {
-            // No saved subtitle — Bazarr-style preferred language, then EN
+            // No saved subtitle - Bazarr-style preferred language, then EN
             std::string pref = util::lower(stack::StackConfig::get().subsPreferredLang);
             if (pref.empty()) pref = "pl";
             auto matchLang = [](const std::string& name, const std::string& lang) {
@@ -465,7 +465,7 @@ void refreshTracks() {
             g_st.subtitleId = subPick;
         }
         if (g_voiceOverMode == VoiceOverMode::MixOnly) {
-            // Mix already contains ducked original + lector — mute main ES.
+            // Mix already contains ducked original + lector - mute main ES.
             if (g_st.audioId != -1) {
                 p_libvlc_audio_set_track(g_mp, -1);
                 g_st.audioId = -1;
@@ -614,7 +614,7 @@ void startOpenJob(uint64_t gen, std::string path, int volume, std::string audioS
         const char* argsRemote[] = {
             "--no-video-title-show",
             "--quiet",
-            // Short buffer — stream playback, not a full download to disk.
+            // Short buffer - stream playback, not a full download to disk.
             "--network-caching=800",
             "--live-caching=800",
             "--file-caching=0",
@@ -796,7 +796,7 @@ void close() {
     g_mp = nullptr;
     g_vlc = nullptr;
 
-    // Detach callbacks, stop, release — releaseVlcObjects waits for the decoder.
+    // Detach callbacks, stop, release - releaseVlcObjects waits for the decoder.
     if (mp || vlc)
         releaseVlcObjects(mp, vlc);
 
@@ -1051,7 +1051,7 @@ void tick() {
         g_idleTimer = 0;
     } else {
         g_idleTimer += io.DeltaTime;
-        // Don't require libvlc is_playing — it flickers false in exclusive FS
+        // Don't require libvlc is_playing - it flickers false in exclusive FS
         if (g_idleTimer > 2.f && !g_userPaused && !g_st.loading && !g_st.failed) {
             g_showControls = false;
             g_showSubsMenu = g_showAudioMenu = g_showSettings = false;
@@ -1065,7 +1065,7 @@ void tick() {
     if (g_controlsAlpha < 0.01f) g_controlsAlpha = 0.f;
     if (g_controlsAlpha > 0.99f) g_controlsAlpha = 1.f;
 
-    // Cursor hide with hysteresis — mode flips themselves generate mouse deltas on Win+FS
+    // Cursor hide with hysteresis - mode flips themselves generate mouse deltas on Win+FS
     if (g_host) {
         bool wantHide = g_controlsAlpha < 0.04f && !forceChrome && !g_st.failed && !g_st.loading;
         if (wantHide && !g_cursorHidden) {
@@ -1158,7 +1158,7 @@ bool render() {
         if (io.MousePos.y > wpos.y + 80 && io.MousePos.y < wpos.y + wsize.y - 100) togglePause();
     }
 
-    // Chrome hit zones — keep overlay while pointer rests on title/controls bars (windowed only)
+    // Chrome hit zones - keep overlay while pointer rests on title/controls bars (windowed only)
     const float topZone = 110.f, botZone = 160.f;
     if (g_cursorHidden || g_st.fullscreen) {
         g_mouseInChrome = false;

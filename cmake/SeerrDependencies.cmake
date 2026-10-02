@@ -97,7 +97,7 @@ else()
             if(LIBTORRENT_INCLUDE_DIRS)
                 list(REMOVE_DUPLICATES LIBTORRENT_INCLUDE_DIRS)
             endif()
-            # Drop "-isystem <mingw prefix>/include" — breaks #include_next <stdlib.h>.
+            # Drop "-isystem <mingw prefix>/include" - breaks #include_next <stdlib.h>.
             set(_lt_cflags "")
             set(_lt_drop_next FALSE)
             foreach(_lt_flag IN LISTS LIBTORRENT_CFLAGS_OTHER)

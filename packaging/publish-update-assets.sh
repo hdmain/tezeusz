@@ -46,7 +46,7 @@ shopt -u nullglob
 
 if [[ -s "$NEWLIST" ]]; then
   echo "Uploading $UPLOADED new blobs (batch)…"
-  # gh accepts many files per invocation — chunk to stay under arg limits
+  # gh accepts many files per invocation - chunk to stay under arg limits
   BATCH=40
   mapfile -t ALL < "$NEWLIST"
   for ((i = 0; i < ${#ALL[@]}; i += BATCH)); do

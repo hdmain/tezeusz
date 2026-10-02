@@ -83,7 +83,7 @@ std::string cookieHeaderFromSetCookie(const std::string& raw) {
     std::string out;
     size_t i = 0;
     while (i < raw.size()) {
-        // Each Set-Cookie may be joined with "; " — keep only name=value pairs
+        // Each Set-Cookie may be joined with "; " - keep only name=value pairs
         // that look like cookies (skip Path=, Domain=, Expires=, Secure, HttpOnly…).
         size_t eq = raw.find('=', i);
         if (eq == std::string::npos) break;
@@ -121,7 +121,7 @@ struct YtSession {
 YtSession bootstrapSession(const std::string& videoId) {
     YtSession s;
     // API key comes from the watch page (INNERTUBE_API_KEY). No hardcoded AIza…
-    // keys — GitHub secret scanning treats those as credentials even when they are
+    // keys - GitHub secret scanning treats those as credentials even when they are
     // public YouTube client keys shared by every InnerTube client.
 
     const std::string ua =
@@ -135,7 +135,7 @@ YtSession bootstrapSession(const std::string& videoId) {
     if (!r.setCookie.empty())
         s.cookie = cookieHeaderFromSetCookie(r.setCookie);
 
-    // Consent / SOCS — many regions block player without these.
+    // Consent / SOCS - many regions block player without these.
     if (s.cookie.find("CONSENT=") == std::string::npos)
         s.cookie += (s.cookie.empty() ? "" : "; ") + std::string("CONSENT=YES+");
     if (s.cookie.find("SOCS=") == std::string::npos)
@@ -246,7 +246,7 @@ bool pickFromStreamingData(const json& sd, std::string* videoUrl, std::string* a
         return false;
     }
 
-// Lightweight YouTube InnerTube — prefers clients that still return clear `url` fields.
+// Lightweight YouTube InnerTube - prefers clients that still return clear `url` fields.
 bool tryInnerTube(const std::string& videoId, std::string* videoUrl, std::string* audioUrl) {
     if (videoUrl) videoUrl->clear();
     if (audioUrl) audioUrl->clear();
@@ -339,7 +339,7 @@ void open(const std::string& videoId, const std::string& title) {
     if (g_busy.exchange(true)) return;
 
     auto job = std::make_shared<PendingPlay>();
-    job->title = title.empty() ? (std::string(i18n::tr("details.trailer")) + " — " + videoId)
+    job->title = title.empty() ? (std::string(i18n::tr("details.trailer")) + " - " + videoId)
                                : title;
     job->videoId = videoId;
     {

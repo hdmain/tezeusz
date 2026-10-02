@@ -70,7 +70,7 @@ if(WIN32)
         ws2_32 iphlpapi dwmapi
         z
     )
-    # GUI subsystem — no black console window.
+    # GUI subsystem - no black console window.
     set_target_properties(seerr PROPERTIES WIN32_EXECUTABLE TRUE)
     target_link_options(seerr PRIVATE -mwindows)
     if(SEERR_BUNDLED_DEPS)
@@ -109,7 +109,7 @@ if(SEERR_COPY_ASSETS_TO_BUILD)
 endif()
 
 # Windows: copy MinGW runtime DLLs beside the exe so PowerShell/CMD can launch
-# without MinGW on PATH. Best-effort only — must not fail CI (portable packager
+# without MinGW on PATH. Best-effort only - must not fail CI (portable packager
 # collects DLLs separately via bash).
 if(WIN32)
     add_custom_command(TARGET seerr POST_BUILD
@@ -123,4 +123,4 @@ endif()
 
 include(SeerrPackaging)
 
-message(STATUS "Seerr ${SEERR_VERSION} — build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Seerr ${SEERR_VERSION} - build type: ${CMAKE_BUILD_TYPE}")

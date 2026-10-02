@@ -9,7 +9,7 @@ void shutdown();
 void tick();
 
 // Queue download of EN + preferred-language sidecars next to the video.
-// sceneName = original release name (from the torrent) when known — Bazarr-style
+// sceneName = original release name (from the torrent) when known - Bazarr-style
 // refiner uses it to guess resolution/source/group for scoring.
 void enqueue(const std::string& videoPath, MediaType type, int tmdbId,
              const std::string& imdbId = {}, const std::string& title = {},

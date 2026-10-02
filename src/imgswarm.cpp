@@ -86,7 +86,7 @@ std::string fileNameForUrl(const std::string& url) {
     return buf;
 }
 
-// Local hex helpers — libtorrent::aux::{to,from}_hex are TORRENT_EXTRA_EXPORT
+// Local hex helpers - libtorrent::aux::{to,from}_hex are TORRENT_EXTRA_EXPORT
 // and are not linked from the shared MinGW package on CI.
 std::string toHex(lt::sha1_hash const& ih) {
     static const char* kHex = "0123456789abcdef";
@@ -290,7 +290,7 @@ void init() {
         pack.set_str(lt::settings_pack::dht_bootstrap_nodes,
                      "router.bittorrent.com:6881,router.utorrent.com:6881,"
                      "dht.transmissionbt.com:6881,dht.libtorrent.org:25401");
-        // Ephemeral port — fixed 6889 can fail/conflict on multi-user machines.
+        // Ephemeral port - fixed 6889 can fail/conflict on multi-user machines.
         pack.set_str(lt::settings_pack::listen_interfaces, "0.0.0.0:0");
         g_ses = std::make_unique<lt::session>(pack);
         g_alertThread = std::thread(alertLoop);

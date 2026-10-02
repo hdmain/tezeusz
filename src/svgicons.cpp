@@ -72,7 +72,7 @@ void replaceAll(std::string& s, const char* from, const char* to) {
 GLuint rasterizeSvg(const std::string& path) {
     std::string svg = util::readFile(path);
     if (svg.empty()) return 0;
-    // Heroicons use currentColor — NanoSVG needs a real paint.
+    // Heroicons use currentColor - NanoSVG needs a real paint.
     replaceAll(svg, "currentColor", "#ffffff");
     replaceAll(svg, "currentcolor", "#ffffff");
 

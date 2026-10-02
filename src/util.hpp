@@ -20,7 +20,7 @@ struct VolumeInfo {
     DiskSpace space;
 };
 
-// Free/capacity for the volume containing `path` (path need not exist yet —
+// Free/capacity for the volume containing `path` (path need not exist yet -
 // uses the existing parent / drive root).
 DiskSpace diskSpace(const std::string& path);
 

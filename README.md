@@ -22,6 +22,23 @@ Inspired by [Seerr](https://github.com/seerr-team/seerr) / Jellyseerr, built as 
 
 Polish and English UI.
 
+## Screenshots
+
+### Discover
+![Discover](ss/mainpagetezeusz.png)
+
+### Requests
+![Requests](ss/requesttezeusz.png)
+
+### Library
+![Library](ss/libarytezeusz.jpg)
+
+### Player
+![Player](ss/playertezeusz.jpg)
+
+### Title details
+![Title details](ss/thevoidtezeusz.jpg)
+
 ## Download
 
 Get the latest build from the [**continuous** release](https://github.com/hdmain/tezeusz/releases/tag/continuous):

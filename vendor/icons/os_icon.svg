@@ -1,57 +1,12 @@
-<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="ribbon" x1="48" y1="48" x2="208" y2="220" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F0B35A"/>
-      <stop offset="0.42" stop-color="#3BC4A8"/>
-      <stop offset="1" stop-color="#1A6B78"/>
+    <linearGradient id="g" x1="18" y1="16" x2="78" y2="82" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F0A35E"/>
+      <stop offset="0.55" stop-color="#2BBBAD"/>
+      <stop offset="1" stop-color="#1B6B7A"/>
     </linearGradient>
-    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.35"/>
-    </filter>
   </defs>
-  <!-- App plate -->
-  <rect x="8" y="8" width="240" height="240" rx="56" fill="#0C1216"/>
-  <!-- Labyrinth ribbon forming T (Ariadne's thread) -->
-  <path filter="url(#soft)" fill="url(#ribbon)" fill-rule="evenodd"
-    d="M58 78
-       C58 66 68 58 82 58
-       H174
-       C196 58 210 72 210 92
-       C210 112 196 124 176 124
-       H150
-       C150 124 150 124 150 124
-       V186
-       C150 204 136 218 118 218
-       C100 218 86 204 86 186
-       V140
-       C86 128 78 122 66 122
-       C54 122 46 112 46 100
-       C46 88 52 78 58 78
-       Z
-       M82 82
-       C76 82 72 86 72 92
-       C72 98 76 102 82 102
-       H156
-       C168 102 176 96 176 88
-       C176 80 168 76 156 76
-       H90
-       C86 76 82 78 82 82
-       Z
-       M118 132
-       C126 132 132 138 132 146
-       V182
-       C132 188 126 194 118 194
-       C110 194 104 188 104 182
-       V146
-       C104 138 110 132 118 132
-       Z"/>
-  <!-- Film sprocket notches on the ribbon edge -->
-  <g fill="#0C1216">
-    <rect x="70" y="64" width="7" height="10" rx="2"/>
-    <rect x="92" y="64" width="7" height="10" rx="2"/>
-    <rect x="114" y="64" width="7" height="10" rx="2"/>
-    <rect x="136" y="64" width="7" height="10" rx="2"/>
-    <rect x="190" y="96" width="10" height="7" rx="2"/>
-    <rect x="190" y="112" width="10" height="7" rx="2"/>
-  </g>
+  <rect x="8" y="8" width="80" height="80" rx="22" fill="#0C1216"/>
+  <rect x="18" y="18" width="60" height="60" rx="14" fill="url(#g)"/>
+  <path d="M30 36h36v8H54v28H42V44H30V36z" fill="#F7F3EB"/>
 </svg>

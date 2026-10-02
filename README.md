@@ -1,8 +1,8 @@
 # Tezeusz
 
 [![Build](https://github.com/hdmain/tezeusz/actions/workflows/build.yml/badge.svg)](https://github.com/hdmain/tezeusz/actions/workflows/build.yml)
-[![Continuous release](https://img.shields.io/github/v/release/hdmain/tezeusz?include_prereleases&label=download)](https://github.com/hdmain/tezeusz/releases/tag/continuous)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-0A66C2)](https://github.com/hdmain/tezeusz/releases/tag/continuous)
+[![Latest release](https://img.shields.io/github/v/release/hdmain/tezeusz?label=download)](https://github.com/hdmain/tezeusz/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-0A66C2)](https://github.com/hdmain/tezeusz/releases/latest)
 [![UI](https://img.shields.io/badge/UI-English%20%7C%20Polish-555)](https://github.com/hdmain/tezeusz)
 [![Issues](https://img.shields.io/github/issues/hdmain/tezeusz)](https://github.com/hdmain/tezeusz/issues)
 
@@ -41,7 +41,8 @@ Polish and English UI.
 
 ## Download
 
-Get the latest build from the [**continuous** release](https://github.com/hdmain/tezeusz/releases/tag/continuous):
+Get the latest build from the [**latest release**](https://github.com/hdmain/tezeusz/releases/latest)
+(versioned tags like [`v0.1.0+a95b86b`](https://github.com/hdmain/tezeusz/releases/tag/v0.1.0%2Ba95b86b) - not the `continuous` update channel):
 
 | Platform | What to get |
 |----------|-------------|

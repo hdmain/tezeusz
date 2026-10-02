@@ -41,8 +41,7 @@ Polish and English UI.
 
 ## Download
 
-Get the latest build from the [**latest release**](https://github.com/hdmain/tezeusz/releases/latest)
-(versioned tags like [`v0.1.0+a95b86b`](https://github.com/hdmain/tezeusz/releases/tag/v0.1.0%2Ba95b86b) - not the `continuous` update channel):
+Get the latest build from the [**latest release**](https://github.com/hdmain/tezeusz/releases/latest):
 
 | Platform | What to get |
 |----------|-------------|

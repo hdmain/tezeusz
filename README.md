@@ -1,5 +1,11 @@
 # Seerr
 
+[![Build](https://github.com/hdmain/tezeusz/actions/workflows/build.yml/badge.svg)](https://github.com/hdmain/tezeusz/actions/workflows/build.yml)
+[![Continuous release](https://img.shields.io/github/v/release/hdmain/tezeusz?include_prereleases&label=download)](https://github.com/hdmain/tezeusz/releases/tag/continuous)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-0A66C2)](https://github.com/hdmain/tezeusz/releases/tag/continuous)
+[![UI](https://img.shields.io/badge/UI-English%20%7C%20Polish-555)](https://github.com/hdmain/tezeusz)
+[![Issues](https://img.shields.io/github/issues/hdmain/tezeusz)](https://github.com/hdmain/tezeusz/issues)
+
 A desktop app for discovering, downloading, and watching movies and TV shows - all in one place. No separate download client or media server required.
 
 Inspired by [Seerr](https://github.com/seerr-team/seerr) / Jellyseerr, built as a native Windows & Linux app.
@@ -58,6 +64,16 @@ Optional: enable **AI Lector** in Settings to generate a voice-over from subtitl
 - Prefer the **Windows setup** if you want automatic updates
 - Keep enough free disk space in the download folder
 - For the best lector overlay (quieter film audio under the narrator), install [ffmpeg](https://ffmpeg.org/) and put it on your PATH (or next to `seerr.exe`)
+
+## Contribute / contact
+
+Want to help build Seerr or talk about ideas? Reach out:
+
+- Open a [GitHub issue](https://github.com/hdmain/tezeusz/issues)
+- Message on [Session](https://getsession.org/):
+  `05bdeb20f6e6d20a31ae0e91d38df7089ea89c9fad05b00db471d6d49c7c160b47`
+
+  Or open chat directly: [sessionmessenger://DM?sessionID=05bdeb20f6e6d20a31ae0e91d38df7089ea89c9fad05b00db471d6d49c7c160b47](sessionmessenger://DM?sessionID=05bdeb20f6e6d20a31ae0e91d38df7089ea89c9fad05b00db471d6d49c7c160b47)
 
 ## Privacy & legal
 

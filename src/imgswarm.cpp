@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -46,6 +47,10 @@ std::atomic<bool> g_stop{true};
 std::unordered_map<std::string, lt::torrent_handle> g_seeds; // url -> handle
 std::deque<std::string> g_seedOrder;
 constexpr int kMaxSeeds = 48;
+
+// DHT mutable items (infohash hex) keyed by ed25519 public key bytes.
+// alertLoop is the sole pop_alerts consumer; tryFetch reads from here.
+std::map<std::array<char, 32>, std::string> g_dhtInfoHashes;
 
 // Per-seed upload tracking (estimate complete poster transfers to peers).
 struct SeedTrack {
@@ -235,6 +240,21 @@ std::shared_ptr<lt::torrent_info> makeTorrentInfo(const std::string& url, const 
     }
 }
 
+// Returns true if at least one usable mutable item was stored.
+bool ingestAlertsLocked(std::vector<lt::alert*> const& alerts) {
+    bool stored = false;
+    for (lt::alert* a : alerts) {
+        auto* m = lt::alert_cast<lt::dht_mutable_item_alert>(a);
+        if (!m) continue;
+        if (m->item.type() != lt::entry::string_t) continue;
+        std::string hex = m->item.string();
+        if (hex.size() != (size_t)lt::sha1_hash::size() * 2) continue;
+        g_dhtInfoHashes[m->key] = std::move(hex);
+        stored = true;
+    }
+    return stored;
+}
+
 void alertLoop() {
     while (!g_stop.load()) {
         lt::session* ses = nullptr;
@@ -247,15 +267,16 @@ void alertLoop() {
             continue;
         }
         ses->wait_for_alert(std::chrono::milliseconds(200));
-        std::vector<lt::alert*> alerts;
+        bool wokeWaiters = false;
         {
             std::lock_guard<std::mutex> lk(g_mu);
             if (!g_ses) continue;
+            std::vector<lt::alert*> alerts;
             g_ses->pop_alerts(&alerts);
+            wokeWaiters = ingestAlertsLocked(alerts);
         }
-        // alerts processed mainly for DHT liveness; waiters poll session state
-        (void)alerts;
-        g_cv.notify_all();
+        if (wokeWaiters)
+            g_cv.notify_all();
     }
 }
 
@@ -317,6 +338,7 @@ void shutdown() {
     g_seeds.clear();
     g_seedOrder.clear();
     g_seedTrack.clear();
+    g_dhtInfoHashes.clear();
     g_ses.reset();
 }
 
@@ -378,43 +400,26 @@ bool tryFetch(const std::string& url, const std::string& destPath, int timeoutMs
     bool gotHash = false;
 
     {
-        std::lock_guard<std::mutex> lk(g_mu);
+        std::unique_lock<std::mutex> lk(g_mu);
         if (!g_ses) return false;
+        // Drop cached value so we wait for a fresh DHT response (or a concurrent
+        // put that lands while we wait) instead of racing pop_alerts.
+        g_dhtInfoHashes.erase(pub.bytes);
         try {
             g_ses->dht_get_item(pub.bytes);
         } catch (...) {
             return false;
         }
-    }
 
-    // Poll DHT mutable item alerts
-    while (std::chrono::steady_clock::now() < deadline && !gotHash && !g_stop.load()) {
-        lt::session* ses = nullptr;
-        {
-            std::lock_guard<std::mutex> lk(g_mu);
-            ses = g_ses.get();
-        }
-        if (!ses) return false;
-        ses->wait_for_alert(std::chrono::milliseconds(80));
-        std::vector<lt::alert*> alerts;
-        {
-            std::lock_guard<std::mutex> lk(g_mu);
-            if (!g_ses) return false;
-            g_ses->pop_alerts(&alerts);
-            for (lt::alert* a : alerts) {
-                if (auto* m = lt::alert_cast<lt::dht_mutable_item_alert>(a)) {
-                    if (m->key != pub.bytes) continue;
-                    if (m->item.type() != lt::entry::string_t) continue;
-                    std::string hex = m->item.string();
-                    if (fromHex(hex, infoHash)) {
-                        gotHash = true;
-                        break;
-                    }
-                }
+        // alertLoop alone owns pop_alerts; wait on the shared DHT item cache.
+        while (!gotHash && !g_stop.load() && std::chrono::steady_clock::now() < deadline) {
+            auto it = g_dhtInfoHashes.find(pub.bytes);
+            if (it != g_dhtInfoHashes.end() && fromHex(it->second, infoHash)) {
+                gotHash = true;
+                break;
             }
+            g_cv.wait_until(lk, deadline);
         }
-        if (!gotHash)
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     if (!gotHash || g_stop.load()) return false;
 

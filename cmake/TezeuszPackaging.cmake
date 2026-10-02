@@ -2,62 +2,62 @@
 
 include(GNUInstallDirs)
 
-install(TARGETS seerr RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS tezeusz RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(FILES
     ${CMAKE_SOURCE_DIR}/vendor/logo_full.png
     ${CMAKE_SOURCE_DIR}/vendor/icon.png
     ${CMAKE_SOURCE_DIR}/vendor/poster_missing.png
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/seerr
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/tezeusz
 )
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/vendor/fonts/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/seerr/fonts
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/tezeusz/fonts
     FILES_MATCHING PATTERN "*.ttf"
 )
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/vendor/icons/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/seerr/icons
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/tezeusz/icons
     FILES_MATCHING PATTERN "*.svg"
 )
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/locales/
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/seerr/locales
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/tezeusz/locales
     FILES_MATCHING PATTERN "*.json"
 )
 
-install(FILES ${CMAKE_SOURCE_DIR}/packaging/seerr.desktop
+install(FILES ${CMAKE_SOURCE_DIR}/packaging/tezeusz.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
 
-# Pixmaps (legacy) + hicolor theme (GNOME/KDE/taskbar look up Icon=seerr here).
+# Pixmaps (legacy) + hicolor theme (GNOME/KDE/taskbar look up Icon=tezeusz here).
 install(FILES ${CMAKE_SOURCE_DIR}/vendor/icon.png
     DESTINATION ${CMAKE_INSTALL_DATADIR}/pixmaps
-    RENAME seerr.png
+    RENAME tezeusz.png
 )
 install(FILES ${CMAKE_SOURCE_DIR}/vendor/icon.png
     DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps
-    RENAME seerr.png
+    RENAME tezeusz.png
 )
 install(FILES ${CMAKE_SOURCE_DIR}/vendor/icon.png
     DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/48x48/apps
-    RENAME seerr.png
+    RENAME tezeusz.png
 )
 install(FILES ${CMAKE_SOURCE_DIR}/vendor/icon.png
     DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps
-    RENAME seerr.png
+    RENAME tezeusz.png
 )
 install(FILES ${CMAKE_SOURCE_DIR}/vendor/icon.png
     DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/16x16/apps
-    RENAME seerr.png
+    RENAME tezeusz.png
 )
 
-set(CPACK_PACKAGE_NAME "seerr")
+set(CPACK_PACKAGE_NAME "tezeusz")
 set(CPACK_PACKAGE_VENDOR "tezeusz")
 set(CPACK_PACKAGE_CONTACT "tezeusz <noreply@users.noreply.github.com>")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Seerr-style media discovery and download desktop app")
-set(CPACK_PACKAGE_DESCRIPTION "Desktop Jellyseerr/Seerr-style media discovery app (ImGui + GLFW) with a built-in torrent download stack.")
-set(CPACK_PACKAGE_VERSION "${SEERR_VERSION}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Tezeusz-style media discovery and download desktop app")
+set(CPACK_PACKAGE_DESCRIPTION "Desktop Tezeusz media discovery app (ImGui + GLFW) with a built-in torrent download stack.")
+set(CPACK_PACKAGE_VERSION "${TEZEUSZ_VERSION}")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/hdmain/tezeusz")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/README.md")
 set(CPACK_GENERATOR "DEB")

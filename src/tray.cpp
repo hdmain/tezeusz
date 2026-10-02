@@ -167,7 +167,7 @@ bool platformInit() {
     g_nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     g_nid.uCallbackMessage = WM_TRAY;
     g_nid.hIcon = g_hicon;
-    lstrcpynW(g_nid.szTip, L"Seerr", 128);
+    lstrcpynW(g_nid.szTip, L"Tezeusz", 128);
     if (!Shell_NotifyIconW(NIM_ADD, &g_nid)) return false;
     g_nid.uVersion = NOTIFYICON_VERSION_4;
     Shell_NotifyIconW(NIM_SETVERSION, &g_nid);
@@ -442,10 +442,10 @@ void replyGetAllSni(DBusMessage* msg) {
     d.message_iter_init_append(r, &root);
     d.message_iter_open_container(&root, DBUS_TYPE_ARRAY, "{sv}", &arr);
     appendVariantString(&arr, "Category", "ApplicationStatus");
-    appendVariantString(&arr, "Id", "seerr");
-    appendVariantString(&arr, "Title", "Seerr");
+    appendVariantString(&arr, "Id", "tezeusz");
+    appendVariantString(&arr, "Title", "Tezeusz");
     appendVariantString(&arr, "Status", "Active");
-    appendVariantString(&arr, "IconName", "seerr");
+    appendVariantString(&arr, "IconName", "tezeusz");
     const char* menuPath = g_menuPath.c_str();
     {
         DBusMessageIter entry, var;
@@ -642,7 +642,7 @@ bool platformInit() {
 
     if (!registerWithWatcher()) {
         // Still keep the item exported - some hosts discover by name.
-        std::fprintf(stderr, "seerr: StatusNotifierWatcher register failed (tray may be hidden)\n");
+        std::fprintf(stderr, "tezeusz: StatusNotifierWatcher register failed (tray may be hidden)\n");
     }
     d.connection_flush(g_conn);
     return true;
@@ -683,7 +683,7 @@ bool init(GLFWwindow* win, const std::string& iconPngPath) {
         loadIconRgba(iconPngPath);
     g_ok = platformInit();
     if (!g_ok)
-        std::fprintf(stderr, "seerr: system tray unavailable\n");
+        std::fprintf(stderr, "tezeusz: system tray unavailable\n");
     return g_ok;
 }
 

@@ -21,7 +21,7 @@ struct App {
 
     GenreSel genre;
 
-    // search (Seerr-style: live query + type filter chips)
+    // search (Tezeusz-style: live query + type filter chips)
     std::string searchInput;
     std::string lastQuery;
     SearchFilter searchFilter = SearchFilter::All;
@@ -58,7 +58,7 @@ struct App {
 
 App& app();
 
-// TMDB api key config (config.json next to exe / in %APPDATA%\SeerrCpp, field "tmdb_api_key";
+// TMDB api key config (config.json next to exe / in %APPDATA%\Tezeusz, field "tmdb_api_key";
 // env var TMDB_API_KEY also honored). Content language follows UI (stack.json uiLanguage);
 // missing localized fields fall back to English.
 namespace cfg {

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN="${SEERR_BIN:-$ROOT/build/seerr}"
+BIN="${TEZEUSZ_BIN:-$ROOT/build/tezeusz}"
 
 if [[ ! -x "$BIN" ]]; then
   echo "Binary not found: $BIN" >&2
@@ -19,9 +19,9 @@ fi
 
 if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
   echo "No DISPLAY/WAYLAND_DISPLAY - starting under xvfb-run" >&2
-  exec env SEERR_DISABLE_IMGSWARM="${SEERR_DISABLE_IMGSWARM:-1}" \
+  exec env TEZEUSZ_DISABLE_IMGSWARM="${TEZEUSZ_DISABLE_IMGSWARM:-1}" \
     xvfb-run -a "$BIN" "$@"
 fi
 
-# Optional: SEERR_DISABLE_IMGSWARM=1 skips libtorrent DHT at startup.
+# Optional: TEZEUSZ_DISABLE_IMGSWARM=1 skips libtorrent DHT at startup.
 exec "$BIN" "$@"

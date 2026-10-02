@@ -60,8 +60,8 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DSEERR_BUNDLED_DEPS=OFF \
-            -DSEERR_VERSION="${{ steps.ver.outputs.version }}"
+            -DTEZEUSZ_BUNDLED_DEPS=OFF \
+            -DTEZEUSZ_VERSION="${{ steps.ver.outputs.version }}"
 
       - name: Build
         run: cmake --build build --config Release
@@ -70,59 +70,59 @@ jobs:
         run: |
           set -euo pipefail
           VER="${{ steps.ver.outputs.version }}"
-          bash packaging/make-windows-portable.sh build/seerr.exe "build/seerr-portable" "$VER"
-          # Same tree as portable - install under %LOCALAPPDATA%\Programs\Seerr
+          bash packaging/make-windows-portable.sh build/tezeusz.exe "build/tezeusz-portable" "$VER"
+          # Same tree as portable - install under %LOCALAPPDATA%\Programs\Tezeusz
           # so the folder stays writable and in-app auto-update keeps working.
           bash packaging/make-windows-setup.sh \
-            build/seerr-portable \
-            "build/seerr-windows-setup.exe" \
+            build/tezeusz-portable \
+            "build/tezeusz-windows-setup.exe" \
             "$VER"
-          test -f build/seerr-windows-setup.exe
-          bash packaging/make-update-manifest.sh build/seerr-portable windows-x64 "$VER" build/update-windows
+          test -f build/tezeusz-windows-setup.exe
+          bash packaging/make-update-manifest.sh build/tezeusz-portable windows-x64 "$VER" build/update-windows
           # Auto-update must be able to find the Windows binary + libVLC core.
           MAN=build/update-windows/update-manifest-windows-x64.json
           test -f "$MAN"
           grep -q '"platform": "windows-x64"' "$MAN"
-          grep -q '"path": "seerr.exe"' "$MAN"
+          grep -q '"path": "tezeusz.exe"' "$MAN"
           grep -q 'libvlc/libvlc.dll' "$MAN"
-          test -f build/seerr-portable/seerr.exe
-          test -f build/seerr-portable/libvlc/libvlc.dll
-          test -d build/seerr-portable/libvlc/plugins
+          test -f build/tezeusz-portable/tezeusz.exe
+          test -f build/tezeusz-portable/libvlc/libvlc.dll
+          test -d build/tezeusz-portable/libvlc/plugins
           (
             cd build
-            rm -f "seerr-windows-portable-${VER}.zip"
-            zip -r "seerr-windows-portable-${VER}.zip" seerr-portable
-            rm -f "seerr-update-windows-${VER}.zip"
-            zip -r "seerr-update-windows-${VER}.zip" update-windows
+            rm -f "tezeusz-windows-portable-${VER}.zip"
+            zip -r "tezeusz-windows-portable-${VER}.zip" tezeusz-portable
+            rm -f "tezeusz-update-windows-${VER}.zip"
+            zip -r "tezeusz-update-windows-${VER}.zip" update-windows
             # Stable + versioned setup names for the release page
-            cp -f seerr-windows-setup.exe "seerr-windows-setup-${VER}.exe"
-            ls -lah "seerr-windows-portable-${VER}.zip" \
-                    "seerr-update-windows-${VER}.zip" \
-                    seerr-windows-setup.exe \
-                    "seerr-windows-setup-${VER}.exe"
+            cp -f tezeusz-windows-setup.exe "tezeusz-windows-setup-${VER}.exe"
+            ls -lah "tezeusz-windows-portable-${VER}.zip" \
+                    "tezeusz-update-windows-${VER}.zip" \
+                    tezeusz-windows-setup.exe \
+                    "tezeusz-windows-setup-${VER}.exe"
           )
 
       - name: Upload portable zip
         uses: actions/upload-artifact@v4
         with:
-          name: seerr-windows-portable
-          path: build/seerr-windows-portable-*.zip
+          name: tezeusz-windows-portable
+          path: build/tezeusz-windows-portable-*.zip
           if-no-files-found: error
 
       - name: Upload Windows setup
         uses: actions/upload-artifact@v4
         with:
-          name: seerr-windows-setup
+          name: tezeusz-windows-setup
           path: |
-            build/seerr-windows-setup.exe
-            build/seerr-windows-setup-*.exe
+            build/tezeusz-windows-setup.exe
+            build/tezeusz-windows-setup-*.exe
           if-no-files-found: error
 
       - name: Upload update pack
         uses: actions/upload-artifact@v4
         with:
-          name: seerr-update-windows
-          path: build/seerr-update-windows-*.zip
+          name: tezeusz-update-windows
+          path: build/tezeusz-update-windows-*.zip
           if-no-files-found: error
 
   linux:
@@ -156,8 +156,8 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DSEERR_BUNDLED_DEPS=OFF \
-            -DSEERR_VERSION="${{ steps.ver.outputs.version }}" \
+            -DTEZEUSZ_BUNDLED_DEPS=OFF \
+            -DTEZEUSZ_VERSION="${{ steps.ver.outputs.version }}" \
             -DCMAKE_INSTALL_PREFIX=/usr
 
       - name: Build
@@ -175,11 +175,11 @@ jobs:
         run: |
           set -euo pipefail
           VER="${{ steps.ver.outputs.version }}"
-          OUT=build/seerr-linux-portable
+          OUT=build/tezeusz-linux-portable
           rm -rf "$OUT"
           mkdir -p "$OUT/fonts" "$OUT/icons" "$OUT/locales"
-          cp -f build/seerr "$OUT/seerr"
-          chmod +x "$OUT/seerr"
+          cp -f build/tezeusz "$OUT/tezeusz"
+          chmod +x "$OUT/tezeusz"
           cp -f vendor/logo_full.png vendor/icon.png vendor/poster_missing.png "$OUT/"
           cp -f vendor/fonts/*.ttf "$OUT/fonts/" 2>/dev/null || true
           cp -f vendor/icons/*.svg "$OUT/icons/" 2>/dev/null || true
@@ -187,39 +187,39 @@ jobs:
           bash packaging/make-update-manifest.sh "$OUT" linux-x64 "$VER" build/update-linux
           (
             cd build
-            rm -f "seerr-linux-portable-${VER}.zip"
-            zip -r "seerr-linux-portable-${VER}.zip" seerr-linux-portable
-            rm -f "seerr-update-linux-${VER}.zip"
-            zip -r "seerr-update-linux-${VER}.zip" update-linux
-            ls -lah "seerr-linux-portable-${VER}.zip" "seerr-update-linux-${VER}.zip"
+            rm -f "tezeusz-linux-portable-${VER}.zip"
+            zip -r "tezeusz-linux-portable-${VER}.zip" tezeusz-linux-portable
+            rm -f "tezeusz-update-linux-${VER}.zip"
+            zip -r "tezeusz-update-linux-${VER}.zip" update-linux
+            ls -lah "tezeusz-linux-portable-${VER}.zip" "tezeusz-update-linux-${VER}.zip"
           )
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: seerr-linux
-          path: build/seerr
+          name: tezeusz-linux
+          path: build/tezeusz
           if-no-files-found: error
 
       - name: Upload .deb
         uses: actions/upload-artifact@v4
         with:
-          name: seerr-deb
+          name: tezeusz-deb
           path: build/*.deb
           if-no-files-found: error
 
       - name: Upload linux portable zip
         uses: actions/upload-artifact@v4
         with:
-          name: seerr-linux-portable
-          path: build/seerr-linux-portable-*.zip
+          name: tezeusz-linux-portable
+          path: build/tezeusz-linux-portable-*.zip
           if-no-files-found: error
 
       - name: Upload linux update pack
         uses: actions/upload-artifact@v4
         with:
-          name: seerr-update-linux
-          path: build/seerr-update-linux-*.zip
+          name: tezeusz-update-linux
+          path: build/tezeusz-update-linux-*.zip
           if-no-files-found: error
 
       - name: Smoke-test .deb
@@ -227,23 +227,23 @@ jobs:
           set -euo pipefail
           DEB=$(ls build/*.deb | head -n1)
           sudo apt-get install -y "./$DEB"
-          command -v seerr
-          ldd "$(command -v seerr)"
-          test -f /usr/share/seerr/logo_full.png
-          test -f /usr/share/seerr/fonts/Inter-Regular.ttf
-          test -f /usr/share/seerr/locales/en.json
-          test -f /usr/share/applications/seerr.desktop
-          test -f /usr/share/pixmaps/seerr.png
-          test -f /usr/share/icons/hicolor/128x128/apps/seerr.png
-          grep -q 'StartupWMClass=seerr' /usr/share/applications/seerr.desktop
+          command -v tezeusz
+          ldd "$(command -v tezeusz)"
+          test -f /usr/share/tezeusz/logo_full.png
+          test -f /usr/share/tezeusz/fonts/Inter-Regular.ttf
+          test -f /usr/share/tezeusz/locales/en.json
+          test -f /usr/share/applications/tezeusz.desktop
+          test -f /usr/share/pixmaps/tezeusz.png
+          test -f /usr/share/icons/hicolor/128x128/apps/tezeusz.png
+          grep -q 'StartupWMClass=tezeusz' /usr/share/applications/tezeusz.desktop
           # Headless runners often lack a usable GL stack; don't fail the job if
           # the GUI process dies under xvfb - packaging itself is already verified.
           set +e
-          SEERR_DISABLE_UPDATE=1 SEERR_DISABLE_IMGSWARM=1 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a timeout 8s seerr 2>seerr-xvfb.log
+          TEZEUSZ_DISABLE_UPDATE=1 TEZEUSZ_DISABLE_IMGSWARM=1 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a timeout 8s tezeusz 2>tezeusz-xvfb.log
           rc=$?
           set -e
-          echo "xvfb seerr exit code: $rc"
-          sed -n '1,40p' seerr-xvfb.log || true
+          echo "xvfb tezeusz exit code: $rc"
+          sed -n '1,40p' tezeusz-xvfb.log || true
           if [ "$rc" -eq 124 ] || [ "$rc" -eq 0 ]; then
             echo "GUI smoke OK"
           else
@@ -270,30 +270,30 @@ jobs:
           VER="${{ needs.linux.outputs.version }}"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           mkdir -p release
-          find dist -type f \( -name '*.zip' -o -name '*.deb' -o -name '*.exe' -o -name 'seerr' \) -print
+          find dist -type f \( -name '*.zip' -o -name '*.deb' -o -name '*.exe' -o -name 'tezeusz' \) -print
           # Windows setup.exe (preferred - per-user install, auto-updates without elevation)
-          test -f dist/seerr-windows-setup/seerr-windows-setup.exe
-          cp -f dist/seerr-windows-setup/seerr-windows-setup.exe release/
-          cp -f dist/seerr-windows-setup/seerr-windows-setup-*.exe release/ 2>/dev/null || true
+          test -f dist/tezeusz-windows-setup/tezeusz-windows-setup.exe
+          cp -f dist/tezeusz-windows-setup/tezeusz-windows-setup.exe release/
+          cp -f dist/tezeusz-windows-setup/tezeusz-windows-setup-*.exe release/ 2>/dev/null || true
           # Portable Windows zip (same auto-update channel)
-          test -n "$(ls -A dist/seerr-windows-portable/*.zip 2>/dev/null)"
-          cp -f dist/seerr-windows-portable/*.zip release/
+          test -n "$(ls -A dist/tezeusz-windows-portable/*.zip 2>/dev/null)"
+          cp -f dist/tezeusz-windows-portable/*.zip release/
           # Linux portable zip (self-updating layout)
-          test -n "$(ls -A dist/seerr-linux-portable/*.zip 2>/dev/null)"
-          cp -f dist/seerr-linux-portable/*.zip release/
+          test -n "$(ls -A dist/tezeusz-linux-portable/*.zip 2>/dev/null)"
+          cp -f dist/tezeusz-linux-portable/*.zip release/
           # Debian package
-          test -n "$(ls -A dist/seerr-deb/*.deb 2>/dev/null)"
-          cp -f dist/seerr-deb/*.deb release/
+          test -n "$(ls -A dist/tezeusz-deb/*.deb 2>/dev/null)"
+          cp -f dist/tezeusz-deb/*.deb release/
           # Linux ELF binary (rename with version)
-          if [[ -f dist/seerr-linux/seerr ]]; then
-            cp -f dist/seerr-linux/seerr "release/seerr-linux-amd64-${VER}"
-            chmod +x "release/seerr-linux-amd64-${VER}"
+          if [[ -f dist/tezeusz-linux/tezeusz ]]; then
+            cp -f dist/tezeusz-linux/tezeusz "release/tezeusz-linux-amd64-${VER}"
+            chmod +x "release/tezeusz-linux-amd64-${VER}"
           fi
           # Unpack update packs for differential publish (required)
           mkdir -p update-publish
-          test -n "$(ls -A dist/seerr-update-windows/*.zip 2>/dev/null)"
-          test -n "$(ls -A dist/seerr-update-linux/*.zip 2>/dev/null)"
-          for z in dist/seerr-update-windows/*.zip dist/seerr-update-linux/*.zip; do
+          test -n "$(ls -A dist/tezeusz-update-windows/*.zip 2>/dev/null)"
+          test -n "$(ls -A dist/tezeusz-update-linux/*.zip 2>/dev/null)"
+          for z in dist/tezeusz-update-windows/*.zip dist/tezeusz-update-linux/*.zip; do
             unzip -q -o "$z" -d update-publish
           done
           test -f update-publish/update-windows/update-manifest-windows-x64.json
@@ -301,7 +301,7 @@ jobs:
           ls -lah release
           ls -lah update-publish
           test -n "$(ls -A release)"
-          test -f release/seerr-windows-setup.exe
+          test -f release/tezeusz-windows-setup.exe
 
       - name: Publish continuous release
         env:
@@ -310,20 +310,20 @@ jobs:
         run: |
           set -euo pipefail
           NOTES="$(cat <<EOF
-          ## Seerr ${VER}
+          ## Tezeusz ${VER}
 
           Automated build from \`main\` (\`${GITHUB_SHA:0:7}\`).
 
           ### Downloads
-          - **Windows setup** - \`seerr-windows-setup.exe\` (installs to \`%LOCALAPPDATA%\\Programs\\Seerr\`, auto-updates in the background)
-          - **Windows portable** - unzip and run \`seerr.exe\` (same auto-update channel)
-          - **Linux portable** - unzip and run \`./seerr\` (auto-updates when folder is writable)
-          - **Linux .deb** - \`sudo apt install ./seerr_*.deb\` (system install; auto-updates via pkexec permission prompt)
+          - **Windows setup** - \`tezeusz-windows-setup.exe\` (installs to \`%LOCALAPPDATA%\\Programs\\Tezeusz\`, auto-updates in the background)
+          - **Windows portable** - unzip and run \`tezeusz.exe\` (same auto-update channel)
+          - **Linux portable** - unzip and run \`./tezeusz\` (auto-updates when folder is writable)
+          - **Linux .deb** - \`sudo apt install ./tezeusz_*.deb\` (system install; auto-updates via pkexec permission prompt)
           - **Linux binary** - raw ELF (needs system GLFW/CURL/libtorrent)
 
           Updates download **only changed files** (SHA-256) from the \`continuous\` channel and restart automatically.
           The Windows installer uses a per-user folder so updates never need elevation.
-          On Linux system installs Seerr asks for admin permission before writing to \`/usr\`.
+          On Linux system installs Tezeusz asks for admin permission before writing to \`/usr\`.
           EOF
           )"
           if gh release view continuous >/dev/null 2>&1; then
@@ -346,7 +346,7 @@ jobs:
             gh release upload "$TAG" release/* --clobber
           else
             gh release create "$TAG" release/* \
-              --title "Seerr ${VER}" \
+              --title "Tezeusz ${VER}" \
               --notes "$NOTES" \
               --latest=true
           fi

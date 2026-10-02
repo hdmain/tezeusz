@@ -257,7 +257,7 @@ void ImageCache::workerLoop() {
                 fromDisk = false;
                 bytes.clear();
             } else {
-                // Already cached - share with other Seerr peers (HTTP remains primary for new fetches)
+                // Already cached - share with other Tezeusz peers (HTTP remains primary for new fetches)
                 imgswarm::offer(item.url, path);
             }
         }

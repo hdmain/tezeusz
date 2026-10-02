@@ -53,7 +53,7 @@ std::string toUtf8(const std::string& bytes);
 bool ensureUtf8File(const std::string& path);
 std::string exeDir();
 
-// Shared data root (fonts, icons, images). Resolves installed /usr/share/seerr
+// Shared data root (fonts, icons, images). Resolves installed /usr/share/tezeusz
 // as well as the compile-time APP_ASSET_DIR used for local builds.
 std::string assetDir();
 // Translation JSON directory (…/locales).

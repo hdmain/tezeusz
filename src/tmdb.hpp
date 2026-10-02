@@ -7,7 +7,7 @@
 
 using json = nlohmann::json;
 
-// ---------------- Data model (mirrors seerr's TMDB interfaces) ----------------
+// ---------------- Data model (mirrors tezeusz's TMDB interfaces) ----------------
 
 enum class MediaType { Movie, TV, Person };
 const char* mediaTypeName(MediaType t);
@@ -46,7 +46,7 @@ struct MediaItem {
     // tv extras
     int numberOfSeasons = 0, numberOfEpisodes = 0;
     std::string status;
-    // person extras (Seerr search)
+    // person extras (Tezeusz search)
     std::string knownForDepartment;
     // Cached w300 poster URL (built once) - avoids string alloc every frame per card
     mutable std::string posterUrl300;
@@ -113,13 +113,13 @@ struct AsyncReq {
     T take() { return fut.get(); }
 };
 
-// ---------------- TMDB client (same endpoints seerr uses) ----------------
+// ---------------- TMDB client (same endpoints tezeusz uses) ----------------
 
 class Tmdb {
 public:
     static const char* BASE;      // api.themoviedb.org/3
     static const char* IMAGES;    // image.tmdb.org
-    static const std::string& key(); // from config.json / TMDB_API_KEY env, else public seerr key
+    static const std::string& key(); // from config.json / TMDB_API_KEY env, else public tezeusz key
 
     static std::string img(const std::string& size, const std::string& path);
 
@@ -127,7 +127,7 @@ public:
     static AsyncReq<PagedResult> trending(const std::string& media, const std::string& window = "week");
     static AsyncReq<PagedResult> discover(int page, const std::map<std::string, std::string>& params);
     static AsyncReq<PagedResult> searchMulti(const std::string& query, int page = 1);
-    // Seerr-style search: All → /search/multi, or movie/tv/person endpoints
+    // Tezeusz-style search: All → /search/multi, or movie/tv/person endpoints
     static AsyncReq<PagedResult> search(const std::string& query, int page = 1,
                                         SearchFilter filter = SearchFilter::All);
     static AsyncReq<PagedResult> movieList(const std::string& endpoint); // popular/upcoming/now_playing/top_rated

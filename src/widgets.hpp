@@ -41,7 +41,7 @@ void plus(ImDrawList* dl, ImVec2 ctr, float s, ImU32 col);
 void calendar(ImDrawList* dl, ImVec2 ctr, float s, ImU32 col);
 void globe(ImDrawList* dl, ImVec2 ctr, float s, ImU32 col);
 void eye(ImDrawList* dl, ImVec2 ctr, float s, ImU32 col);
-// Animated spinner (matches ref/seerr spinner.svg)
+// Animated spinner (matches ref/tezeusz spinner.svg)
 void spinner(ImDrawList* dl, ImVec2 ctr, float s, ImU32 col);
 }
 
@@ -80,7 +80,7 @@ bool button(ImDrawList* dl, const char* id, ImVec2 min, ImVec2 max, const std::s
 bool iconButton(ImDrawList* dl, const char* id, ImVec2 min, ImVec2 max, void (*icon)(ImDrawList*, ImVec2, float, ImU32),
                 ImU32 bg, ImU32 bgHover, ImU32 border, ImU32 col, bool round = false);
 
-// full title card as in Seerr (w x h poster, hover overlay, request button).
+// full title card as in Tezeusz (w x h poster, hover overlay, request button).
 // mediaStatus: 0 unknown, 1 pending, 2 processing, 3 available (for badge colors)
 // Returns: 0 none, 1 card clicked (open details), 2 request clicked, 3 watchlist toggled
 int titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool watchlisted, int mediaStatus,

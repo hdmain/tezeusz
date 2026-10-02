@@ -79,7 +79,7 @@ Snap cfgSnap() {
 }
 
 constexpr const char* kApiBase = "https://api.opensubtitles.com/api/v1";
-constexpr const char* kUserAgent = "SeerrCpp v1.0";
+constexpr const char* kUserAgent = "Tezeusz v1.0";
 
 bool isVideoExt(const fs::path& p) {
     auto e = util::lower(p.extension().string());
@@ -316,7 +316,7 @@ bool tryTheSubDb(const Job& job, const std::string& lang) {
     if (util::lower(lang) != "en") return false;
     std::string h = theSubDbHash(job.videoPath);
     if (h.empty()) return false;
-    std::string ua = "SubDB/1.0 (SeerrCpp/1.0; https://github.com/)";
+    std::string ua = "SubDB/1.0 (Tezeusz/1.0; https://github.com/)";
     std::string q = std::string("action=search&hash=") + h;
     auto r = http::get("http://api.thesubdb.com/?" + q, "text/plain", "User-Agent: " + ua + "\r\n");
     if (r.status == 404) return false;

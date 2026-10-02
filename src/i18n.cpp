@@ -85,7 +85,7 @@ void seedEnglish() {
     g_en["search.title"] = "Search";
     g_en["search.results_title"] = "Search results";
     g_en["search.empty_title"] = "Type a movie, TV show, or person name…";
-    g_en["search.empty_sub"] = "Results appear as you type - like Seerr / Jellyseerr.";
+    g_en["search.empty_sub"] = "Results appear as you type - like Jellyseerr.";
     g_en["search.results"] = "results";
     g_en["search.error"] = "error";
     g_en["search.no_results"] = "No results. Try a different query or filter.";
@@ -140,11 +140,11 @@ void seedEnglish() {
     // Stub / blocklist / issues / users
     g_en["stub.not_wired"] = "This section is not wired to the local stack yet.";
     g_en["blocklist.title"] = "Blocklist";
-    g_en["blocklist.sub"] = "Manage blocked titles (like in Seerr).";
+    g_en["blocklist.sub"] = "Manage blocked titles (like in Tezeusz).";
     g_en["blocklist.empty"] = "No blocked titles. Use “Block” on a details page.";
     g_en["blocklist.blocked"] = "Blocked";
     g_en["issues.title"] = "Issues";
-    g_en["issues.sub"] = "Media issue reports (like in Seerr).";
+    g_en["issues.sub"] = "Media issue reports (like in Tezeusz).";
     g_en["issues.empty"] = "No issues. Report them from a movie/TV details page.";
     g_en["issues.open"] = "Open";
     g_en["issues.resolved"] = "Resolved";
@@ -214,7 +214,7 @@ void seedEnglish() {
     g_en["library.export_manifest_failed"] = "Could not write export metadata";
     g_en["library.import"] = "Import ZIP";
     g_en["library.import_hint"] =
-        "Choose a ZIP exported from another Seerr - unpacked into your library without downloading.";
+        "Choose a ZIP exported from another Tezeusz - unpacked into your library without downloading.";
     g_en["library.import_working"] = "Importing…";
     g_en["library.import_done"] = "Imported:";
     g_en["library.import_failed"] = "Import failed";
@@ -267,8 +267,8 @@ void seedEnglish() {
         "Top-right overlay: FPS, frame time, worker jobs, torrent peers, vsync/cap.";
     g_en["settings.image_p2p"] = "Poster P2P swarm";
     g_en["settings.image_p2p_hint"] =
-        "Share/fetch poster images over BitTorrent DHT between Seerr clients. Disable if you only "
-        "want plain HTTP downloads (or set SEERR_DISABLE_IMGSWARM=1).";
+        "Share/fetch poster images over BitTorrent DHT between Tezeusz clients. Disable if you only "
+        "want plain HTTP downloads (or set TEZEUSZ_DISABLE_IMGSWARM=1).";
     g_en["settings.image_fetch_priority"] = "Poster download priority";
     g_en["settings.image_fetch_http_first"] = "HTTP first, then P2P";
     g_en["settings.image_fetch_p2p_first"] = "P2P first, then HTTP";
@@ -276,7 +276,7 @@ void seedEnglish() {
         "Which source to try first for missing posters. The other is used as fallback.";
     g_en["settings.image_p2p_sent"] = "Posters sent to others:";
     g_en["settings.image_p2p_sent_hint"] =
-        "How many full posters this app has uploaded to other Seerr peers (lifetime).";
+        "How many full posters this app has uploaded to other Tezeusz peers (lifetime).";
     g_en["settings.image_p2p_sent_detail"] =
         "This session: %llu sent · %llu offered · seeding %d now · %.2f MB uploaded";
     g_en["settings.diagnostics"] = "Diagnostics";
@@ -296,7 +296,7 @@ void seedEnglish() {
         "(HDD-friendly cache).";
     g_en["settings.save_disk"] = "Save movies on disk";
     g_en["settings.save_disk_hint"] =
-        "Picks Seerr/Movies and Seerr/TV on that volume. Your old folders stay visible in the library.";
+        "Picks Tezeusz/Movies and Tezeusz/TV on that volume. Your old folders stay visible in the library.";
     g_en["settings.no_disks"] = "No disks detected";
     g_en["settings.extra_libraries"] = "Also scanning (previous disks)";
     g_en["settings.extra_libraries_hint"] =
@@ -308,7 +308,7 @@ void seedEnglish() {
         "After import, staging files are deleted. Older cache folders are pruned when this limit is "
         "exceeded. Put this folder on an SSD when the library is on HDD.";
     g_en["settings.cache_unlimited"] = "0 = keep staging forever (no auto prune)";
-    g_en["settings.save_hint"] = "Config file: %APPDATA%\\SeerrCpp\\stack.json (Linux: ~/.local/share/SeerrCpp).";
+    g_en["settings.save_hint"] = "Config file: %APPDATA%\\Tezeusz\\stack.json (Linux: ~/.local/share/Tezeusz).";
     g_en["settings.saved_toast"] = "Saved to disk";
     g_en["settings.ui_language"] = "UI language";
     g_en["settings.movies_path"] = "Movies folder";
@@ -319,7 +319,7 @@ void seedEnglish() {
         "When off, requests stay queued until you start them from Requests.";
     g_en["settings.auto_update"] = "Download app updates automatically";
     g_en["settings.auto_update_hint"] =
-        "When off, Seerr will not check or install updates in the background. You can still check "
+        "When off, Tezeusz will not check or install updates in the background. You can still check "
         "manually. System (.deb) installs will ask for permission before applying an update.";
     g_en["settings.min_seeders"] = "Minimum seeders";
     g_en["settings.default_quality"] = "Default quality";
@@ -406,7 +406,7 @@ void seedEnglish() {
     g_en["update.downloading"] = "Downloading update";
     g_en["update.ready"] = "Update ready - restarting…";
     g_en["update.ready_permission"] =
-        "Update ready - you'll be asked for permission, then Seerr restarts…";
+        "Update ready - you'll be asked for permission, then Tezeusz restarts…";
     g_en["update.applying"] = "Applying update…";
     g_en["update.requesting_permission"] = "Requesting permission to install update…";
     g_en["update.permission_denied"] = "Permission denied - update not installed";
@@ -533,16 +533,16 @@ void seedEnglish() {
     g_en["player.hide_stats"] = "Hide Stats for nerds";
     g_en["player.shortcuts"] =
         "Space pause | ←/→ ±10s | F fullscreen | M mute | C subtitles | ` / Ctrl+Shift+I stats | Esc";
-    g_en["player.no_vlc"] = "libVLC not found - install VLC or place libvlc next to seerr.exe";
+    g_en["player.no_vlc"] = "libVLC not found - install VLC or place libvlc next to tezeusz.exe";
     g_en["player.vlc_load_failed"] = "Failed to load libVLC";
     g_en["yt.connecting"] = "Connecting to YouTube…";
     g_en["yt.loading"] = "Loading trailer…";
     g_en["yt.goto_youtube"] = "Go to YouTube";
-    g_en["yt.window_title"] = "Trailer - Seerr";
+    g_en["yt.window_title"] = "Trailer - Tezeusz";
     g_en["yt.vlc_fail"] = "VLC failed to play trailer";
     g_en["yt.timeout"] = "Trailer load timeout";
     g_en["quit.closing"] = "Shutting down…";
-    g_en["quit.title"] = "Shutting down Seerr…";
+    g_en["quit.title"] = "Shutting down Tezeusz…";
     g_en["quit.ui"] = "Releasing icons and UI…";
     g_en["quit.torrents"] = "Stopping torrent downloads…";
     g_en["quit.subs"] = "Stopping subtitles…";
@@ -550,9 +550,9 @@ void seedEnglish() {
     g_en["quit.cache"] = "Closing image cache and P2P…";
     g_en["quit.finishing"] = "Finishing…";
     g_en["quit.error"] = "Error while shutting down…";
-    g_en["tray.show"] = "Show Seerr";
+    g_en["tray.show"] = "Show Tezeusz";
     g_en["tray.quit"] = "Quit";
-    g_en["tray.tip"] = "Seerr";
+    g_en["tray.tip"] = "Tezeusz";
 
     // Torrent
     g_en["torrent.empty_magnet"] = "Empty magnet";

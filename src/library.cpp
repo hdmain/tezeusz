@@ -459,7 +459,7 @@ std::string exportItem(const Item& item, std::string* err) {
     fs::create_directories(exportRoot, ec);
 
     json manifest{
-        {"seerrExportVersion", 1},
+        {"tezeuszExportVersion", 1},
         {"title", item.title},
         {"originalTitle", originalTitle},
         {"year", item.year},
@@ -471,12 +471,12 @@ std::string exportItem(const Item& item, std::string* err) {
 
     // Write manifest outside the title folder (some libraries are read-only /
     // OneDrive-locked) and inject it into the ZIP as an extra entry.
-    fs::path manifestPath = exportRoot / (zipName + ".seerr-meta.tmp");
+    fs::path manifestPath = exportRoot / (zipName + ".tezeusz-meta.tmp");
     {
         std::ofstream mf(manifestPath, std::ios::binary | std::ios::trunc);
         if (!mf) {
             // Fallback to system temp if Exports isn't writable either.
-            manifestPath = fs::temp_directory_path(ec) / ("seerr-export-" + zipName + ".json");
+            manifestPath = fs::temp_directory_path(ec) / ("tezeusz-export-" + zipName + ".json");
             mf.open(manifestPath, std::ios::binary | std::ios::trunc);
             if (!mf) {
                 if (err) *err = i18n::tr("library.export_manifest_failed");
@@ -493,7 +493,7 @@ std::string exportItem(const Item& item, std::string* err) {
     }
 
     std::vector<zipwrite::ExtraFile> extras = {
-        { manifestPath, "seerr-export.json" }
+        { manifestPath, "tezeusz-export.json" }
     };
     std::string zipErr;
     const bool ok = zipwrite::zipDirectory(titleDir, zipPath, &zipErr, &extras);
@@ -512,7 +512,7 @@ std::string importExportZip(const std::string& zipPath, std::string* err) {
         return {};
     }
 
-    fs::path staging = fs::temp_directory_path(ec) / ("seerr-import-" + std::to_string(
+    fs::path staging = fs::temp_directory_path(ec) / ("tezeusz-import-" + std::to_string(
         (unsigned long long)std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directories(staging, ec);
 
@@ -524,7 +524,9 @@ std::string importExportZip(const std::string& zipPath, std::string* err) {
     }
 
     json manifest = json::object();
-    fs::path manifestPath = staging / "seerr-export.json";
+    fs::path manifestPath = staging / "tezeusz-export.json";
+    if (!fs::exists(manifestPath, ec))
+        manifestPath = staging / "seerr-export.json"; // older exports
     if (fs::exists(manifestPath, ec)) {
         try {
             std::ifstream mf(manifestPath.string(), std::ios::binary);
@@ -547,7 +549,7 @@ std::string importExportZip(const std::string& zipPath, std::string* err) {
         folderName = fs::path(zipPath).stem().string();
         for (auto& ent : fs::directory_iterator(staging, ec)) {
             if (ent.is_directory(ec) && ent.path().filename() != "." &&
-                ent.path().filename().string() != "seerr-export.json") {
+                ent.path().filename().string() != "tezeusz-export.json") {
                 // keep flat zip contents; folderName from zip stem
                 break;
             }
@@ -575,7 +577,9 @@ std::string importExportZip(const std::string& zipPath, std::string* err) {
          it != fs::recursive_directory_iterator(); it.increment(ec)) {
         if (ec) { ec.clear(); continue; }
         if (!it->is_regular_file(ec)) continue;
-        if (it->path().filename() == "seerr-export.json") continue;
+        if (it->path().filename() == "tezeusz-export.json" ||
+            it->path().filename() == "seerr-export.json")
+            continue;
         fs::path rel = fs::relative(it->path(), staging, ec);
         if (ec) { rel = it->path().filename(); ec.clear(); }
         fs::path out = destDir / rel;

@@ -260,7 +260,7 @@ bool writeBytes(const fs::path& path, const std::vector<uint8_t>& data) {
 }
 
 std::string samplePhrase(const std::string& lang) {
-    if (lang == "pl") return "Witaj. To jest próbka lektora AI w Seerr.";
+    if (lang == "pl") return "Witaj. To jest próbka lektora AI w Tezeusz.";
     if (lang == "de") return "Hallo. Dies ist eine Probe des KI-Sprechers.";
     if (lang == "fr") return "Bonjour. Ceci est un échantillon du narrateur IA.";
     if (lang == "es") return "Hola. Esta es una muestra del narrador de IA.";
@@ -268,7 +268,7 @@ std::string samplePhrase(const std::string& lang) {
     if (lang == "uk") return "Вітаю. Це зразок AI-лектора.";
     if (lang == "ru") return "Здравствуйте. Это образец ИИ-лектора.";
     if (lang == "cs") return "Ahoj. Toto je ukázka AI lektora.";
-    return "Hello. This is a sample of the AI narrator in Seerr.";
+    return "Hello. This is a sample of the AI narrator in Tezeusz.";
 }
 
 // ---- WAV helpers ----

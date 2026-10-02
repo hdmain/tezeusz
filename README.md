@@ -1,4 +1,4 @@
-# Seerr
+# Tezeusz
 
 [![Build](https://github.com/hdmain/tezeusz/actions/workflows/build.yml/badge.svg)](https://github.com/hdmain/tezeusz/actions/workflows/build.yml)
 [![Continuous release](https://img.shields.io/github/v/release/hdmain/tezeusz?include_prereleases&label=download)](https://github.com/hdmain/tezeusz/releases/tag/continuous)
@@ -13,7 +13,7 @@ Inspired by [Seerr](https://github.com/seerr-team/seerr) / Jellyseerr, built as 
 ## What you can do
 
 - **Browse & search** - trending, popular, and upcoming titles from TMDB
-- **Download** - request a title and Seerr finds torrents and downloads them for you
+- **Download** - request a title and Tezeusz finds torrents and downloads them for you
 - **Watch in-app** - built-in player (VLC) with progress resume
 - **Subtitles** - download and manage subtitles next to your files
 - **AI Lector** - offline voice-over from subtitles (optional), overlaid on the original audio
@@ -28,25 +28,25 @@ Get the latest build from the [**continuous** release](https://github.com/hdmain
 
 | Platform | What to get |
 |----------|-------------|
-| **Windows** | `seerr-windows-setup.exe` - recommended installer (auto-update works) |
-| **Windows** | Portable zip - unpack and run `seerr.exe` |
+| **Windows** | `tezeusz-windows-setup.exe` - recommended installer (auto-update works) |
+| **Windows** | Portable zip - unpack and run `tezeusz.exe` |
 | **Linux** | `.deb` package or portable zip |
 
 ### Windows installer
 
-1. Download `seerr-windows-setup.exe`
-2. Run it (installs for your user under `%LOCALAPPDATA%\Programs\Seerr`)
-3. Launch **Seerr** from the Start menu
+1. Download `tezeusz-windows-setup.exe`
+2. Run it (installs for your user under `%LOCALAPPDATA%\Programs\Tezeusz`)
+3. Launch **Tezeusz** from the Start menu
 
 ### Windows portable
 
 1. Download and unpack the zip
-2. Run `seerr.exe`
-3. Settings and cache stay in `%APPDATA%\SeerrCpp`
+2. Run `tezeusz.exe`
+3. Settings and cache stay in `%APPDATA%\Tezeusz`
 
 ### Linux
 
-Install the `.deb`, or unpack the portable zip and run the `seerr` binary.
+Install the `.deb`, or unpack the portable zip and run the `tezeusz` binary.
 
 Playback needs **VLC** installed on the system (Linux). The Windows packages already include what the player needs.
 
@@ -63,11 +63,11 @@ Optional: enable **AI Lector** in Settings to generate a voice-over from subtitl
 
 - Prefer the **Windows setup** if you want automatic updates
 - Keep enough free disk space in the download folder
-- For the best lector overlay (quieter film audio under the narrator), install [ffmpeg](https://ffmpeg.org/) and put it on your PATH (or next to `seerr.exe`)
+- For the best lector overlay (quieter film audio under the narrator), install [ffmpeg](https://ffmpeg.org/) and put it on your PATH (or next to `tezeusz.exe`)
 
 ## Contribute / contact
 
-Want to help build Seerr or talk about ideas? Reach out:
+Want to help build Tezeusz or talk about ideas? Reach out:
 
 - Open a [GitHub issue](https://github.com/hdmain/tezeusz/issues)
 - Message on [Session](https://getsession.org/):
@@ -77,7 +77,7 @@ Want to help build Seerr or talk about ideas? Reach out:
 
 ## Privacy & legal
 
-Seerr uses public metadata (TMDB) and torrent search. You are responsible for complying with copyright and local laws where you live.
+Tezeusz uses public metadata (TMDB) and torrent search. You are responsible for complying with copyright and local laws where you live.
 
 ## For developers
 

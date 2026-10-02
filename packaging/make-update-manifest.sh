@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Build an update manifest + content-addressed blobs for differential updates.
 # Usage: packaging/make-update-manifest.sh <install-dir> <platform> <version> <out-dir>
-# Example: packaging/make-update-manifest.sh build/seerr-portable windows-x64 0.1.0+abc build/update-windows
+# Example: packaging/make-update-manifest.sh build/tezeusz-portable windows-x64 0.1.0+abc build/update-windows
 set -euo pipefail
 
 ROOT_DIR="${1:?install / portable directory}"
 PLATFORM="${2:?platform id e.g. windows-x64}"
 VER="${3:?version string}"
 OUT="${4:?output directory}"
-REPO="${SEERR_UPDATE_REPO:-hdmain/tezeusz}"
-CHANNEL="${SEERR_UPDATE_CHANNEL:-continuous}"
-BASE_URL="${SEERR_UPDATE_BASE_URL:-https://github.com/${REPO}/releases/download/${CHANNEL}/}"
+REPO="${TEZEUSZ_UPDATE_REPO:-hdmain/tezeusz}"
+CHANNEL="${TEZEUSZ_UPDATE_CHANNEL:-continuous}"
+BASE_URL="${TEZEUSZ_UPDATE_BASE_URL:-https://github.com/${REPO}/releases/download/${CHANNEL}/}"
 
 if [[ ! -d "$ROOT_DIR" ]]; then
   echo "missing dir: $ROOT_DIR" >&2
@@ -44,7 +44,7 @@ trap 'rm -f "$TMP_FILES"' EXIT
   find . -type f \
     ! -name 'README-PORTABLE.txt' \
     ! -name 'check-deps.bat' \
-    ! -name '.seerr-write-test' \
+    ! -name '.tezeusz-write-test' \
     ! -name '*.tmp' \
     ! -iname 'Uninstall.exe' \
     ! -iname 'uninstall.exe' \

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Build a fully self-contained Windows portable folder (exe + MinGW DLLs + libVLC).
-# Usage: packaging/make-windows-portable.sh <seerr.exe> <out-dir> [version]
+# Usage: packaging/make-windows-portable.sh <tezeusz.exe> <out-dir> [version]
 set -euo pipefail
 
-EXE="${1:?path to seerr.exe}"
+EXE="${1:?path to tezeusz.exe}"
 OUT="${2:?output directory}"
 VER="${3:-0.1.0}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,10 +22,10 @@ fi
 rm -rf "$OUT"
 mkdir -p "$OUT/fonts" "$OUT/icons" "$OUT/locales"
 
-cp -f "$EXE" "$OUT/seerr.exe"
+cp -f "$EXE" "$OUT/tezeusz.exe"
 cp -f "$ROOT/vendor/logo_full.png" "$OUT/"
 cp -f "$ROOT/vendor/icon.png" "$OUT/"
-cp -f "$ROOT/vendor/seerr.ico" "$OUT/" 2>/dev/null || true
+cp -f "$ROOT/vendor/tezeusz.ico" "$OUT/" 2>/dev/null || true
 cp -f "$ROOT/vendor/poster_missing.png" "$OUT/"
 cp -f "$ROOT/vendor/fonts/"*.ttf "$OUT/fonts/" 2>/dev/null || true
 cp -f "$ROOT/vendor/icons/"*.svg "$OUT/icons/" 2>/dev/null || true
@@ -97,7 +97,7 @@ find_mingw_dll() {
 }
 
 declare -A SEEN=()
-QUEUE=("$OUT/seerr.exe")
+QUEUE=("$OUT/tezeusz.exe")
 COPIED=0
 
 copy_mingw_deps_of() {
@@ -174,8 +174,8 @@ fi
 # ---------------------------------------------------------------------------
 # Bundle full libVLC (DLL + plugins) so playback works without system VLC.
 # ---------------------------------------------------------------------------
-VLC_VER="${SEERR_VLC_VERSION:-3.0.21}"
-VLC_ZIP_URL="${SEERR_VLC_URL:-https://get.videolan.org/vlc/${VLC_VER}/win64/vlc-${VLC_VER}-win64.zip}"
+VLC_VER="${TEZEUSZ_VLC_VERSION:-3.0.21}"
+VLC_ZIP_URL="${TEZEUSZ_VLC_URL:-https://get.videolan.org/vlc/${VLC_VER}/win64/vlc-${VLC_VER}-win64.zip}"
 VLC_CACHE="${ROOT}/build/vlc-cache"
 mkdir -p "$VLC_CACHE"
 VLC_ZIP="$VLC_CACHE/vlc-${VLC_VER}-win64.zip"
@@ -256,9 +256,9 @@ done
 echo "Bundled libvlc from $SRC_DIR"
 
 # ---------------------------------------------------------------------------
-# Verify: every non-system import of seerr.exe must exist beside it.
+# Verify: every non-system import of tezeusz.exe must exist beside it.
 # ---------------------------------------------------------------------------
-echo "Verifying seerr.exe imports…"
+echo "Verifying tezeusz.exe imports…"
 UNRESOLVED=0
 while IFS= read -r dep; do
   [[ -z "$dep" ]] && continue
@@ -271,7 +271,7 @@ while IFS= read -r dep; do
       UNRESOLVED=$((UNRESOLVED + 1))
     fi
   fi
-done < <(list_imports "$OUT/seerr.exe" || true)
+done < <(list_imports "$OUT/tezeusz.exe" || true)
 
 if [[ ! -f "$OUT/libvlc/libvlc.dll" || ! -f "$OUT/libvlc/libvlccore.dll" ]]; then
   echo "  FAIL missing libvlc core" >&2
@@ -283,17 +283,17 @@ if [[ ! -d "$OUT/libvlc/plugins" ]]; then
 fi
 
 cat > "$OUT/README-PORTABLE.txt" <<EOF
-Seerr portable (Windows) ${VER}
+Tezeusz portable (Windows) ${VER}
 
-1. Unzip the whole folder (keep DLLs next to seerr.exe).
-2. Run seerr.exe
-3. Do not move seerr.exe alone - MinGW DLLs + libvlc\\ must stay beside it.
+1. Unzip the whole folder (keep DLLs next to tezeusz.exe).
+2. Run tezeusz.exe
+3. Do not move tezeusz.exe alone - MinGW DLLs + libvlc\\ must stay beside it.
 
 Included:
 - MinGW runtime + libtorrent + OpenSSL DLLs
 - libVLC ${VLC_VER} (libvlc\\ + plugins) for playback
 
-Config / cache: %APPDATA%\\SeerrCpp
+Config / cache: %APPDATA%\\Tezeusz
 
 If the window never appears, update your GPU OpenGL driver,
 or run check-deps.bat to verify the package is complete.
@@ -303,7 +303,7 @@ cat > "$OUT/check-deps.bat" <<'EOF'
 @echo off
 setlocal
 cd /d "%~dp0"
-echo Checking DLLs next to seerr.exe ...
+echo Checking DLLs next to tezeusz.exe ...
 set FAIL=0
 for %%D in (
   libgcc_s_seh-1.dll
@@ -330,8 +330,8 @@ if "%FAIL%"=="1" (
   exit /b 1
 )
 echo.
-echo All listed files present. Launching seerr.exe ...
-start "" "%~dp0seerr.exe"
+echo All listed files present. Launching tezeusz.exe ...
+start "" "%~dp0tezeusz.exe"
 EOF
 
 DLL_COUNT="$(ls -1 "$OUT"/*.dll 2>/dev/null | wc -l | tr -d ' ')"

@@ -1,6 +1,6 @@
 #pragma once
 // Tiny GL loader for symbols we use outside ImGui.
-// Call seerrLoadGL() once after glfwMakeContextCurrent.
+// Call tezeuszLoadGL() once after glfwMakeContextCurrent.
 // Build with GLFW_INCLUDE_NONE so GLFW does not pull system GL headers.
 
 #include <stddef.h>
@@ -57,30 +57,30 @@ using GLboolean = unsigned char;
 #define GL_RGB 0x1907
 #endif
 
-bool seerrLoadGL();
+bool tezeuszLoadGL();
 
-extern void (*seerr_glGenTextures)(GLsizei, GLuint*);
-extern void (*seerr_glDeleteTextures)(GLsizei, const GLuint*);
-extern void (*seerr_glBindTexture)(GLenum, GLuint);
-extern void (*seerr_glTexParameteri)(GLenum, GLenum, GLint);
-extern void (*seerr_glTexImage2D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
-extern void (*seerr_glTexSubImage2D)(GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void*);
-extern void (*seerr_glPixelStorei)(GLenum, GLint);
-extern void (*seerr_glViewport)(GLint, GLint, GLsizei, GLsizei);
-extern void (*seerr_glClearColor)(GLfloat, GLfloat, GLfloat, GLfloat);
-extern void (*seerr_glClear)(GLbitfield);
-extern void (*seerr_glGetTexImage)(GLenum, GLint, GLenum, GLenum, void*);
-extern void (*seerr_glReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*);
+extern void (*tezeusz_glGenTextures)(GLsizei, GLuint*);
+extern void (*tezeusz_glDeleteTextures)(GLsizei, const GLuint*);
+extern void (*tezeusz_glBindTexture)(GLenum, GLuint);
+extern void (*tezeusz_glTexParameteri)(GLenum, GLenum, GLint);
+extern void (*tezeusz_glTexImage2D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
+extern void (*tezeusz_glTexSubImage2D)(GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void*);
+extern void (*tezeusz_glPixelStorei)(GLenum, GLint);
+extern void (*tezeusz_glViewport)(GLint, GLint, GLsizei, GLsizei);
+extern void (*tezeusz_glClearColor)(GLfloat, GLfloat, GLfloat, GLfloat);
+extern void (*tezeusz_glClear)(GLbitfield);
+extern void (*tezeusz_glGetTexImage)(GLenum, GLint, GLenum, GLenum, void*);
+extern void (*tezeusz_glReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*);
 
-#define glGenTextures    seerr_glGenTextures
-#define glDeleteTextures seerr_glDeleteTextures
-#define glBindTexture    seerr_glBindTexture
-#define glTexParameteri  seerr_glTexParameteri
-#define glTexImage2D     seerr_glTexImage2D
-#define glTexSubImage2D  seerr_glTexSubImage2D
-#define glPixelStorei    seerr_glPixelStorei
-#define glViewport       seerr_glViewport
-#define glClearColor     seerr_glClearColor
-#define glClear          seerr_glClear
-#define glGetTexImage    seerr_glGetTexImage
-#define glReadPixels     seerr_glReadPixels
+#define glGenTextures    tezeusz_glGenTextures
+#define glDeleteTextures tezeusz_glDeleteTextures
+#define glBindTexture    tezeusz_glBindTexture
+#define glTexParameteri  tezeusz_glTexParameteri
+#define glTexImage2D     tezeusz_glTexImage2D
+#define glTexSubImage2D  tezeusz_glTexSubImage2D
+#define glPixelStorei    tezeusz_glPixelStorei
+#define glViewport       tezeusz_glViewport
+#define glClearColor     tezeusz_glClearColor
+#define glClear          tezeusz_glClear
+#define glGetTexImage    tezeusz_glGetTexImage
+#define glReadPixels     tezeusz_glReadPixels

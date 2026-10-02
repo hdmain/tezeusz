@@ -143,14 +143,26 @@ std::string appDataPath(const std::string& file) {
         CoTaskMemFree(dir);
         base = buf;
     }
-    std::string appDir = base + "\\SeerrCpp";
+    std::string appDir = base + "\\Tezeusz";
+    // Migrate older SeerrCpp data folder if present.
+    std::string legacy = base + "\\SeerrCpp";
+    DWORD attr = GetFileAttributesA(appDir.c_str());
+    if (attr == INVALID_FILE_ATTRIBUTES) {
+        DWORD leg = GetFileAttributesA(legacy.c_str());
+        if (leg != INVALID_FILE_ATTRIBUTES && (leg & FILE_ATTRIBUTE_DIRECTORY))
+            MoveFileA(legacy.c_str(), appDir.c_str());
+    }
     CreateDirectoryA(appDir.c_str(), nullptr);
     return appDir + "\\" + file;
 #else
     const char* home = std::getenv("HOME");
     std::string base = home ? std::string(home) + "/.local/share" : ".";
-    std::string appDir = base + "/SeerrCpp";
+    std::string appDir = base + "/Tezeusz";
     std::error_code ec;
+    std::filesystem::path legacy = std::filesystem::path(base) / "SeerrCpp";
+    if (!std::filesystem::exists(appDir, ec) && std::filesystem::exists(legacy, ec)) {
+        std::filesystem::rename(legacy, appDir, ec);
+    }
     std::filesystem::create_directories(appDir, ec);
     return appDir + "/" + file;
 #endif
@@ -307,10 +319,10 @@ std::string assetDir() {
 
     std::string exe = exeDir();
     std::vector<std::string> cands = {
-        exe + "/../share/seerr",
-        exe + "/share/seerr",
-        "/usr/share/seerr",
-        "/usr/local/share/seerr",
+        exe + "/../share/tezeusz",
+        exe + "/share/tezeusz",
+        "/usr/share/tezeusz",
+        "/usr/local/share/tezeusz",
 #ifdef APP_ASSET_DIR
         APP_ASSET_DIR,
 #endif
@@ -339,10 +351,10 @@ std::string localeDir() {
     std::string exe = exeDir();
     std::vector<std::string> cands = {
         assets + "/locales",
-        exe + "/../share/seerr/locales",
+        exe + "/../share/tezeusz/locales",
         exe + "/locales",
-        "/usr/share/seerr/locales",
-        "/usr/local/share/seerr/locales",
+        "/usr/share/tezeusz/locales",
+        "/usr/local/share/tezeusz/locales",
 #ifdef APP_LOCALE_DIR
         APP_LOCALE_DIR,
 #endif

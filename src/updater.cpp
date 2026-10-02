@@ -40,14 +40,14 @@ namespace fs = std::filesystem;
 namespace updater {
 namespace {
 
-#ifndef SEERR_VERSION
-#define SEERR_VERSION "0.1.0-dev"
+#ifndef TEZEUSZ_VERSION
+#define TEZEUSZ_VERSION "0.1.0-dev"
 #endif
-#ifndef SEERR_UPDATE_REPO
-#define SEERR_UPDATE_REPO "hdmain/tezeusz"
+#ifndef TEZEUSZ_UPDATE_REPO
+#define TEZEUSZ_UPDATE_REPO "hdmain/tezeusz"
 #endif
-#ifndef SEERR_UPDATE_CHANNEL
-#define SEERR_UPDATE_CHANNEL "continuous"
+#ifndef TEZEUSZ_UPDATE_CHANNEL
+#define TEZEUSZ_UPDATE_CHANNEL "continuous"
 #endif
 
 std::atomic<State> g_state{State::Idle};
@@ -62,7 +62,7 @@ std::atomic<bool> g_workerBusy{false};
 double g_readySince = 0;
 double g_deferCheckUntil = 0; // monotonic seconds; 0 = no defer
 std::string g_stageDir;
-std::string g_installDir;   // directory containing the seerr binary
+std::string g_installDir;   // directory containing the tezeusz binary
 std::string g_shareDir;     // assets root (may equal installDir for portable)
 bool g_systemLayout = false; // binary and assets live in different dirs (.deb)
 bool g_needsElevation = false;
@@ -74,7 +74,7 @@ double monoNow() {
            1000.0;
 }
 
-std::string currentVersion() { return SEERR_VERSION; }
+std::string currentVersion() { return TEZEUSZ_VERSION; }
 
 std::string platformId() {
 #ifdef _WIN32
@@ -85,8 +85,8 @@ std::string platformId() {
 }
 
 std::string manifestUrl() {
-    return std::string("https://github.com/") + SEERR_UPDATE_REPO +
-           "/releases/download/" + SEERR_UPDATE_CHANNEL +
+    return std::string("https://github.com/") + TEZEUSZ_UPDATE_REPO +
+           "/releases/download/" + TEZEUSZ_UPDATE_CHANNEL +
            "/update-manifest-" + platformId() + ".json";
 }
 
@@ -105,7 +105,7 @@ void setStatus(State st, const std::string& text) {
 bool dirWritable(const std::string& dir) {
     std::error_code ec;
     if (!fs::exists(dir, ec)) return false;
-    auto probe = fs::path(dir) / ".seerr-write-test";
+    auto probe = fs::path(dir) / ".tezeusz-write-test";
     {
         std::ofstream f(probe.string(), std::ios::binary | std::ios::trunc);
         if (!f) return false;
@@ -118,9 +118,9 @@ bool dirWritable(const std::string& dir) {
 // Resolve where a manifest-relative path lives on disk.
 std::string localPathFor(const std::string& rel) {
     if (g_systemLayout) {
-        if (rel == "seerr"
+        if (rel == "tezeusz"
 #ifdef _WIN32
-            || rel == "seerr.exe"
+            || rel == "tezeusz.exe"
 #endif
         )
             return (fs::path(g_installDir) / rel).string();
@@ -177,8 +177,8 @@ bool parseManifest(const std::string& body, Manifest* out, std::string* err) {
         m.platform = j.value("platform", "");
         m.baseUrl = j.value("baseUrl", "");
         if (m.baseUrl.empty()) {
-            m.baseUrl = std::string("https://github.com/") + SEERR_UPDATE_REPO +
-                        "/releases/download/" + SEERR_UPDATE_CHANNEL + "/";
+            m.baseUrl = std::string("https://github.com/") + TEZEUSZ_UPDATE_REPO +
+                        "/releases/download/" + TEZEUSZ_UPDATE_CHANNEL + "/";
         }
         if (!j.contains("files") || !j["files"].is_array()) {
             if (err) *err = "manifest missing files[]";
@@ -250,7 +250,7 @@ bool writeApplyScript(const std::string& path) {
         "set \"PID=%~1\"\r\n"
         "set \"STAGE=%~2\"\r\n"
         "set \"DEST=%~3\"\r\n"
-        "set \"LOG=%TEMP%\\seerr-update-apply.log\"\r\n"
+        "set \"LOG=%TEMP%\\tezeusz-update-apply.log\"\r\n"
         "echo apply start %DATE% %TIME% PID=%PID% > \"%LOG%\"\r\n"
         "echo STAGE=%STAGE%>> \"%LOG%\"\r\n"
         "echo DEST=%DEST%>> \"%LOG%\"\r\n"
@@ -270,13 +270,13 @@ bool writeApplyScript(const std::string& path) {
         "  echo copy failed - keeping STAGE for retry>> \"%LOG%\"\r\n"
         "  exit /b 1\r\n"
         ")\r\n"
-        "if not exist \"%DEST%\\seerr.exe\" (\r\n"
-        "  echo missing seerr.exe after copy>> \"%LOG%\"\r\n"
+        "if not exist \"%DEST%\\tezeusz.exe\" (\r\n"
+        "  echo missing tezeusz.exe after copy>> \"%LOG%\"\r\n"
         "  exit /b 1\r\n"
         ")\r\n"
         "rmdir /S /Q \"%STAGE%\" 2>nul\r\n"
         "echo ok, restarting>> \"%LOG%\"\r\n"
-        "start \"\" /D \"%DEST%\" \"%DEST%\\seerr.exe\"\r\n"
+        "start \"\" /D \"%DEST%\" \"%DEST%\\tezeusz.exe\"\r\n"
         "del \"%~f0\" 2>nul\r\n"
         "exit /b 0\r\n";
     return util::writeFile(path, body);
@@ -314,16 +314,16 @@ bool writeInstallOnlyScript(const std::string& path) {
         "#!/bin/bash\n"
         "set -e\n"
         "STAGE=\"$1\"; BINDIR=\"$2\"; SHARE=\"$3\"\n"
-        "LOG=\"${TMPDIR:-/tmp}/seerr-update-install.log\"\n"
+        "LOG=\"${TMPDIR:-/tmp}/tezeusz-update-install.log\"\n"
         "echo \"install start $(date)\" > \"$LOG\"\n"
         "echo \"STAGE=$STAGE BINDIR=$BINDIR SHARE=$SHARE\" >> \"$LOG\"\n"
         "if [ ! -d \"$STAGE\" ]; then echo missing STAGE >> \"$LOG\"; exit 1; fi\n"
         "if [ -z \"$SHARE\" ] || [ \"$SHARE\" = \"$BINDIR\" ]; then\n"
         "  cp -a \"$STAGE\"/. \"$BINDIR\"/\n"
-        "  chmod +x \"$BINDIR/seerr\" 2>/dev/null || true\n"
+        "  chmod +x \"$BINDIR/tezeusz\" 2>/dev/null || true\n"
         "else\n"
-        "  if [ -f \"$STAGE/seerr\" ]; then\n"
-        "    install -D -m 755 \"$STAGE/seerr\" \"$BINDIR/seerr\"\n"
+        "  if [ -f \"$STAGE/tezeusz\" ]; then\n"
+        "    install -D -m 755 \"$STAGE/tezeusz\" \"$BINDIR/tezeusz\"\n"
         "  fi\n"
         "  mkdir -p \"$SHARE\"\n"
         "  for d in fonts icons locales; do\n"
@@ -336,14 +336,14 @@ bool writeInstallOnlyScript(const std::string& path) {
         "    [ -e \"$f\" ] || continue\n"
         "    base=$(basename \"$f\")\n"
         "    case \"$base\" in\n"
-        "      seerr|.seerr-update-version|fonts|icons|locales) continue ;;\n"
+        "      tezeusz|.tezeusz-update-version|fonts|icons|locales) continue ;;\n"
         "    esac\n"
         "    if [ -f \"$f\" ]; then cp -f \"$f\" \"$SHARE\"/\n"
         "    elif [ -d \"$f\" ]; then mkdir -p \"$SHARE/$base\"; cp -a \"$f\"/. \"$SHARE/$base\"/\n"
         "    fi\n"
         "  done\n"
         "fi\n"
-        "if [ ! -x \"$BINDIR/seerr\" ]; then echo missing seerr >> \"$LOG\"; exit 1; fi\n"
+        "if [ ! -x \"$BINDIR/tezeusz\" ]; then echo missing tezeusz >> \"$LOG\"; exit 1; fi\n"
         "echo ok >> \"$LOG\"\n"
         "exit 0\n";
     if (!util::writeFile(path, body)) return false;
@@ -355,13 +355,13 @@ bool writeRestartScript(const std::string& path) {
     const char* body =
         "#!/bin/bash\n"
         "PID=\"$1\"; BINDIR=\"$2\"; STAGE=\"$3\"\n"
-        "LOG=\"${TMPDIR:-/tmp}/seerr-update-apply.log\"\n"
+        "LOG=\"${TMPDIR:-/tmp}/tezeusz-update-apply.log\"\n"
         "echo \"restart wait $(date) PID=$PID\" > \"$LOG\"\n"
         "while kill -0 \"$PID\" 2>/dev/null; do sleep 0.4; done\n"
         "sleep 0.6\n"
         "rm -rf \"$STAGE\" 2>/dev/null || true\n"
         "echo ok, restarting >> \"$LOG\"\n"
-        "nohup \"$BINDIR/seerr\" >/dev/null 2>&1 &\n"
+        "nohup \"$BINDIR/tezeusz\" >/dev/null 2>&1 &\n"
         "rm -f \"$0\"\n"
         "exit 0\n";
     if (!util::writeFile(path, body)) return false;
@@ -374,17 +374,17 @@ bool writeApplyScript(const std::string& path) {
     const char* body =
         "#!/bin/bash\n"
         "PID=\"$1\"; STAGE=\"$2\"; DEST=\"$3\"\n"
-        "LOG=\"${TMPDIR:-/tmp}/seerr-update-apply.log\"\n"
+        "LOG=\"${TMPDIR:-/tmp}/tezeusz-update-apply.log\"\n"
         "echo \"apply start $(date) PID=$PID\" > \"$LOG\"\n"
         "while kill -0 \"$PID\" 2>/dev/null; do sleep 0.4; done\n"
         "sleep 0.8\n"
         "if [ ! -d \"$STAGE\" ]; then echo missing STAGE >> \"$LOG\"; exit 1; fi\n"
         "if ! cp -a \"$STAGE\"/. \"$DEST\"/; then echo cp failed >> \"$LOG\"; exit 1; fi\n"
-        "chmod +x \"$DEST/seerr\" 2>/dev/null || true\n"
-        "if [ ! -x \"$DEST/seerr\" ]; then echo missing seerr >> \"$LOG\"; exit 1; fi\n"
+        "chmod +x \"$DEST/tezeusz\" 2>/dev/null || true\n"
+        "if [ ! -x \"$DEST/tezeusz\" ]; then echo missing tezeusz >> \"$LOG\"; exit 1; fi\n"
         "rm -rf \"$STAGE\"\n"
         "echo ok, restarting >> \"$LOG\"\n"
-        "(cd \"$DEST\" && nohup ./seerr >/dev/null 2>&1 &)\n"
+        "(cd \"$DEST\" && nohup ./tezeusz >/dev/null 2>&1 &)\n"
         "rm -f \"$0\"\n"
         "exit 0\n";
     if (!util::writeFile(path, body)) return false;
@@ -520,7 +520,7 @@ void workerCheckAndDownload() {
         return;
     }
 
-    // Diff against local install (system layout maps seerr → bindir, rest → share)
+    // Diff against local install (system layout maps tezeusz → bindir, rest → share)
     std::vector<RemoteFile> need;
     for (auto& f : man.files) {
         fs::path local = localPathFor(f.path);
@@ -597,7 +597,7 @@ void workerCheckAndDownload() {
     }
 
     // Also write a marker with target version
-    util::writeFile((fs::path(g_stageDir) / ".seerr-update-version").string(), man.version);
+    util::writeFile((fs::path(g_stageDir) / ".tezeusz-update-version").string(), man.version);
     g_dlPercent = 100;
     g_readySince = 0;
     setStatus(State::Ready,
@@ -624,7 +624,7 @@ void init() {
     g_needsElevation = !installWritable();
     g_stageDir = util::appDataPath("update-stage");
 
-    if (const char* dis = std::getenv("SEERR_DISABLE_UPDATE"); dis && dis[0] && dis[0] != '0') {
+    if (const char* dis = std::getenv("TEZEUSZ_DISABLE_UPDATE"); dis && dis[0] && dis[0] != '0') {
         setStatus(State::Disabled, i18n::tr("update.disabled"));
         return;
     }
@@ -647,7 +647,7 @@ void shutdown() {
 }
 
 void checkNow() {
-    if (const char* dis = std::getenv("SEERR_DISABLE_UPDATE"); dis && dis[0] && dis[0] != '0') {
+    if (const char* dis = std::getenv("TEZEUSZ_DISABLE_UPDATE"); dis && dis[0] && dis[0] != '0') {
         setStatus(State::Disabled, i18n::tr("update.disabled"));
         return;
     }
@@ -676,7 +676,7 @@ void setAutoEnabled(bool on) {
             setStatus(State::Disabled, i18n::tr("update.disabled_user"));
         return;
     }
-    if (const char* dis = std::getenv("SEERR_DISABLE_UPDATE"); dis && dis[0] && dis[0] != '0') {
+    if (const char* dis = std::getenv("TEZEUSZ_DISABLE_UPDATE"); dis && dis[0] && dis[0] != '0') {
         setStatus(State::Disabled, i18n::tr("update.disabled"));
         return;
     }

@@ -423,7 +423,7 @@ bool acquireScreenSaver(const char* reason) {
         if (d.error_is_set(&err)) d.error_free(&err);
         return false;
     }
-    const char* app = "seerr";
+    const char* app = "tezeusz";
     const char* why = reason && reason[0] ? reason : "Playing video";
     bool ok = false;
 
@@ -499,7 +499,7 @@ bool acquireLogin1(const char* reason) {
         return false;
     }
     const char* what = "idle:sleep";
-    const char* who = "seerr";
+    const char* who = "tezeusz";
     const char* why = reason && reason[0] ? reason : "Playing video";
     const char* mode = "block";
     bool ok = false;

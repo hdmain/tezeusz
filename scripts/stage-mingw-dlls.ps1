@@ -1,4 +1,4 @@
-# Stage MinGW runtime DLLs next to seerr.exe (local convenience).
+# Stage MinGW runtime DLLs next to tezeusz.exe (local convenience).
 # Always exits 0 so CI/link is never blocked - portable packaging uses bash.
 param(
     [Parameter(Mandatory = $true)][string]$Exe,

@@ -37,7 +37,7 @@ App& app() { static App a; return a; }
 // Shared ID for Discover + Search bars so ActiveId (and cursor) survive the
 // home→search page switch. Re-focusing with SetKeyboardFocusHere selects-all
 // and the next keystroke replaces the first character.
-static const char* kSearchInputId = "##seerr_search";
+static const char* kSearchInputId = "##tezeusz_search";
 
 // If we must reclaim focus, clear the auto-select immediately (not via
 // ReloadUserBufAndMoveToEnd - that only applies on the next frame).
@@ -434,7 +434,7 @@ void renderSearch() {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 0.95f));
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.72f, 0.76f, 0.85f, 1.0f));
         // Only force-focus when ActiveId was lost (e.g. click-away). Prefer keeping
-        // the shared ##seerr_search ActiveId from the Discover bar.
+        // the shared ##tezeusz_search ActiveId from the Discover bar.
         const bool reclaimFocus = a.focusSearchInput && !ImGui::IsAnyItemActive();
         if (reclaimFocus)
             ImGui::SetKeyboardFocusHere();
@@ -502,7 +502,7 @@ void renderSearch() {
     }
     if (req.valid() && !res.loaded && req.ready()) res = req.take();
 
-    // Header + Seerr-style filter chips
+    // Header + Tezeusz-style filter chips
     dl->AddText(G.b36, 26, ImVec2(origin.x, origin.y), WHITE,
                 a.lastQuery.empty() ? i18n::tr("search.title") : i18n::tr("search.results_title"));
     float chipY = origin.y + 42;
@@ -594,7 +594,7 @@ void renderDiscover() {
     static unsigned seen = 0xFFFFFFFFu;
     bool doReload = a.shouldReload(seen);
 
-    // Prominent Seerr-style search prompt on the home page
+    // Prominent Tezeusz-style search prompt on the home page
     {
         ImDrawList* dl = ImGui::GetWindowDrawList();
         ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -762,7 +762,7 @@ void renderDetails(MediaType type, int id) {
     float headerH = 300;
     {
         const ImageEntry* be = ImageCache::instance().request(d.backdropUrl("w1920_and_h800_multi_faces"));
-        // Full-bleed within content column (ignore left pad for hero, like seerr)
+        // Full-bleed within content column (ignore left pad for hero, like tezeusz)
         float hx = wpos.x;
         float hw = ImGui::GetWindowWidth();
         dl->PushClipRect(ImVec2(hx, origin.y), ImVec2(hx + hw, origin.y + headerH), true);
@@ -861,7 +861,7 @@ void renderDetails(MediaType type, int id) {
                 platform::openUrl(d.imdbUrl());
         }
     }
-    // watchlist / blocklist / report issue (Seerr-style actions)
+    // watchlist / blocklist / report issue (Tezeusz-style actions)
     {
         bool wl = a.isWatchlisted(type, id);
         std::string k = App::key(type, id);
@@ -1234,7 +1234,7 @@ void renderUsers() {
         localdb::saveUser();
     }
 
-    // table header row (Seerr User List style)
+    // table header row (Tezeusz User List style)
     y = p1.y + 24;
     dl->AddText(G.sb18, 16, ImVec2(origin.x, y), TXT, i18n::tr("users.list"));
     y += 28;
@@ -2388,14 +2388,14 @@ void renderSettings() {
 #ifdef _WIN32
                     std::string base = v.root;
                     if (!base.empty() && base.back() != '\\') base.push_back('\\');
-                    base += "Seerr";
+                    base += "Tezeusz";
                     std::snprintf(movies, sizeof(movies), "%s\\Movies", base.c_str());
                     std::snprintf(tv, sizeof(tv), "%s\\TV", base.c_str());
 #else
                     std::string base = v.root;
-                    if (base == "/") base = "/var/lib/seerr";
+                    if (base == "/") base = "/var/lib/tezeusz";
                     else if (!base.empty() && base.back() == '/') base.pop_back();
-                    base += "/Seerr";
+                    base += "/Tezeusz";
                     std::snprintf(movies, sizeof(movies), "%s/Movies", base.c_str());
                     std::snprintf(tv, sizeof(tv), "%s/TV", base.c_str());
 #endif
@@ -2694,10 +2694,10 @@ void renderSettings() {
         }
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
         ImGui::Text("%s %s", i18n::tr("update.current"),
-#ifndef SEERR_VERSION
+#ifndef TEZEUSZ_VERSION
                     "dev"
 #else
-                    SEERR_VERSION
+                    TEZEUSZ_VERSION
 #endif
         );
         if (!updater::remoteVersion().empty())
@@ -2800,10 +2800,10 @@ void renderSettings() {
         fieldLabel(i18n::tr("settings.diagnostics"));
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(ATTR));
         ImGui::Text("%s %s", i18n::tr("update.current"),
-#ifndef SEERR_VERSION
+#ifndef TEZEUSZ_VERSION
                     "dev"
 #else
-                    SEERR_VERSION
+                    TEZEUSZ_VERSION
 #endif
         );
         ImGui::TextWrapped("%s %s", i18n::tr("settings.path_data"), util::appDataPath("").c_str());

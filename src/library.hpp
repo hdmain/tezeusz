@@ -33,10 +33,10 @@ bool removeItem(const Item& item, std::string* err = nullptr);
 std::string archiveItem(const Item& item, std::string* err = nullptr);
 
 // Pack title folder to Exports/*.zip for transfer to another device (keeps originals).
-// Embeds seerr-export.json with TMDB metadata for import.
+// Embeds tezeusz-export.json with TMDB metadata for import.
 std::string exportItem(const Item& item, std::string* err = nullptr);
 
-// Import a Seerr export ZIP into the local library (no re-download).
+// Import a Tezeusz export ZIP into the local library (no re-download).
 // Returns the library video/folder path on success.
 std::string importExportZip(const std::string& zipPath, std::string* err = nullptr);
 

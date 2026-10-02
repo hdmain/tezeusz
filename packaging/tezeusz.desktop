@@ -1,13 +1,13 @@
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=Seerr
+Name=Tezeusz
 GenericName=Media Discovery
 Comment=Discover, request and download movies and TV shows
-Exec=seerr
-Icon=seerr
+Exec=tezeusz
+Icon=tezeusz
 Terminal=false
 Categories=AudioVideo;Video;Player;
 StartupNotify=true
-StartupWMClass=seerr
-Keywords=movies;tv;torrent;seerr;jellyseerr;
+StartupWMClass=tezeusz
+Keywords=movies;tv;torrent;tezeusz;jellyseerr;

@@ -17,7 +17,7 @@ static void load() {
     if (g_loaded) return;
     g_loaded = true;
     g_lang = "en-US";
-    // seerr ships a public TMDB key in server/api/themoviedb/index.ts; use it as fallback
+    // tezeusz ships a public TMDB key in server/api/themoviedb/index.ts; use it as fallback
     g_key = "431a8708161bcd1f1fbe7536137e61ed";
     auto tryFile = [&](const std::string& p) {
         std::string s = util::readFile(p);
@@ -94,7 +94,7 @@ const Video* Details::bestTrailer() const {
     const Video* bestAny = nullptr;
     for (auto& v : videos) {
         if (!v.isYouTube()) continue;
-        if (v.key == "4xhQBBObkGk" || v.key == "LrQvln0xkXw") continue; // seerr skips these
+        if (v.key == "4xhQBBObkGk" || v.key == "LrQvln0xkXw") continue; // tezeusz skips these
         if (v.isTrailer()) {
             if (!bestTrailer || (v.official && !bestTrailer->official)) bestTrailer = &v;
         } else if (v.isTeaser()) {
@@ -389,7 +389,7 @@ static AsyncReq<Details> detailsReq(const std::string& path, bool tv) {
     req.fut = std::async(std::launch::async, [path, tv]() -> Details {
         Details d;
         std::string lang = cfg::language();
-        // Like seerr: request localized + English video languages so trailers aren't missing for pl-PL etc.
+        // Like tezeusz: request localized + English video languages so trailers aren't missing for pl-PL etc.
         auto r = http::get(withKey(path, {
             {"append_to_response", "credits,videos,external_ids"},
             {"include_video_language", lang + ",en,null"}

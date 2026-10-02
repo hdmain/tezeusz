@@ -21,23 +21,23 @@ fi
 bash "$ROOT/scripts/build.sh"
 
 echo "==> smoke run (8s)"
-export SEERR_DISABLE_IMGSWARM="${SEERR_DISABLE_IMGSWARM:-1}"
+export TEZEUSZ_DISABLE_IMGSWARM="${TEZEUSZ_DISABLE_IMGSWARM:-1}"
 set +e
 if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
-  timeout 8s "$ROOT/build/seerr" 2>"$ROOT/build/seerr-smoke.log"
+  timeout 8s "$ROOT/build/tezeusz" 2>"$ROOT/build/tezeusz-smoke.log"
   rc=$?
 else
-  timeout 8s xvfb-run -a "$ROOT/build/seerr" 2>"$ROOT/build/seerr-smoke.log"
+  timeout 8s xvfb-run -a "$ROOT/build/tezeusz" 2>"$ROOT/build/tezeusz-smoke.log"
   rc=$?
 fi
 set -e
 
 echo "exit=$rc"
-sed -n '1,40p' "$ROOT/build/seerr-smoke.log" || true
+sed -n '1,40p' "$ROOT/build/tezeusz-smoke.log" || true
 # 0 = clean quit, 124 = timeout (still running = success for GUI smoke)
 if [[ "$rc" -eq 0 || "$rc" -eq 124 ]]; then
   echo "Linux smoke OK"
   exit 0
 fi
-echo "Linux smoke failed (rc=$rc) - see build/seerr-smoke.log" >&2
+echo "Linux smoke failed (rc=$rc) - see build/tezeusz-smoke.log" >&2
 exit "$rc"

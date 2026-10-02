@@ -66,7 +66,7 @@ bool isImageCdnUrl(const std::string& url) {
 
 std::array<char, 32> urlSeed(const std::string& url) {
     lt::hasher256 h;
-    h.update("seerr-cpp-imgswarm-v1|");
+    h.update("tezeusz-cpp-imgswarm-v1|");
     h.update(url);
     auto d = h.final();
     std::array<char, 32> out{};
@@ -219,7 +219,7 @@ std::shared_ptr<lt::torrent_info> makeTorrentInfo(const std::string& url, const 
     stor.add_file(name, (std::int64_t)sz);
 
     lt::create_torrent ct(stor, 16 * 1024);
-    ct.set_creator("seerr-cpp");
+    ct.set_creator("tezeusz-cpp");
     ct.add_url_seed(url); // hybrid: peers + original CDN
     lt::error_code lec;
     lt::set_piece_hashes(ct, fs::path(filePath).parent_path().string(), lec);
@@ -262,7 +262,7 @@ void alertLoop() {
 } // namespace
 
 void init() {
-    if (const char* dis = std::getenv("SEERR_DISABLE_IMGSWARM"); dis && dis[0] && dis[0] != '0')
+    if (const char* dis = std::getenv("TEZEUSZ_DISABLE_IMGSWARM"); dis && dis[0] && dis[0] != '0')
         return;
     if (!stack::StackConfig::get().imageP2p)
         return;
@@ -295,11 +295,11 @@ void init() {
         g_ses = std::make_unique<lt::session>(pack);
         g_alertThread = std::thread(alertLoop);
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "seerr: imgswarm disabled (%s)\n", e.what());
+        std::fprintf(stderr, "tezeusz: imgswarm disabled (%s)\n", e.what());
         g_ses.reset();
         g_stop = true;
     } catch (...) {
-        std::fprintf(stderr, "seerr: imgswarm disabled (unknown error)\n");
+        std::fprintf(stderr, "tezeusz: imgswarm disabled (unknown error)\n");
         g_ses.reset();
         g_stop = true;
     }

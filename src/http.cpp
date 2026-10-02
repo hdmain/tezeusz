@@ -36,10 +36,10 @@ static std::atomic<bool> g_httpAbort{false};
 static HINTERNET sharedSession() {
     std::lock_guard<std::mutex> lk(g_sessMu);
     if (!g_sharedSess) {
-        g_sharedSess = WinHttpOpen(L"SeerrCpp/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+        g_sharedSess = WinHttpOpen(L"Tezeusz/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                                    WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
         if (!g_sharedSess)
-            g_sharedSess = WinHttpOpen(L"SeerrCpp/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+            g_sharedSess = WinHttpOpen(L"Tezeusz/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
         // Resolve / connect / send / receive - keep receive shorter so quit isn't stuck for 30s+.
         if (g_sharedSess) WinHttpSetTimeouts(g_sharedSess, 3000, 5000, 8000, 12000);
@@ -64,10 +64,10 @@ static HINTERNET longSession(int timeoutSec) {
     static thread_local int lastT = 0;
     if (s && lastT == timeoutSec) return s;
     if (s) { WinHttpCloseHandle(s); s = nullptr; }
-    s = WinHttpOpen(L"SeerrCpp/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+    s = WinHttpOpen(L"Tezeusz/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!s)
-        s = WinHttpOpen(L"SeerrCpp/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        s = WinHttpOpen(L"Tezeusz/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     int t = timeoutSec > 0 ? timeoutSec * 1000 : 180000;
     if (s) WinHttpSetTimeouts(s, 10000, 30000, 60000, t);
@@ -258,7 +258,7 @@ static HttpResponse getOnce(const std::string& url, const std::string& accept, c
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &r.body);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, headerCb);
     curl_easy_setopt(curl, CURLOPT_HEADERDATA, &r);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SeerrCpp/1.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Tezeusz/1.0");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
@@ -298,7 +298,7 @@ static HttpResponse postOnce(const std::string& url, const std::string& body,
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &r.body);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, headerCb);
     curl_easy_setopt(curl, CURLOPT_HEADERDATA, &r);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SeerrCpp/1.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Tezeusz/1.0");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 12L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
@@ -475,7 +475,7 @@ std::vector<uint8_t> getBinaryLong(const std::string& url, std::string* err, int
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &r.body);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "SeerrCpp/1.0");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Tezeusz/1.0");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)(timeoutSec > 0 ? timeoutSec : 180));

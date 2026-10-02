@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-// Local Seerr-like data (blocklist / issues / profile) - no remote API.
+// Local Tezeusz-like data (blocklist / issues / profile) - no remote API.
 namespace localdb {
 
 enum class IssueType { Video = 1, Audio = 2, Subtitles = 3, Other = 4 };
@@ -51,7 +51,7 @@ struct Issue {
 
 struct LocalUser {
     std::string displayName = "Tezeusz";
-    std::string email = "local@seerr";
+    std::string email = "local@tezeusz";
     int64_t createdAt = 0;
 };
 

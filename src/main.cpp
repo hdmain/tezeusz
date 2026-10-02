@@ -92,7 +92,7 @@ static float animToward(float cur, float target, float speed) {
 }
 
 static void renderSidebar(App& a) {
-    // Keep sidebar above content (seerr: fixed w-64 column). Do NOT use
+    // Keep sidebar above content (tezeusz: fixed w-64 column). Do NOT use
     // NoBringToFrontOnFocus - otherwise focused content redraws over the nav.
     ImGuiWindowFlags wf = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                           ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -108,7 +108,7 @@ static void renderSidebar(App& a) {
 
     dl->AddRectFilled(wpos, ImVec2(wpos.x + SIDEBAR_W, wpos.y + H), theme::c("#1f2937"));
 
-    // logo (seerr: relative block h-24 w-64 p-4, object-contain)
+    // logo (tezeusz: relative block h-24 w-64 p-4, object-contain)
     if (g_logoTex && g_logoW && g_logoH) {
         float maxW = SIDEBAR_W - 48, maxH = 66;
         float sc = std::min(maxW / (float)g_logoW, maxH / (float)g_logoH);
@@ -154,10 +154,10 @@ static void renderSidebar(App& a) {
 
         if (aa > 0.01f) {
             // Rounded solid (MultiColor can't round) - soft indigo pill
-            ImU32 fill = theme::withA(theme::c(hv ? "#7c5cf3" : "#6366f1"), aa);
+            ImU32 fill = theme::withA(theme::c(hv ? "#2BBBAD" : "#1B6B7A"), aa);
             dl->AddRectFilled(p0, p1, fill, 14.0f);
             if (aa > 0.5f)
-                dl->AddRect(p0, p1, theme::withA(theme::c("#a78bfa"), aa * 0.35f), 14.0f, 0, 1.0f);
+                dl->AddRect(p0, p1, theme::withA(theme::c("#F0A35E"), aa * 0.35f), 14.0f, 0, 1.0f);
         } else if (ha > 0.01f) {
             dl->AddRectFilled(p0, p1, theme::withA(theme::c("#374151"), ha), 14.0f);
         }
@@ -229,7 +229,7 @@ static void renderSidebar(App& a) {
                       st.peers, st.jobsRunning, st.jobsRunning + st.jobsPending);
         dl->AddText(G.r14, 12, ImVec2(p0.x + 10, p0.y + 10), theme::c("#e5e7eb"), line1);
         dl->AddText(G.r14, 11, ImVec2(p0.x + 10, p0.y + 30), theme::c("#9ca3af"), line2);
-        if (cl) platform::openUrl("https://github.com/seerr-team/seerr");
+        if (cl) platform::openUrl("https://github.com/hdmain/tezeusz");
     }
     ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
     ImGui::End();
@@ -260,7 +260,7 @@ static void renderContentPage(App& a) {
 // ------------------------------------------------------------------ main
 
 static void glfwErr(int code, const char* desc) {
-    std::fprintf(stderr, "seerr glfw: %d %s\n", code, desc ? desc : "");
+    std::fprintf(stderr, "tezeusz glfw: %d %s\n", code, desc ? desc : "");
 }
 
 #ifdef _WIN32
@@ -272,7 +272,7 @@ static void winFatal(const char*, const char*) {}
 #endif
 
 int main() {
-    std::fprintf(stderr, "seerr: starting\n");
+    std::fprintf(stderr, "tezeusz: starting\n");
     std::fflush(stderr);
 
     glfwSetErrorCallback(glfwErr);
@@ -293,11 +293,11 @@ int main() {
 #if !defined(_WIN32) && !defined(__APPLE__) && defined(GLFW_PLATFORM) && defined(GLFW_ANY_PLATFORM)
         glfwInitHint(GLFW_PLATFORM, GLFW_ANY_PLATFORM);
         if (!glfwInit()) {
-            winFatal("Seerr", "Failed to initialize GLFW / OpenGL.");
+            winFatal("Tezeusz", "Failed to initialize GLFW / OpenGL.");
             return 1;
         }
 #else
-        winFatal("Seerr", "Failed to initialize GLFW / OpenGL.\n\n"
+        winFatal("Tezeusz", "Failed to initialize GLFW / OpenGL.\n\n"
                           "Install or update your GPU drivers, then try again.");
         return 1;
 #endif
@@ -309,32 +309,32 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1);
 #endif
     glfwWindowHint(GLFW_SAMPLES, 0); // UI doesn't need MSAA - saves GPU fillrate
-    // Match packaging/seerr.desktop StartupWMClass / Icon=seerr (Linux taskbar).
+    // Match packaging/tezeusz.desktop StartupWMClass / Icon=tezeusz (Linux taskbar).
 #if defined(GLFW_X11_CLASS_NAME)
-    glfwWindowHintString(GLFW_X11_CLASS_NAME, "seerr");
-    glfwWindowHintString(GLFW_X11_INSTANCE_NAME, "seerr");
+    glfwWindowHintString(GLFW_X11_CLASS_NAME, "tezeusz");
+    glfwWindowHintString(GLFW_X11_INSTANCE_NAME, "tezeusz");
 #endif
 #if defined(GLFW_WAYLAND_APP_ID)
-    glfwWindowHintString(GLFW_WAYLAND_APP_ID, "seerr");
+    glfwWindowHintString(GLFW_WAYLAND_APP_ID, "tezeusz");
 #endif
 
-    GLFWwindow* win = glfwCreateWindow(1500, 900, "Seerr", nullptr, nullptr);
+    GLFWwindow* win = glfwCreateWindow(1500, 900, "Tezeusz", nullptr, nullptr);
     if (!win) {
         // Some drivers reject Core 3.3 - fall back to any available OpenGL.
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_SAMPLES, 0);
 #if defined(GLFW_X11_CLASS_NAME)
-        glfwWindowHintString(GLFW_X11_CLASS_NAME, "seerr");
-        glfwWindowHintString(GLFW_X11_INSTANCE_NAME, "seerr");
+        glfwWindowHintString(GLFW_X11_CLASS_NAME, "tezeusz");
+        glfwWindowHintString(GLFW_X11_INSTANCE_NAME, "tezeusz");
 #endif
 #if defined(GLFW_WAYLAND_APP_ID)
-        glfwWindowHintString(GLFW_WAYLAND_APP_ID, "seerr");
+        glfwWindowHintString(GLFW_WAYLAND_APP_ID, "tezeusz");
 #endif
-        win = glfwCreateWindow(1500, 900, "Seerr", nullptr, nullptr);
+        win = glfwCreateWindow(1500, 900, "Tezeusz", nullptr, nullptr);
     }
     if (!win) {
         glfwTerminate();
-        winFatal("Seerr", "Could not create the OpenGL window.\n\n"
+        winFatal("Tezeusz", "Could not create the OpenGL window.\n\n"
                           "Update GPU drivers or try another GPU.");
         return 1;
     }
@@ -355,20 +355,20 @@ int main() {
     // ImGui's embedded GLVND/EGL loader must run before we resolve our own entry points.
     ImGui_ImplGlfw_InitForOpenGL(win, true);
     if (!ImGui_ImplOpenGL3_Init("#version 330")) {
-        std::fprintf(stderr, "seerr: OpenGL renderer init failed\n");
-        winFatal("Seerr", "OpenGL renderer init failed.");
+        std::fprintf(stderr, "tezeusz: OpenGL renderer init failed\n");
+        winFatal("Tezeusz", "OpenGL renderer init failed.");
         return 1;
     }
-    std::fprintf(stderr, "seerr: imgui GL ok\n");
+    std::fprintf(stderr, "tezeusz: imgui GL ok\n");
 
-    if (!seerrLoadGL()) {
-        std::fprintf(stderr, "seerr: failed to load OpenGL functions\n");
-        winFatal("Seerr", "Failed to load OpenGL functions.");
+    if (!tezeuszLoadGL()) {
+        std::fprintf(stderr, "tezeusz: failed to load OpenGL functions\n");
+        winFatal("Tezeusz", "Failed to load OpenGL functions.");
         glfwDestroyWindow(win);
         glfwTerminate();
         return 1;
     }
-    std::fprintf(stderr, "seerr: GL entry points ok\n");
+    std::fprintf(stderr, "tezeusz: GL entry points ok\n");
     std::fflush(stderr);
 
     // Paint one blank frame ASAP so the window isn't a dead black hole during font/asset init.
@@ -596,7 +596,7 @@ int main() {
         if (player::isOpen()) {
             player::render();
         } else {
-        // content column only (seerr: lg:ml-64) - never draw under the fixed sidebar
+        // content column only (tezeusz: lg:ml-64) - never draw under the fixed sidebar
         ImGuiWindowFlags cwf = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus |
                                ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground;
@@ -616,7 +616,7 @@ int main() {
         ImDrawList* dl = ImGui::GetWindowDrawList();
         ImVec2 cpos = ImGui::GetWindowPos();
         float cw = ImGui::GetWindowWidth();
-        // top gradient like seerr layout (from-gray-800 to-gray-900)
+        // top gradient like tezeusz layout (from-gray-800 to-gray-900)
         {
             float gh = std::min(256.0f, io.DisplaySize.y * 0.55f);
             dl->AddRectFilledMultiColor(cpos, ImVec2(cpos.x + cw, cpos.y + gh),

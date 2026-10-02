@@ -619,7 +619,7 @@ bool w::iconButton(ImDrawList* dl, const char* id, ImVec2 min, ImVec2 max, void 
 }
 
 // --------------------------------------------------------------------- title card
-// Mirrors ref/seerr/src/components/TitleCard/index.tsx
+// Mirrors ref/tezeusz/src/components/TitleCard/index.tsx
 
 int w::titleCard(const MediaItem& item, ImVec2 pos, float cw, float ch, bool watchlisted, int mediaStatus,
                  int instanceSeed, bool allowHover) {

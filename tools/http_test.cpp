@@ -18,7 +18,7 @@ static int tryUrl(const std::wstring& url, const wchar_t* mode) {
     DWORD access = WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY;
     if (wcscmp(mode, L"direct") == 0) access = WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;
 
-    s = WinHttpOpen(L"SeerrCpp/1.0", access, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    s = WinHttpOpen(L"Tezeusz/1.0", access, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!s) { printf("%S: open failed %lu\n", mode, GetLastError()); return 1; }
     WinHttpSetTimeouts(s, 5000, 10000, 15000, 30000);
     INTERNET_PORT port = (uc.nScheme == INTERNET_SCHEME_HTTPS) ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;

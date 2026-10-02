@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Build seerr-windows-setup.exe (NSIS) from a portable folder.
-# Installs to %LOCALAPPDATA%\Programs\Seerr so the folder stays user-writable
+# Build tezeusz-windows-setup.exe (NSIS) from a portable folder.
+# Installs to %LOCALAPPDATA%\Programs\Tezeusz so the folder stays user-writable
 # and in-app auto-update (robocopy apply script) works without elevation.
 #
 # Usage: packaging/make-windows-setup.sh <portable-dir> <out-setup.exe> [version]
 set -euo pipefail
 
-PORTABLE="${1:?portable directory (e.g. build/seerr-portable)}"
+PORTABLE="${1:?portable directory (e.g. build/tezeusz-portable)}"
 OUT_EXE="${2:?output setup.exe path}"
 VER="${3:-0.1.0}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,8 +15,8 @@ if [[ ! -d "$PORTABLE" ]]; then
   echo "missing portable dir: $PORTABLE" >&2
   exit 1
 fi
-if [[ ! -f "$PORTABLE/seerr.exe" ]]; then
-  echo "missing seerr.exe in $PORTABLE" >&2
+if [[ ! -f "$PORTABLE/tezeusz.exe" ]]; then
+  echo "missing tezeusz.exe in $PORTABLE" >&2
   exit 1
 fi
 if ! command -v makensis >/dev/null 2>&1; then
@@ -41,7 +41,7 @@ to_win() {
 
 PORTABLE_WIN="$(to_win "$(cd "$PORTABLE" && pwd)")"
 OUT_WIN="$(to_win "$(cd "$(dirname "$OUT_EXE")" && pwd)/$(basename "$OUT_EXE")")"
-NSI="$NSI_DIR/seerr-setup.nsi"
+NSI="$NSI_DIR/tezeusz-setup.nsi"
 
 # Escape backslashes for NSIS string literals
 esc_nsis() { printf '%s' "$1" | sed 's|\\|\\\\|g'; }
@@ -62,8 +62,8 @@ PRODUCT_VERSION="${V1}.${V2}.${V3}.${V4}"
 
 # Installer + shortcut icon (committed ICO - no ImageMagick required in CI).
 ICON_PNG="${ROOT}/vendor/icon.png"
-ICON_ICO_SRC="${ROOT}/vendor/seerr.ico"
-ICON_ICO="$NSI_DIR/seerr.ico"
+ICON_ICO_SRC="${ROOT}/vendor/tezeusz.ico"
+ICON_ICO="$NSI_DIR/tezeusz.ico"
 ICON_LINE=""
 if [[ -f "$ICON_ICO_SRC" ]]; then
   cp -f "$ICON_ICO_SRC" "$ICON_ICO"
@@ -91,24 +91,24 @@ RequestExecutionLevel user
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
 
-Name "Seerr"
+Name "Tezeusz"
 OutFile "$OUT_ESC"
-InstallDir "\$LOCALAPPDATA\\Programs\\Seerr"
-InstallDirRegKey HKCU "Software\\Seerr" "InstallDir"
+InstallDir "\$LOCALAPPDATA\\Programs\\Tezeusz"
+InstallDirRegKey HKCU "Software\\Tezeusz" "InstallDir"
 ShowInstDetails show
 ShowUnInstDetails show
 
 VIProductVersion "${PRODUCT_VERSION}"
-VIAddVersionKey "ProductName" "Seerr"
-VIAddVersionKey "FileDescription" "Seerr Setup"
+VIAddVersionKey "ProductName" "Tezeusz"
+VIAddVersionKey "FileDescription" "Tezeusz Setup"
 VIAddVersionKey "FileVersion" "${VER}"
 VIAddVersionKey "ProductVersion" "${VER}"
-VIAddVersionKey "LegalCopyright" "Seerr"
+VIAddVersionKey "LegalCopyright" "Tezeusz"
 
 ${ICON_LINE}
 !define MUI_ABORTWARNING
-!define MUI_FINISHPAGE_RUN "\$INSTDIR\\seerr.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Launch Seerr"
+!define MUI_FINISHPAGE_RUN "\$INSTDIR\\tezeusz.exe"
+!define MUI_FINISHPAGE_RUN_TEXT "Launch Tezeusz"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
@@ -119,42 +119,42 @@ ${ICON_LINE}
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "Polish"
 
-Section "Seerr" SecApp
+Section "Tezeusz" SecApp
   SectionIn RO
   SetOutPath "\$INSTDIR"
   ; Full portable tree (exe + MinGW DLLs + libvlc + assets)
   File /r "${PORTABLE_ESC}\\*.*"
 
-  ; Start Menu - icon from embedded exe resource (and seerr.ico beside it)
-  CreateDirectory "\$SMPROGRAMS\\Seerr"
-  CreateShortCut "\$SMPROGRAMS\\Seerr\\Seerr.lnk" "\$INSTDIR\\seerr.exe" "" "\$INSTDIR\\seerr.exe" 0
-  CreateShortCut "\$SMPROGRAMS\\Seerr\\Uninstall Seerr.lnk" "\$INSTDIR\\Uninstall.exe"
+  ; Start Menu - icon from embedded exe resource (and tezeusz.ico beside it)
+  CreateDirectory "\$SMPROGRAMS\\Tezeusz"
+  CreateShortCut "\$SMPROGRAMS\\Tezeusz\\Tezeusz.lnk" "\$INSTDIR\\tezeusz.exe" "" "\$INSTDIR\\tezeusz.exe" 0
+  CreateShortCut "\$SMPROGRAMS\\Tezeusz\\Uninstall Tezeusz.lnk" "\$INSTDIR\\Uninstall.exe"
 
   ; Registry (per-user) - keeps install path writable for auto-update
-  WriteRegStr HKCU "Software\\Seerr" "InstallDir" "\$INSTDIR"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "DisplayName" "Seerr"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "DisplayVersion" "${VER}"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "Publisher" "Seerr"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "InstallLocation" "\$INSTDIR"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "UninstallString" '"\$INSTDIR\\Uninstall.exe"'
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "QuietUninstallString" '"\$INSTDIR\\Uninstall.exe" /S'
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "DisplayIcon" "\$INSTDIR\\seerr.exe,0"
-  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "NoModify" 1
-  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "NoRepair" 1
+  WriteRegStr HKCU "Software\\Tezeusz" "InstallDir" "\$INSTDIR"
+  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Tezeusz" "DisplayName" "Tezeusz"
+  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Tezeusz" "DisplayVersion" "${VER}"
+  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Tezeusz" "Publisher" "Tezeusz"
+  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Tezeusz" "InstallLocation" "\$INSTDIR"
+  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Tezeusz" "UninstallString" '"\$INSTDIR\\Uninstall.exe"'
+  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Tezeusz" "QuietUninstallString" '"\$INSTDIR\\Uninstall.exe" /S'
+  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Tezeusz" "DisplayIcon" "\$INSTDIR\\tezeusz.exe,0"
+  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Tezeusz" "NoModify" 1
+  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Tezeusz" "NoRepair" 1
   \${GetSize} "\$INSTDIR" "/S=0K" \$0 \$1 \$2
   IntFmt \$0 "0x%08X" \$0
-  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr" "EstimatedSize" "\$0"
+  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Tezeusz" "EstimatedSize" "\$0"
 
   WriteUninstaller "\$INSTDIR\\Uninstall.exe"
 SectionEnd
 
 Section "Uninstall"
-  Delete "\$SMPROGRAMS\\Seerr\\Seerr.lnk"
-  Delete "\$SMPROGRAMS\\Seerr\\Uninstall Seerr.lnk"
-  RMDir "\$SMPROGRAMS\\Seerr"
+  Delete "\$SMPROGRAMS\\Tezeusz\\Tezeusz.lnk"
+  Delete "\$SMPROGRAMS\\Tezeusz\\Uninstall Tezeusz.lnk"
+  RMDir "\$SMPROGRAMS\\Tezeusz"
 
-  DeleteRegKey HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Seerr"
-  DeleteRegKey HKCU "Software\\Seerr"
+  DeleteRegKey HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Tezeusz"
+  DeleteRegKey HKCU "Software\\Tezeusz"
 
   ; Remove install tree (Uninstall.exe last)
   RMDir /r "\$INSTDIR"
@@ -175,4 +175,4 @@ fi
 
 ls -lah "$OUT_EXE"
 echo "Windows setup ready: $OUT_EXE"
-echo "  Installs to %LOCALAPPDATA%\\Programs\\Seerr (user-writable → auto-update OK)"
+echo "  Installs to %LOCALAPPDATA%\\Programs\\Tezeusz (user-writable → auto-update OK)"

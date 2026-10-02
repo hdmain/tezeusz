@@ -7,7 +7,7 @@ set -euo pipefail
 
 OUT="${1:?update out dir from make-update-manifest.sh}"
 PLATFORM="${2:?platform}"
-CHANNEL="${SEERR_UPDATE_CHANNEL:-continuous}"
+CHANNEL="${TEZEUSZ_UPDATE_CHANNEL:-continuous}"
 MANIFEST="$OUT/update-manifest-${PLATFORM}.json"
 BLOBS="$OUT/blobs"
 

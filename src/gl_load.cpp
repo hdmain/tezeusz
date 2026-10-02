@@ -12,18 +12,18 @@
 #include <dlfcn.h>
 #endif
 
-void (*seerr_glGenTextures)(GLsizei, GLuint*) = nullptr;
-void (*seerr_glDeleteTextures)(GLsizei, const GLuint*) = nullptr;
-void (*seerr_glBindTexture)(GLenum, GLuint) = nullptr;
-void (*seerr_glTexParameteri)(GLenum, GLenum, GLint) = nullptr;
-void (*seerr_glTexImage2D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*) = nullptr;
-void (*seerr_glTexSubImage2D)(GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void*) = nullptr;
-void (*seerr_glPixelStorei)(GLenum, GLint) = nullptr;
-void (*seerr_glViewport)(GLint, GLint, GLsizei, GLsizei) = nullptr;
-void (*seerr_glClearColor)(GLfloat, GLfloat, GLfloat, GLfloat) = nullptr;
-void (*seerr_glClear)(GLbitfield) = nullptr;
-void (*seerr_glGetTexImage)(GLenum, GLint, GLenum, GLenum, void*) = nullptr;
-void (*seerr_glReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*) = nullptr;
+void (*tezeusz_glGenTextures)(GLsizei, GLuint*) = nullptr;
+void (*tezeusz_glDeleteTextures)(GLsizei, const GLuint*) = nullptr;
+void (*tezeusz_glBindTexture)(GLenum, GLuint) = nullptr;
+void (*tezeusz_glTexParameteri)(GLenum, GLenum, GLint) = nullptr;
+void (*tezeusz_glTexImage2D)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*) = nullptr;
+void (*tezeusz_glTexSubImage2D)(GLenum, GLint, GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, const void*) = nullptr;
+void (*tezeusz_glPixelStorei)(GLenum, GLint) = nullptr;
+void (*tezeusz_glViewport)(GLint, GLint, GLsizei, GLsizei) = nullptr;
+void (*tezeusz_glClearColor)(GLfloat, GLfloat, GLfloat, GLfloat) = nullptr;
+void (*tezeusz_glClear)(GLbitfield) = nullptr;
+void (*tezeusz_glGetTexImage)(GLenum, GLint, GLenum, GLenum, void*) = nullptr;
+void (*tezeusz_glReadPixels)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void*) = nullptr;
 
 #ifdef _WIN32
 static void* loadSym(const char* name) {
@@ -95,26 +95,26 @@ static void* loadSym(const char* name) {
 }
 #endif
 
-bool seerrLoadGL() {
-    seerr_glGenTextures = (decltype(seerr_glGenTextures))loadSym("glGenTextures");
-    seerr_glDeleteTextures = (decltype(seerr_glDeleteTextures))loadSym("glDeleteTextures");
-    seerr_glBindTexture = (decltype(seerr_glBindTexture))loadSym("glBindTexture");
-    seerr_glTexParameteri = (decltype(seerr_glTexParameteri))loadSym("glTexParameteri");
-    seerr_glTexImage2D = (decltype(seerr_glTexImage2D))loadSym("glTexImage2D");
-    seerr_glTexSubImage2D = (decltype(seerr_glTexSubImage2D))loadSym("glTexSubImage2D");
-    seerr_glPixelStorei = (decltype(seerr_glPixelStorei))loadSym("glPixelStorei");
-    seerr_glViewport = (decltype(seerr_glViewport))loadSym("glViewport");
-    seerr_glClearColor = (decltype(seerr_glClearColor))loadSym("glClearColor");
-    seerr_glClear = (decltype(seerr_glClear))loadSym("glClear");
-    seerr_glGetTexImage = (decltype(seerr_glGetTexImage))loadSym("glGetTexImage");
-    seerr_glReadPixels = (decltype(seerr_glReadPixels))loadSym("glReadPixels");
+bool tezeuszLoadGL() {
+    tezeusz_glGenTextures = (decltype(tezeusz_glGenTextures))loadSym("glGenTextures");
+    tezeusz_glDeleteTextures = (decltype(tezeusz_glDeleteTextures))loadSym("glDeleteTextures");
+    tezeusz_glBindTexture = (decltype(tezeusz_glBindTexture))loadSym("glBindTexture");
+    tezeusz_glTexParameteri = (decltype(tezeusz_glTexParameteri))loadSym("glTexParameteri");
+    tezeusz_glTexImage2D = (decltype(tezeusz_glTexImage2D))loadSym("glTexImage2D");
+    tezeusz_glTexSubImage2D = (decltype(tezeusz_glTexSubImage2D))loadSym("glTexSubImage2D");
+    tezeusz_glPixelStorei = (decltype(tezeusz_glPixelStorei))loadSym("glPixelStorei");
+    tezeusz_glViewport = (decltype(tezeusz_glViewport))loadSym("glViewport");
+    tezeusz_glClearColor = (decltype(tezeusz_glClearColor))loadSym("glClearColor");
+    tezeusz_glClear = (decltype(tezeusz_glClear))loadSym("glClear");
+    tezeusz_glGetTexImage = (decltype(tezeusz_glGetTexImage))loadSym("glGetTexImage");
+    tezeusz_glReadPixels = (decltype(tezeusz_glReadPixels))loadSym("glReadPixels");
 
-    const bool ok = seerr_glGenTextures && seerr_glDeleteTextures && seerr_glBindTexture &&
-                    seerr_glTexParameteri && seerr_glTexImage2D && seerr_glTexSubImage2D &&
-                    seerr_glPixelStorei && seerr_glViewport && seerr_glClearColor && seerr_glClear &&
-                    seerr_glReadPixels;
+    const bool ok = tezeusz_glGenTextures && tezeusz_glDeleteTextures && tezeusz_glBindTexture &&
+                    tezeusz_glTexParameteri && tezeusz_glTexImage2D && tezeusz_glTexSubImage2D &&
+                    tezeusz_glPixelStorei && tezeusz_glViewport && tezeusz_glClearColor && tezeusz_glClear &&
+                    tezeusz_glReadPixels;
     if (!ok)
-        fprintf(stderr, "seerr: OpenGL entry points missing (glGenTextures=%p glClear=%p)\n",
-                (void*)seerr_glGenTextures, (void*)seerr_glClear);
+        fprintf(stderr, "tezeusz: OpenGL entry points missing (glGenTextures=%p glClear=%p)\n",
+                (void*)tezeusz_glGenTextures, (void*)tezeusz_glClear);
     return ok;
 }

@@ -1,69 +1,72 @@
-# Seerr C++ (tezeusz)
+# Seerr
 
-Desktop Jellyseerr/Seerr-style media discovery app in C++ (ImGui + GLFW), with a
-built-in download stack (apibay search + libtorrent) — no separate *arr /
-qBittorrent required.
+A desktop app for discovering, downloading, and watching movies and TV shows — all in one place. No separate download client or media server required.
 
-## Quick start (Linux / WSL)
+Inspired by [Seerr](https://github.com/seerr-team/seerr) / Jellyseerr, built as a native Windows & Linux app.
 
-```bash
-./scripts/linux-deps.sh    # once (needs sudo)
-./scripts/build.sh
-./scripts/run.sh
-```
+## What you can do
 
-Or one-shot smoke (build + 8s GUI test):
+- **Browse & search** — trending, popular, and upcoming titles from TMDB
+- **Download** — request a title and Seerr finds torrents and downloads them for you
+- **Watch in-app** — built-in player (VLC) with progress resume
+- **Subtitles** — download and manage subtitles next to your files
+- **AI Lector** — offline voice-over from subtitles (optional), overlaid on the original audio
+- **Library** — your downloaded titles, export/import between devices
+- **Updates** — in-app updates when you use the installer build
 
-```bash
-./scripts/linux-smoke.sh
-```
+Polish and English UI.
 
-Assets (fonts, icons, locales) are staged next to `build/seerr` automatically,
-so you can run the binary from the build tree without `make install`.
+## Download
 
-Playback needs VLC (`libvlc5` / `vlc`) — installed by `linux-deps.sh`.
+Get the latest build from the [**continuous** release](https://github.com/hdmain/tezeusz/releases/tag/continuous):
 
-## Windows (MinGW / MSYS2)
+| Platform | What to get |
+|----------|-------------|
+| **Windows** | `seerr-windows-setup.exe` — recommended installer (auto-update works) |
+| **Windows** | Portable zip — unpack and run `seerr.exe` |
+| **Linux** | `.deb` package or portable zip |
 
-```bash
-./scripts/windows-deps.sh   # once, inside MINGW64 shell
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSEERR_BUNDLED_DEPS=OFF
-cmake --build build
-```
+### Windows installer
 
-Or with FetchContent deps (no MSYS2 libtorrent):
+1. Download `seerr-windows-setup.exe`
+2. Run it (installs for your user under `%LOCALAPPDATA%\Programs\Seerr`)
+3. Launch **Seerr** from the Start menu
 
-```bash
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSEERR_BUNDLED_DEPS=ON
-cmake --build build
-```
+### Windows portable
 
-CI publishes on the `continuous` release:
-- **`seerr-windows-setup.exe`** — NSIS installer → `%LOCALAPPDATA%\Programs\Seerr`
-  (per-user, writable → in-app auto-update works)
-- **Windows portable zip** — exe + MinGW DLLs + bundled libVLC
-- **Linux .deb** / portable zip
+1. Download and unpack the zip
+2. Run `seerr.exe`
+3. Settings and cache stay in `%APPDATA%\SeerrCpp`
 
-## Layout
+### Linux
 
-| Path | Role |
-|------|------|
-| `src/` | Application code |
-| `cmake/` | CMake modules (deps, imgui, packaging) |
-| `scripts/` | Linux/WSL build & run helpers |
-| `packaging/` | Desktop entry, Windows portable packager |
-| `locales/` | UI translations (`en`, `pl`) |
-| `vendor/` | ImGui, GLFW (Win), fonts, icons |
+Install the `.deb`, or unpack the portable zip and run the `seerr` binary.
 
-## CMake options
+Playback needs **VLC** installed on the system (Linux). The Windows packages already include what the player needs.
 
-| Option | Default | Meaning |
-|--------|---------|---------|
-| `SEERR_BUNDLED_DEPS` | ON (Win) / OFF (Linux) | Fetch Boost + libtorrent instead of system packages |
-| `SEERR_COPY_ASSETS_TO_BUILD` | ON | Stage fonts/icons/locales next to the binary |
-| `SEERR_VERSION` | `0.1.0` | Package version string |
+## First steps
+
+1. Open **Settings** and set your download folder
+2. Browse **Discover** or use search
+3. Open a title → **Request** / download
+4. When it finishes, find it in **Library** and hit **Play**
+
+Optional: enable **AI Lector** in Settings to generate a voice-over from subtitle files (right-click a title in Library).
+
+## Tips
+
+- Prefer the **Windows setup** if you want automatic updates
+- Keep enough free disk space in the download folder
+- For the best lector overlay (quieter film audio under the narrator), install [ffmpeg](https://ffmpeg.org/) and put it on your PATH (or next to `seerr.exe`)
+
+## Privacy & legal
+
+Seerr uses public metadata (TMDB) and torrent search. You are responsible for complying with copyright and local laws where you live.
+
+## For developers
+
+Source, build scripts, and packaging live in this repository. See `scripts/` and `CMakeLists.txt` if you want to build from source.
 
 ## License
 
-UI patterns inspired by [Seerr](https://github.com/seerr-team/seerr). Vendor
-libraries retain their own licenses (Dear ImGui, libtorrent, etc.).
+UI patterns inspired by [Seerr](https://github.com/seerr-team/seerr). Bundled libraries keep their own licenses (Dear ImGui, libtorrent, VLC, etc.).

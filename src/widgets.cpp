@@ -49,7 +49,12 @@ void initFonts() {
     static ImVector<ImWchar> rangesPL;
     ImFontGlyphRangesBuilder rb;
     rb.AddRanges(io.Fonts->GetGlyphRangesDefault());
-    rb.AddText("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ…•–-→");
+    // Ellipsis, bullet, arrow and Polish letters. Unicode dashes are added by
+    // code point below (external data: torrent names, subtitle files). Our own
+    // UI strings use plain "-" instead.
+    rb.AddText("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ…•-→");
+    rb.AddChar(0x2013); // en dash
+    rb.AddChar(0x2014); // em dash
     rb.BuildRanges(&rangesPL);
 
     auto load = [&](const char* file, float px) -> ImFont* {

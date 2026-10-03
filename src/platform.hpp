@@ -15,6 +15,13 @@ std::string pickOpenFile(const char* title, const char* filterLabel, const char*
 // Native Win11-style dark titlebar (keeps OS caption; no custom chrome).
 void applyDarkTitlebar(GLFWwindow* win);
 
+// Borderless desktop-fullscreen helpers (multi-monitor safe on Windows).
+void enterBorderlessFullscreen(GLFWwindow* win, int x, int y, int w, int h);
+void leaveBorderlessFullscreen(GLFWwindow* win, int x, int y, int w, int h);
+// If Windows iconified/hid the FS window after focus moved elsewhere, show it again
+// without stealing focus from the other monitor.
+void ensureBorderlessFullscreenVisible(GLFWwindow* win);
+
 // Keep display awake while media is playing (screensaver / idle sleep).
 // Safe to call every frame - only toggles when `active` changes.
 void setIdleInhibit(bool active, const char* reason = "Playing video");

@@ -704,9 +704,9 @@ void startOpenJob(uint64_t gen, std::string path, int volume, std::string audioS
 
 static void leaveBorderlessFullscreen() {
     if (!g_host) return;
-    glfwSetWindowAttrib(g_host, GLFW_DECORATED, GLFW_TRUE);
-    glfwSetWindowMonitor(g_host, nullptr, g_prevX, g_prevY,
-                         g_prevW > 0 ? g_prevW : 1500, g_prevH > 0 ? g_prevH : 900, 0);
+    platform::leaveBorderlessFullscreen(g_host, g_prevX, g_prevY,
+                                         g_prevW > 0 ? g_prevW : 1500,
+                                         g_prevH > 0 ? g_prevH : 900);
     g_st.fullscreen = false;
 }
 
@@ -915,11 +915,7 @@ void toggleFullscreen() {
         if (!mon || !mode) return;
         int mx = 0, my = 0;
         glfwGetMonitorPos(mon, &mx, &my);
-        // Borderless windowed fullscreen: exclusive mode (glfwSetWindowMonitor with a
-        // monitor) iconifies on Windows when focus moves to another display.
-        glfwSetWindowAttrib(g_host, GLFW_AUTO_ICONIFY, GLFW_FALSE);
-        glfwSetWindowAttrib(g_host, GLFW_DECORATED, GLFW_FALSE);
-        glfwSetWindowMonitor(g_host, nullptr, mx, my, mode->width, mode->height, 0);
+        platform::enterBorderlessFullscreen(g_host, mx, my, mode->width, mode->height);
         g_st.fullscreen = true;
     } else {
         leaveBorderlessFullscreen();
@@ -960,6 +956,11 @@ void tick() {
     }
     applyPendingOpen();
     if (!g_st.open) return; // closed while applying / discarded
+
+    // Windows may still iconify a borderless FS window when another monitor is
+    // clicked; undo that every frame without stealing focus.
+    if (g_st.fullscreen && g_host)
+        platform::ensureBorderlessFullscreenVisible(g_host);
 
     // Apply VLC events on the UI thread (callbacks only set atomics).
     if (const unsigned ev = g_vlcEvents.exchange(0, std::memory_order_relaxed)) {

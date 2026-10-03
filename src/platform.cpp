@@ -41,6 +41,56 @@ namespace {
 bool g_idleActive = false;
 
 #ifdef _WIN32
+bool g_fsActive = false;
+int g_fsX = 0, g_fsY = 0, g_fsW = 0, g_fsH = 0;
+WNDPROC g_prevWndProc = nullptr;
+
+LRESULT CALLBACK fsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (g_fsActive) {
+        if (msg == WM_SYSCOMMAND) {
+            const WPARAM cmd = wParam & 0xFFF0;
+            // Block OS minimize while borderless FS is active (other-monitor focus).
+            if (cmd == SC_MINIMIZE)
+                return 0;
+        }
+        if (msg == WM_WINDOWPOSCHANGING) {
+            auto* wp = reinterpret_cast<WINDOWPOS*>(lParam);
+            if (wp && !(wp->flags & SWP_NOSIZE) && !(wp->flags & SWP_NOMOVE)) {
+                // Keep the 1px overscan so Windows does not treat us as exclusive FS.
+                if (g_fsW > 0 && g_fsH > 0) {
+                    wp->x = g_fsX - 1;
+                    wp->y = g_fsY - 1;
+                    wp->cx = g_fsW + 2;
+                    wp->cy = g_fsH + 2;
+                }
+            }
+        }
+    }
+    if (g_prevWndProc)
+        return CallWindowProcW(g_prevWndProc, hwnd, msg, wParam, lParam);
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+void attachFsWndProc(HWND hwnd) {
+    if (!hwnd || g_prevWndProc) return;
+    g_prevWndProc = reinterpret_cast<WNDPROC>(
+        SetWindowLongPtrW(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(fsWndProc)));
+}
+
+void detachFsWndProc(HWND hwnd) {
+    if (!hwnd || !g_prevWndProc) return;
+    SetWindowLongPtrW(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_prevWndProc));
+    g_prevWndProc = nullptr;
+}
+
+void applyFsOverscan(HWND hwnd) {
+    if (!hwnd || g_fsW <= 0 || g_fsH <= 0) return;
+    SetWindowPos(hwnd, HWND_NOTOPMOST, g_fsX - 1, g_fsY - 1, g_fsW + 2, g_fsH + 2,
+                 SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+}
+#endif
+
+#ifdef _WIN32
 void idleInhibitApply(bool active, const char*) {
     if (active)
         SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);
@@ -685,6 +735,97 @@ void applyDarkTitlebar(GLFWwindow* win) {
     DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &text, sizeof(text));
 #else
     (void)win;
+#endif
+}
+
+void enterBorderlessFullscreen(GLFWwindow* win, int x, int y, int w, int h) {
+    if (!win) return;
+    // Never exclusive monitor mode: that iconifies when another display gets focus.
+    glfwSetWindowAttrib(win, GLFW_AUTO_ICONIFY, GLFW_FALSE);
+    glfwSetWindowAttrib(win, GLFW_FLOATING, GLFW_FALSE);
+    glfwSetWindowAttrib(win, GLFW_DECORATED, GLFW_FALSE);
+    glfwSetWindowMonitor(win, nullptr, x, y, w, h, 0);
+#ifdef _WIN32
+    HWND hwnd = glfwGetWin32Window(win);
+    if (!hwnd) return;
+    g_fsX = x; g_fsY = y; g_fsW = w; g_fsH = h;
+    g_fsActive = true;
+    attachFsWndProc(hwnd);
+    LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    style &= ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
+    style |= (WS_POPUP | WS_VISIBLE);
+    SetWindowLongPtrW(hwnd, GWL_STYLE, style);
+    LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    ex &= ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE);
+    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex);
+    // Exact monitor size => Windows "fullscreen" minimize-on-other-monitor-focus.
+    // Overscan by 1px avoids that while still covering the display.
+    applyFsOverscan(hwnd);
+    ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+#else
+    (void)x; (void)y; (void)w; (void)h;
+#endif
+}
+
+void leaveBorderlessFullscreen(GLFWwindow* win, int x, int y, int w, int h) {
+    if (!win) return;
+#ifdef _WIN32
+    g_fsActive = false;
+    g_fsW = g_fsH = 0;
+    HWND hwnd = glfwGetWin32Window(win);
+    if (hwnd) detachFsWndProc(hwnd);
+    glfwSetWindowAttrib(win, GLFW_DECORATED, GLFW_TRUE);
+    glfwSetWindowMonitor(win, nullptr, x, y, w, h, 0);
+    if (!hwnd) return;
+    LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    style &= ~WS_POPUP;
+    style |= (WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+    SetWindowLongPtrW(hwnd, GWL_STYLE, style);
+    SetWindowPos(hwnd, HWND_NOTOPMOST, x, y, w, h,
+                 SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+    applyDarkTitlebar(win);
+#else
+    glfwSetWindowAttrib(win, GLFW_DECORATED, GLFW_TRUE);
+    glfwSetWindowMonitor(win, nullptr, x, y, w, h, 0);
+    (void)x; (void)y; (void)w; (void)h;
+#endif
+}
+
+void ensureBorderlessFullscreenVisible(GLFWwindow* win) {
+    if (!win) return;
+#ifdef _WIN32
+    if (!g_fsActive) return;
+    HWND hwnd = glfwGetWin32Window(win);
+    if (!hwnd) return;
+    if (IsIconic(hwnd) || glfwGetWindowAttrib(win, GLFW_ICONIFIED)) {
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        WINDOWPLACEMENT wp{};
+        wp.length = sizeof(wp);
+        if (GetWindowPlacement(hwnd, &wp)) {
+            if (wp.showCmd == SW_SHOWMINIMIZED || wp.showCmd == SW_MINIMIZE) {
+                wp.showCmd = SW_SHOWNOACTIVATE;
+                SetWindowPlacement(hwnd, &wp);
+            }
+        }
+        if (glfwGetWindowAttrib(win, GLFW_ICONIFIED))
+            glfwRestoreWindow(win);
+        applyFsOverscan(hwnd);
+    } else if (!IsWindowVisible(hwnd)) {
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        applyFsOverscan(hwnd);
+    } else {
+        // Re-assert overscan if something snapped us back to exact monitor size.
+        RECT rc{};
+        if (GetWindowRect(hwnd, &rc)) {
+            const int ww = rc.right - rc.left;
+            const int hh = rc.bottom - rc.top;
+            if (g_fsW > 0 && (ww == g_fsW && hh == g_fsH))
+                applyFsOverscan(hwnd);
+        }
+    }
+#else
+    if (glfwGetWindowAttrib(win, GLFW_ICONIFIED))
+        glfwRestoreWindow(win);
 #endif
 }
 

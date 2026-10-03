@@ -20,6 +20,15 @@
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
+#ifndef DWMWCP_DEFAULT
+#define DWMWCP_DEFAULT 0
+#endif
+#ifndef DWMWCP_DONOTROUND
+#define DWMWCP_DONOTROUND 1
+#endif
 #ifndef DWMWA_BORDER_COLOR
 #define DWMWA_BORDER_COLOR 34
 #endif
@@ -758,6 +767,9 @@ void enterBorderlessFullscreen(GLFWwindow* win, int x, int y, int w, int h) {
     LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
     ex &= ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE);
     SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex);
+    // Win11 rounds undecorated windows; square corners for true edge-to-edge FS.
+    DWORD corner = DWMWCP_DONOTROUND;
+    DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner));
     // Exact monitor size => Windows "fullscreen" minimize-on-other-monitor-focus.
     // Overscan by 1px avoids that while still covering the display.
     applyFsOverscan(hwnd);
@@ -773,7 +785,11 @@ void leaveBorderlessFullscreen(GLFWwindow* win, int x, int y, int w, int h) {
     g_fsActive = false;
     g_fsW = g_fsH = 0;
     HWND hwnd = glfwGetWin32Window(win);
-    if (hwnd) detachFsWndProc(hwnd);
+    if (hwnd) {
+        DWORD corner = DWMWCP_DEFAULT;
+        DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner));
+        detachFsWndProc(hwnd);
+    }
     glfwSetWindowAttrib(win, GLFW_DECORATED, GLFW_TRUE);
     glfwSetWindowMonitor(win, nullptr, x, y, w, h, 0);
     if (!hwnd) return;

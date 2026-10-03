@@ -309,6 +309,8 @@ int main() {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1);
 #endif
     glfwWindowHint(GLFW_SAMPLES, 0); // UI doesn't need MSAA - saves GPU fillrate
+    // Keep fullscreen visible when focus moves to another monitor (Windows).
+    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
     // Match packaging/tezeusz.desktop StartupWMClass / Icon=tezeusz (Linux taskbar).
 #if defined(GLFW_X11_CLASS_NAME)
     glfwWindowHintString(GLFW_X11_CLASS_NAME, "tezeusz");
@@ -323,6 +325,7 @@ int main() {
         // Some drivers reject Core 3.3 - fall back to any available OpenGL.
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_SAMPLES, 0);
+        glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
 #if defined(GLFW_X11_CLASS_NAME)
         glfwWindowHintString(GLFW_X11_CLASS_NAME, "tezeusz");
         glfwWindowHintString(GLFW_X11_INSTANCE_NAME, "tezeusz");

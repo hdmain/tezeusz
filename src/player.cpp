@@ -702,6 +702,14 @@ void startOpenJob(uint64_t gen, std::string path, int volume, std::string audioS
 
 } // anon
 
+static void leaveBorderlessFullscreen() {
+    if (!g_host) return;
+    glfwSetWindowAttrib(g_host, GLFW_DECORATED, GLFW_TRUE);
+    glfwSetWindowMonitor(g_host, nullptr, g_prevX, g_prevY,
+                         g_prevW > 0 ? g_prevW : 1500, g_prevH > 0 ? g_prevH : 900, 0);
+    g_st.fullscreen = false;
+}
+
 void bindWindow(GLFWwindow* w) { g_host = w; }
 
 bool open(const std::string& path, const std::string& title) {
@@ -827,10 +835,8 @@ void close() {
         }
     }
 
-    if (wasFs && g_host) {
-        glfwSetWindowMonitor(g_host, nullptr, g_prevX, g_prevY,
-                             g_prevW > 0 ? g_prevW : 1500, g_prevH > 0 ? g_prevH : 900, 0);
-    }
+    if (wasFs && g_host)
+        leaveBorderlessFullscreen();
 
     g_showSubsMenu = g_showAudioMenu = g_showSettings = false;
     g_showStats = false;
@@ -907,12 +913,16 @@ void toggleFullscreen() {
         if (!mon) mon = glfwGetPrimaryMonitor();
         const GLFWvidmode* mode = mon ? glfwGetVideoMode(mon) : nullptr;
         if (!mon || !mode) return;
-        glfwSetWindowMonitor(g_host, mon, 0, 0, mode->width, mode->height, mode->refreshRate);
+        int mx = 0, my = 0;
+        glfwGetMonitorPos(mon, &mx, &my);
+        // Borderless windowed fullscreen: exclusive mode (glfwSetWindowMonitor with a
+        // monitor) iconifies on Windows when focus moves to another display.
+        glfwSetWindowAttrib(g_host, GLFW_AUTO_ICONIFY, GLFW_FALSE);
+        glfwSetWindowAttrib(g_host, GLFW_DECORATED, GLFW_FALSE);
+        glfwSetWindowMonitor(g_host, nullptr, mx, my, mode->width, mode->height, 0);
         g_st.fullscreen = true;
     } else {
-        glfwSetWindowMonitor(g_host, nullptr, g_prevX, g_prevY,
-                             g_prevW > 0 ? g_prevW : 1500, g_prevH > 0 ? g_prevH : 900, 0);
-        g_st.fullscreen = false;
+        leaveBorderlessFullscreen();
     }
     g_showControls = true; g_idleTimer = 0; g_controlsAlpha = 1.f;
     g_ignoreMouseUntil = ImGui::GetTime() + 0.25; // FS switch floods mouse events

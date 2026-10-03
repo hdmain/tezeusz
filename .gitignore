@@ -36,23 +36,10 @@ config.json
 .DS_Store
 Thumbs.db
 
-# Screenshots / scratch
-/live*.png
-/hover*.png
-/t_movies*.png
-/theerror.png
-/r1.png
-/r2.png
-/d6.png
-/d7.png
-/d8.png
-/d9.png
-/d10.png
-/shot*.png
-/mainpage.png
-/detalispage.png
-/details*.png
-/shoot.ps1
+# Local scratch (debug shots / one-off scripts at repo root)
+/*.png
+!ss/
 /build_log.txt
 /check_img*.py
 /rate.py
+/shoot.ps1

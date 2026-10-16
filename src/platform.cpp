@@ -747,14 +747,16 @@ void applyDarkTitlebar(GLFWwindow* win) {
 #endif
 }
 
-void enterBorderlessFullscreen(GLFWwindow* win, int x, int y, int w, int h) {
+void enterBorderlessFullscreen(GLFWwindow* win, GLFWmonitor* mon, int x, int y, int w, int h) {
     if (!win) return;
-    // Never exclusive monitor mode: that iconifies when another display gets focus.
     glfwSetWindowAttrib(win, GLFW_AUTO_ICONIFY, GLFW_FALSE);
     glfwSetWindowAttrib(win, GLFW_FLOATING, GLFW_FALSE);
+#ifdef _WIN32
+    (void)mon;
+    // Never exclusive monitor mode on Windows: that iconifies when another display
+    // gets focus. Borderless + 1px overscan covers the panel without that behavior.
     glfwSetWindowAttrib(win, GLFW_DECORATED, GLFW_FALSE);
     glfwSetWindowMonitor(win, nullptr, x, y, w, h, 0);
-#ifdef _WIN32
     HWND hwnd = glfwGetWin32Window(win);
     if (!hwnd) return;
     g_fsX = x; g_fsY = y; g_fsW = w; g_fsH = h;
@@ -770,12 +772,19 @@ void enterBorderlessFullscreen(GLFWwindow* win, int x, int y, int w, int h) {
     // Win11 rounds undecorated windows; square corners for true edge-to-edge FS.
     DWORD corner = DWMWCP_DONOTROUND;
     DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner));
-    // Exact monitor size => Windows "fullscreen" minimize-on-other-monitor-focus.
-    // Overscan by 1px avoids that while still covering the display.
     applyFsOverscan(hwnd);
     ShowWindow(hwnd, SW_SHOWNOACTIVATE);
 #else
-    (void)x; (void)y; (void)w; (void)h;
+    // Real monitor fullscreen: GNOME/KDE/etc. leave rounded corners on borderless
+    // windowed-FS, but drop them for exclusive fullscreen surfaces.
+    if (!mon) mon = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = mon ? glfwGetVideoMode(mon) : nullptr;
+    if (!mon || !mode) {
+        glfwSetWindowAttrib(win, GLFW_DECORATED, GLFW_FALSE);
+        glfwSetWindowMonitor(win, nullptr, x, y, w, h, 0);
+        return;
+    }
+    glfwSetWindowMonitor(win, mon, 0, 0, mode->width, mode->height, mode->refreshRate);
 #endif
 }
 

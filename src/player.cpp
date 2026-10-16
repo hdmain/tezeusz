@@ -915,7 +915,7 @@ void toggleFullscreen() {
         if (!mon || !mode) return;
         int mx = 0, my = 0;
         glfwGetMonitorPos(mon, &mx, &my);
-        platform::enterBorderlessFullscreen(g_host, mx, my, mode->width, mode->height);
+        platform::enterBorderlessFullscreen(g_host, mon, mx, my, mode->width, mode->height);
         g_st.fullscreen = true;
     } else {
         leaveBorderlessFullscreen();

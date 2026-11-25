@@ -420,18 +420,23 @@ void appendIconPixmap(DBusMessageIter* parent) {
     d.message_iter_close_container(parent, &entry);
 }
 
-void appendMenuItem(DBusMessageIter* parent, int32_t id, const char* label, bool enabled) {
+// dbusmenu layout node: each child in `av` is a VARIANT wrapping (ia{sv}av).
+// Writing a(ia{sv}av) instead aborts libdbus on Plasma (signature mismatch).
+void appendMenuItem(DBusMessageIter* parentAv, int32_t id, const char* label, bool enabled) {
     auto& d = dbus();
-    DBusMessageIter item, props, children;
-    d.message_iter_open_container(parent, DBUS_TYPE_STRUCT, nullptr, &item);
+    DBusMessageIter var, item, props, children;
+    if (!d.message_iter_open_container(parentAv, DBUS_TYPE_VARIANT, "(ia{sv}av)", &var))
+        return;
+    d.message_iter_open_container(&var, DBUS_TYPE_STRUCT, nullptr, &item);
     d.message_iter_append_basic(&item, DBUS_TYPE_INT32, &id);
     d.message_iter_open_container(&item, DBUS_TYPE_ARRAY, "{sv}", &props);
     appendVariantString(&props, "label", label);
     appendVariantBool(&props, "enabled", enabled ? 1 : 0);
     d.message_iter_close_container(&item, &props);
-    d.message_iter_open_container(&item, DBUS_TYPE_ARRAY, "(ia{sv}av)", &children);
+    d.message_iter_open_container(&item, DBUS_TYPE_ARRAY, "v", &children);
     d.message_iter_close_container(&item, &children);
-    d.message_iter_close_container(parent, &item);
+    d.message_iter_close_container(&var, &item);
+    d.message_iter_close_container(parentAv, &var);
 }
 
 void replyGetAllSni(DBusMessage* msg) {
@@ -467,19 +472,18 @@ void replyGetLayout(DBusMessage* msg) {
     auto& d = dbus();
     DBusMessage* r = d.message_new_method_return(msg);
     if (!r) return;
+    // GetLayout out args: u revision, (ia{sv}av) layout
     DBusMessageIter root, layout, props, children;
     d.message_iter_init_append(r, &root);
-    d.message_iter_append_basic(&root, DBUS_TYPE_UINT32, &g_menuRev);
+    uint32_t rev = (uint32_t)g_menuRev;
+    d.message_iter_append_basic(&root, DBUS_TYPE_UINT32, &rev);
     d.message_iter_open_container(&root, DBUS_TYPE_STRUCT, nullptr, &layout);
     int32_t rootId = 0;
     d.message_iter_append_basic(&layout, DBUS_TYPE_INT32, &rootId);
     d.message_iter_open_container(&layout, DBUS_TYPE_ARRAY, "{sv}", &props);
     appendVariantString(&props, "children-display", "submenu");
     d.message_iter_close_container(&layout, &props);
-    d.message_iter_open_container(&layout, DBUS_TYPE_ARRAY, "(ia{sv}av)", &children);
-    // children must be variants of (ia{sv}av) per dbusmenu - use av of variants
-    // Spec: children is av where each is variant of (ia{sv}av). Simpler hosts accept direct structs
-    // in the array type "(ia{sv}av)". We'll emit struct children directly.
+    d.message_iter_open_container(&layout, DBUS_TYPE_ARRAY, "v", &children);
     appendMenuItem(&children, 1, i18n::tr("tray.show"), true);
     appendMenuItem(&children, 2, i18n::tr("tray.quit"), true);
     d.message_iter_close_container(&layout, &children);
@@ -503,7 +507,18 @@ int onMessage(DBusConnection*, DBusMessage* msg, void*) {
                 DBusMessageIter root, arr;
                 d.message_iter_init_append(r, &root);
                 d.message_iter_open_container(&root, DBUS_TYPE_ARRAY, "{sv}", &arr);
-                appendVariantString(&arr, "Version", "4");
+                // dbusmenu Version is uint32, not string.
+                {
+                    DBusMessageIter entry, var;
+                    const char* key = "Version";
+                    uint32_t ver = 3;
+                    d.message_iter_open_container(&arr, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
+                    d.message_iter_append_basic(&entry, DBUS_TYPE_STRING, &key);
+                    d.message_iter_open_container(&entry, DBUS_TYPE_VARIANT, "u", &var);
+                    d.message_iter_append_basic(&var, DBUS_TYPE_UINT32, &ver);
+                    d.message_iter_close_container(&entry, &var);
+                    d.message_iter_close_container(&arr, &entry);
+                }
                 appendVariantString(&arr, "Status", "normal");
                 appendVariantString(&arr, "TextDirection", "ltr");
                 d.message_iter_close_container(&root, &arr);

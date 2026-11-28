@@ -20,7 +20,7 @@ if [[ ! -f "$PORTABLE/tezeusz.exe" ]]; then
   exit 1
 fi
 if ! command -v makensis >/dev/null 2>&1; then
-  echo "error: makensis not found - install mingw-w64-x86_64-nsis (MSYS2)" >&2
+  echo "error: makensis not found - install mingw-w64-ucrt-x86_64-nsis (MSYS2 UCRT64)" >&2
   exit 1
 fi
 

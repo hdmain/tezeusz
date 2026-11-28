@@ -21,9 +21,10 @@ if (-not $MingwBin -and $env:MINGW_PREFIX) {
 
 if (-not $MingwBin) {
     foreach ($c in @(
-        "C:\msys64\mingw64\bin",
         "C:\msys64\ucrt64\bin",
+        "C:\msys64\mingw64\bin",
         "C:\msys64\clang64\bin",
+        "D:\a\_temp\msys64\ucrt64\bin",
         "D:\a\_temp\msys64\mingw64\bin"
     )) {
         if (Test-Path -LiteralPath $c) { $MingwBin = $c; break }

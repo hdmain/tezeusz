@@ -7,7 +7,7 @@ EXE="${1:?path to tezeusz.exe}"
 OUT="${2:?output directory}"
 VER="${3:-0.1.0}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-MINGW_BIN="${MINGW_PREFIX:-/mingw64}/bin"
+MINGW_BIN="${MINGW_PREFIX:-/ucrt64}/bin"
 MINGW_ROOT="$(cd "$MINGW_BIN/.." && pwd)"
 
 if [[ ! -f "$EXE" ]]; then

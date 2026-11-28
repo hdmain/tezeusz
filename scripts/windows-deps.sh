@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
-# Install MinGW64 build + packaging deps (MSYS2 / MINGW64).
-# Run inside an MSYS2 MINGW64 shell, or let CI call this after msys2/setup-msys2.
+# Install UCRT64 build + packaging deps (MSYS2 / UCRT64).
+# Run inside an MSYS2 UCRT64 shell, or let CI call this after msys2/setup-msys2.
 set -euo pipefail
 
 if ! command -v pacman >/dev/null 2>&1; then
-  echo "error: pacman not found - open an MSYS2 MINGW64 shell first" >&2
+  echo "error: pacman not found - open an MSYS2 UCRT64 shell first" >&2
   exit 1
 fi
 
 # Keep this list in sync with .github/workflows/build.yml Windows job packages.
+# MSYS2 no longer ships mingw64 libtorrent-rasterbar - use UCRT64.
 PACKAGES=(
-  mingw-w64-x86_64-gcc
-  mingw-w64-x86_64-cmake
-  mingw-w64-x86_64-ninja
-  mingw-w64-x86_64-pkgconf
-  mingw-w64-x86_64-boost
-  mingw-w64-x86_64-libtorrent-rasterbar
-  mingw-w64-x86_64-zlib
-  mingw-w64-x86_64-curl
-  mingw-w64-x86_64-ntldd
-  mingw-w64-x86_64-openssl
-  mingw-w64-x86_64-nsis
+  mingw-w64-ucrt-x86_64-gcc
+  mingw-w64-ucrt-x86_64-cmake
+  mingw-w64-ucrt-x86_64-ninja
+  mingw-w64-ucrt-x86_64-pkgconf
+  mingw-w64-ucrt-x86_64-boost
+  mingw-w64-ucrt-x86_64-libtorrent-rasterbar
+  mingw-w64-ucrt-x86_64-zlib
+  mingw-w64-ucrt-x86_64-curl
+  mingw-w64-ucrt-x86_64-ntldd
+  mingw-w64-ucrt-x86_64-openssl
+  mingw-w64-ucrt-x86_64-nsis
   zip
   unzip
   curl
@@ -30,7 +31,7 @@ PACKAGES=(
 echo "==> pacman -S --needed ${PACKAGES[*]}"
 pacman -S --needed --noconfirm "${PACKAGES[@]}"
 
-echo "Windows (MSYS2/MINGW64) deps OK."
+echo "Windows (MSYS2/UCRT64) deps OK."
 echo "Build with:"
 echo "  cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTEZEUSZ_BUNDLED_DEPS=OFF"
 echo "  cmake --build build"
